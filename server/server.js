@@ -39,7 +39,7 @@ const STATIC = {
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webmanifest': 'application/manifest+json; charset=utf-8' };
 const EMOTES = ['😂', '😱', '🖕', '😎', '😡', '🤔', '👏', '💀'];
 const PHRASES = ['Блефуешь!', 'Проверю!', 'Ну ты даёшь', 'Везёт же', 'Давай быстрее', 'Красиво!', 'Не верю', 'GG'];
-const LIKE_COOLDOWN = 60 * 1000;
+const LIKE_COOLDOWN = 60 * 1000; // у лайка, дизлайка и грязи — своя минута у каждого
 const CHAT_GAP = 1200, EMOTE_GAP = 1500;
 
 /** @type {Map<string, any>} */
@@ -192,7 +192,11 @@ function viewFor(r, seat) {
   const me = r.seats[seat];
   const base = {
     code: r.code, you: seat, youPid: me.pid, isHost: seat === hostSeat, size: r.size, rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff,
-    chat: r.chat.slice(-40), social: r.social.slice(-16), likeReadyIn: Math.max(0, (me.likeAt || 0) + LIKE_COOLDOWN - Date.now()),
+    chat: r.chat.slice(-40), social: r.social.slice(-16),
+    likeReadyIn: Math.max(0, (me.likeAt || 0) + LIKE_COOLDOWN - Date.now()),
+    dislikeReadyIn: Math.max(0, (me.dislikeAt || 0) + LIKE_COOLDOWN - Date.now()),
+    mudReadyIn: Math.max(0, (me.mudAt || 0) + LIKE_COOLDOWN - Date.now()),
+    canMud: isLeader(r, seat),
     emotes: EMOTES, phrases: PHRASES,
   };
   if (!r.game) {
@@ -321,7 +325,15 @@ function update(r) {
   scheduleBotChecks(r);
 }
 
-// Общение: чат, эмоции, лайки. Не влияет на игру и не сбрасывает таймеры ботов.
+// Лидер по очкам: у него больше всех (если не у всех поровну). Только лидер может кидаться грязью.
+function isLeader(r, seat) {
+  const g = r.game;
+  if (!g) return false;
+  const max = Math.max(...g.scores), min = Math.min(...g.scores);
+  return max !== min && g.scores[seat] === max;
+}
+
+// Общение: чат, эмоции, лайки, дизлайки, грязь. Не влияет на игру и не сбрасывает таймеры ботов.
 function socialAction(r, seat, body) {
   const s = r.seats[seat];
   const now = Date.now();
@@ -345,13 +357,17 @@ function socialAction(r, seat, body) {
     push({ kind: phrase ? 'phrase' : 'emote', id });
     return;
   }
-  if (body.type === 'like') {
+  if (body.type === 'like' || body.type === 'dislike' || body.type === 'mud') {
+    const kind = body.type;
     const to = Number(body.to);
-    if (!r.seats[to] || to === seat) fail('Некого лайкнуть');
-    const left = (s.likeAt || 0) + LIKE_COOLDOWN - now;
-    if (left > 0) fail(`Лайк можно через ${Math.ceil(left / 1000)} с`);
-    s.likeAt = now;
-    push({ kind: 'like', to });
+    const what = { like: 'Лайк', dislike: 'Дизлайк', mud: 'Грязь' }[kind];
+    if (!r.seats[to] || to === seat) fail('Выберите другого игрока');
+    if (kind === 'mud' && !isLeader(r, seat)) fail('Кидаться грязью может только лидер');
+    const key = kind + 'At';
+    const left = (s[key] || 0) + LIKE_COOLDOWN - now;
+    if (left > 0) fail(`${what} можно через ${Math.ceil(left / 1000)} с`);
+    s[key] = now;
+    push({ kind, to });
     return;
   }
   fail('Неизвестное действие');
@@ -458,7 +474,7 @@ async function handleApi(req, res, url) {
     const r = getRoom(body.room);
     const seat = requireSeat(r, body.token);
     if (body.type === 'rtc') { relayRtc(r, seat, body); return sendJson(res, 200, { ok: true }); }
-    if (['chat', 'emote', 'like'].includes(body.type)) { socialAction(r, seat, body); r.touched = Date.now(); broadcast(r); return sendJson(res, 200, { ok: true }); }
+    if (['chat', 'emote', 'like', 'dislike', 'mud'].includes(body.type)) { socialAction(r, seat, body); r.touched = Date.now(); broadcast(r); return sendJson(res, 200, { ok: true }); }
     doAction(r, seat, body);
     update(r);
     return sendJson(res, 200, { ok: true });

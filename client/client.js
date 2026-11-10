@@ -229,8 +229,8 @@
             <button class="icon-btn" data-act="scores" title="Счёт">${iconSvg('scores')}</button>
             <button class="icon-btn" data-act="menu" title="Меню">${iconSvg('menu')}</button>
           </div>
-          <div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> козырь</span><span id="hud-mode"></span></div></div>
         </div>
+        <div class="round-dock"><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> козырь</span><span id="hud-mode"></span></div></div></div>
         <div class="me-panel" id="me-panel"></div>
         <div class="action" id="action"></div>
         <div id="vote"></div>
@@ -1321,7 +1321,7 @@
   const isMuted = (name, what) => !!mutesOf(name)[what];
 
   const Social = {
-    lastSeq: null, unread: 0, open: false, likeReadyAt: 0,
+    lastSeq: null, unread: 0, open: false, readyAt: { like: 0, dislike: 0, mud: 0 }, canMud: false,
 
     avatarCenter(seat) {
       if (Game.el) return Game.seatCenter(seat);
@@ -1337,7 +1337,9 @@
 
     update(v) {
       $('#dock').classList.add('on');
-      this.likeReadyAt = Date.now() + (v.likeReadyIn || 0);
+      const t = Date.now();
+      this.readyAt = { like: t + (v.likeReadyIn || 0), dislike: t + (v.dislikeReadyIn || 0), mud: t + (v.mudReadyIn || 0) };
+      this.canMud = !!v.canMud;
       const maxSeq = Math.max(0, ...v.social.map(e => e.seq), ...v.chat.map(m => m.seq));
       const first = this.lastSeq == null;
       if (!first) {
@@ -1366,6 +1368,12 @@
       } else if (e.kind === 'like') {
         if (isMuted(name, 'emote')) return;
         this.like(e.from, e.to);
+      } else if (e.kind === 'dislike') {
+        if (isMuted(name, 'emote')) return;
+        this.dislike(e.from, e.to);
+      } else if (e.kind === 'mud') {
+        if (isMuted(name, 'emote')) return;
+        this.mud(e.from, e.to);
       }
     },
 
@@ -1420,6 +1428,74 @@
         if (av) av.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 450, easing: 'cubic-bezier(.3,1.6,.5,1)' });
         SFX.chip();
       }, 800 + n * 55);
+    },
+
+    // Дизлайк: 👎 летят в аватар, над ним хмурая тучка с дождём, аватар вздрагивает.
+    dislike(from, to) {
+      const [x1, y1] = this.avatarCenter(from), [x2, y2] = this.avatarCenter(to);
+      for (let i = 0; i < 7; i++) {
+        const el = document.createElement('div');
+        el.className = 'like-fly';
+        el.textContent = i % 3 === 2 ? '💨' : '👎';
+        $('#app').appendChild(el);
+        const mx = (x1 + x2) / 2 + rnd(-80, 80), my = Math.min(y1, y2) - rnd(30, 100);
+        el.animate([
+          { transform: `translate(${x1}px, ${y1}px) translate(-50%,-50%) scale(.4)`, opacity: 0 },
+          { transform: `translate(${mx}px, ${my}px) translate(-50%,-50%) scale(1.2) rotate(${rnd(-40, 40)}deg)`, opacity: 1, offset: 0.5 },
+          { transform: `translate(${x2}px, ${y2}px) translate(-50%,-50%) scale(.9)`, opacity: 1 },
+        ], { duration: 700 + i * 40, delay: i * 60, easing: 'cubic-bezier(.3,.6,.4,1)', fill: 'forwards' }).finished.then(() => el.remove()).catch(() => el.remove());
+      }
+      SFX.dislikeFly();
+      setTimeout(() => {
+        const cloud = document.createElement('div');
+        cloud.className = 'boo-cloud';
+        cloud.textContent = '🌧️';
+        cloud.style.left = x2 + 'px'; cloud.style.top = (y2 - 46) + 'px';
+        $('#app').appendChild(cloud);
+        setTimeout(() => cloud.remove(), 2200);
+        FX.burst(x2, y2 - 30, { n: 26, type: 'glow', colors: ['#8fb0ff', '#c9d6ff'], speed: [10, 40], angle: Math.PI / 2, spread: 0.6, g: 520, life: [0.6, 1.1], size: [4, 7] });
+        FX.burst(x2, y2, { n: 12, type: 'dust', colors: ['#7a7a86'], speed: [20, 80], g: -20, life: [0.8, 1.3], size: [14, 26], size2: 1.6 });
+        const av = this.avatarEl(to);
+        if (av) { av.classList.remove('booed'); void av.offsetWidth; av.classList.add('booed'); setTimeout(() => av.classList.remove('booed'), 1300); }
+        SFX.boo();
+      }, 720 + 7 * 60);
+    },
+
+    // Грязь (только лидер): ком грязи летит по дуге и шлёпается на аватар, брызги и подтёки держатся несколько секунд.
+    mud(from, to) {
+      const [x1, y1] = this.avatarCenter(from), [x2, y2] = this.avatarCenter(to);
+      const ball = document.createElement('div');
+      ball.className = 'mud-ball';
+      $('#app').appendChild(ball);
+      const peak = Math.min(y1, y2) - 150;
+      SFX.mudThrow();
+      const a = ball.animate([
+        { transform: `translate(${x1}px, ${y1}px) translate(-50%,-50%) scale(.6) rotate(0deg)` },
+        { transform: `translate(${(x1 + x2) / 2}px, ${peak}px) translate(-50%,-50%) scale(1.3) rotate(260deg)`, offset: 0.5 },
+        { transform: `translate(${x2}px, ${y2}px) translate(-50%,-50%) scale(1) rotate(520deg)` },
+      ], { duration: 820, easing: 'cubic-bezier(.35,.1,.6,1)', fill: 'forwards' });
+      let trail = setInterval(() => {
+        const r = VIEW.rect(ball);
+        FX.burst(r.left + r.width / 2, r.top + r.height / 2, { n: 2, type: 'dust', colors: ['#5a3a1c'], speed: [5, 20], g: 120, life: [0.4, 0.7], size: [6, 10], size2: 0.6, add: false });
+      }, 50);
+      a.finished.then(() => {
+        clearInterval(trail);
+        ball.remove();
+        SFX.splat();
+        FX.burst(x2, y2, { n: 34, type: 'dust', colors: ['#6b4423', '#4a2e14', '#8a5a2b'], speed: [120, 380], g: 520, life: [0.6, 1.1], size: [6, 14], size2: 0.7, add: false });
+        FX.burst(x2, y2, { n: 16, type: 'glyph', glyphs: ['●'], colors: ['#5a3a1c', '#7a4e26'], speed: [160, 340], g: 600, life: [0.6, 1], size: [8, 16], add: false });
+        FX.shake(5, 0.25);
+        vibrate(40);
+        const av = this.avatarEl(to);
+        if (!av) return;
+        av.classList.remove('booed'); void av.offsetWidth; av.classList.add('booed');
+        const splat = document.createElement('div');
+        splat.className = 'mud-splat';
+        splat.innerHTML = mudSvg();
+        av.appendChild(splat);
+        setTimeout(() => { splat.classList.add('out'); av.classList.remove('booed'); }, 6500);
+        setTimeout(() => splat.remove(), 7300);
+      }).catch(() => { clearInterval(trail); ball.remove(); });
     },
 
     renderChat(v) {
@@ -1480,10 +1556,16 @@
       const s = v.seats[seat];
       const m = mutesOf(s.name);
       const [x, y] = this.avatarCenter(seat);
-      const left = Math.ceil(Math.max(0, this.likeReadyAt - Date.now()) / 1000);
+      const now = Date.now();
+      const left = k => Math.ceil(Math.max(0, this.readyAt[k] - now) / 1000);
+      const L = left('like'), D = left('dislike'), M = left('mud');
       const pop = $('#ava-menu');
       pop.innerHTML = `<div class="am-title">${esc(s.name)}${s.bot ? ' <span class="hint">бот</span>' : ''}</div>
-        <button class="btn-gold am-like" data-act="like" data-seat="${seat}" ${left ? 'disabled' : ''}>👍 Лайк${left ? ` · ${left} с` : ''}</button>
+        <div class="am-acts">
+          <button class="am-act like" data-act="like" data-seat="${seat}" ${L ? 'disabled' : ''}><span>👍</span>${L ? `${L} с` : 'Лайк'}</button>
+          <button class="am-act dislike" data-act="dislike" data-seat="${seat}" ${D ? 'disabled' : ''}><span>👎</span>${D ? `${D} с` : 'Дизлайк'}</button>
+          <button class="am-act mud" data-act="mud" data-seat="${seat}" ${M || !this.canMud ? 'disabled' : ''} title="${this.canMud ? 'Кинуть грязью' : 'Только для лидера по очкам'}"><span>🟤</span>${!this.canMud ? 'Только лидер' : M ? `${M} с` : 'Грязью!'}</button>
+        </div>
         <div class="am-row">
           <button class="am-tg ${m.voice ? 'on' : ''}" data-act="mute" data-what="voice" data-seat="${seat}" ${s.bot ? 'disabled' : ''}><span>🎙</span>${m.voice ? 'Голос выкл' : 'Голос'}</button>
           <button class="am-tg ${m.chat ? 'on' : ''}" data-act="mute" data-what="chat" data-seat="${seat}"><span>💬</span>${m.chat ? 'Чат выкл' : 'Чат'}</button>
@@ -1495,7 +1577,7 @@
       pop.classList.add('on');
       pop.dataset.seat = seat;
       clearInterval(this.amT);
-      if (left) this.amT = setInterval(() => { if (!pop.classList.contains('on')) return clearInterval(this.amT); this.openAvatarMenu(seat); }, 1000);
+      if (L || D || M) this.amT = setInterval(() => { if (!pop.classList.contains('on')) return clearInterval(this.amT); this.openAvatarMenu(seat); }, 1000);
     },
     closeAvatarMenu() { $('#ava-menu').classList.remove('on'); clearInterval(this.amT); },
 
@@ -1512,6 +1594,19 @@
       pick.classList.add('on');
     },
   };
+
+  // Пятна грязи на аватаре: кляксы с подтёками.
+  function mudSvg() {
+    let blobs = '';
+    for (let i = 0; i < 5; i++) {
+      const cx = rnd(20, 80), cy = rnd(20, 70), r = rnd(8, 18);
+      let d = '';
+      for (let k = 0; k <= 10; k++) { const a = (k / 10) * Math.PI * 2, rr = r * rnd(0.7, 1.25); d += `${k ? 'L' : 'M'}${(cx + Math.cos(a) * rr).toFixed(1)} ${(cy + Math.sin(a) * rr).toFixed(1)} `; }
+      blobs += `<path d="${d}Z" fill="${['#5a3a1c', '#4a2e14', '#6b4423'][i % 3]}"/>`;
+      blobs += `<rect class="drip" x="${(cx - 2).toFixed(1)}" y="${cy.toFixed(1)}" width="4" height="${rnd(14, 30).toFixed(1)}" rx="2" fill="#4a2e14" style="animation-delay:${(i * 0.3).toFixed(1)}s"/>`;
+    }
+    return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">${blobs}<circle cx="40" cy="38" r="3" fill="#a07040" opacity=".6"/></svg>`;
+  }
 
   function rtcSend(to, data) {
     if (!S.room) return;
@@ -1621,6 +1716,8 @@
     emotes: () => { Social.toggleChat(false); Social.openEmotes(); },
     emote: b => { $('#emo-pick').classList.remove('on'); social({ type: 'emote', id: b.dataset.id }); },
     like: b => { Social.closeAvatarMenu(); social({ type: 'like', to: +b.dataset.seat }); },
+    dislike: b => { Social.closeAvatarMenu(); social({ type: 'dislike', to: +b.dataset.seat }); },
+    mud: b => { Social.closeAvatarMenu(); social({ type: 'mud', to: +b.dataset.seat }); },
     mute: b => {
       const v = S.view, s = v && v.seats[+b.dataset.seat];
       if (!s) return;
