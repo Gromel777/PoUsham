@@ -1,11 +1,14 @@
 // Сервер «В Точку»: комнаты по коду, ходы игроков, боты на пустых местах.
-// Без внешних зависимостей: HTTP для действий, Server-Sent Events для обновлений стола.
+// HTTP для действий, Server-Sent Events для обновлений стола. Аккаунты Google и рейтинг — в базе (server/db.js).
 'use strict';
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { Engine, Bots } = require('../engine/engine.js');
+const Rating = require('./rating');
+const Google = require('./google');
+const DB = require('./db').create();
 
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, '..');
@@ -16,6 +19,8 @@ const TRICK_PAUSE = 2100; // время на эффекты последней �
 const TRICK_PAUSE_BLUFF = 5000; // в режиме обмана — время, чтобы успеть проверить
 const DEFAULT_TURN_TIME = 30;
 const ROOM_TTL = 3 * 60 * 60 * 1000; // пустая комната живёт 3 часа
+// Client ID не секретный; переменная GOOGLE_CLIENT_ID на Render позволяет сменить его без правки кода.
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '626516411258-ii9eiq7dni57082mmiil8mhbdma9p8qr.apps.googleusercontent.com';
 
 const STATIC = {
   '/': 'client/index.html',
@@ -87,7 +92,7 @@ function seatOf(r, token) { return token ? r.seats.findIndex(s => s.token === to
 function requireSeat(r, token) { const s = seatOf(r, token); if (s < 0) fail('Вы не за этим столом'); return s; }
 function isOnline(r, seat) { for (const st of r.streams) if (st.seat === seat) return true; return false; }
 
-function createRoom({ name, players, rounds, turnTime, bluff, lang }) {
+function createRoom({ name, players, rounds, turnTime, bluff, lang }, acc = null) {
   const size = clampInt(players, Engine.MIN_PLAYERS, Engine.MAX_PLAYERS, 4);
   const r = {
     code: newCode(),
@@ -105,17 +110,33 @@ function createRoom({ name, players, rounds, turnTime, bluff, lang }) {
     touched: Date.now(),
   };
   const token = newToken();
-  r.seats.push({ name: cleanName(name), token, bot: false, pid: newPid() });
+  r.seats.push({ name: cleanName(name), token, bot: false, pid: newPid(), ...accSeat(acc) });
   r.hostSeat = 0;
   rooms.set(r.code, r);
   return { r, token };
 }
 
+// Аккаунт игрока на месте: id для рейтинга и рейтинг на момент входа (для показа).
+const accSeat = acc => (acc ? { uid: acc.id, rating: acc.rating } : { uid: null, rating: null });
+
 // Вход в комнату. Если за столом есть отключившийся игрок с тем же именем — это он вернулся:
 // отдаём ему его место с новым ключом (старый ключ перестаёт работать).
-function joinRoom(r, name) {
+// Игрок с аккаунтом возвращается на своё место по аккаунту; чужое место с аккаунтом по имени занять нельзя.
+function joinRoom(r, name, acc = null) {
   const nm = cleanName(name);
+  if (acc) {
+    const mine = r.seats.findIndex(s => !s.bot && s.uid === acc.id);
+    if (mine >= 0) {
+      if (isOnline(r, mine)) fail('Вы уже за этим столом — закройте другую вкладку.');
+      const token = newToken();
+      r.seats[mine].token = token;
+      return { token, rejoined: true };
+    }
+  }
   const same = r.seats.findIndex(s => !s.bot && s.name.toLowerCase() === nm.toLowerCase());
+  if (same >= 0 && r.seats[same].uid && (!acc || acc.id !== r.seats[same].uid)) {
+    fail(`Имя «${r.seats[same].name}» занято игроком с аккаунтом Google. Если это вы — войдите в тот же аккаунт, иначе выберите другое имя.`);
+  }
   if (same >= 0) {
     if (isOnline(r, same)) fail(`Игрок «${r.seats[same].name}» уже за столом. Если это вы — закройте другую вкладку или введите другое имя.`);
     const token = newToken();
@@ -130,7 +151,7 @@ function joinRoom(r, name) {
   }
   if (r.seats.length >= r.size) fail('Свободных мест нет');
   const token = newToken();
-  r.seats.push({ name: nm, token, bot: false, pid: newPid() });
+  r.seats.push({ name: nm, token, bot: false, pid: newPid(), ...accSeat(acc) });
   return { token, rejoined: false };
 }
 
@@ -161,6 +182,7 @@ function replaceWithBot(r, target) {
   const s = r.seats[target];
   dropStreams(r, target, 'Голосованием ваше место отдано боту.');
   s.bot = true; s.token = null; s.name = `${s.name} (${r.lang === 'en' ? 'bot' : 'бот'})`;
+  if (s.uid) s.left = true; // в рейтинге ушедший считается последним
   r.game.names[target] = s.name;
   gameLog(r, `${s.name}: место игрока занял бот`);
   if (target === r.hostSeat) {
@@ -192,6 +214,10 @@ function startGame(r) {
   r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff });
 }
 
+function seatView(r, s, i) {
+  return { name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === r.hostSeat, pid: s.pid, rating: s.uid && !s.left ? s.rating : null };
+}
+
 // Что видит конкретный игрок: только свои карты, у остальных — количество.
 function viewFor(r, seat) {
   const hostSeat = r.hostSeat;
@@ -208,7 +234,7 @@ function viewFor(r, seat) {
   if (!r.game) {
     return {
       ...base, stage: 'lobby', plan: Engine.roundPlan(r.rounds, Engine.maxCards(r.size)),
-      seats: r.seats.map((s, i) => ({ name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === hostSeat, pid: s.pid })),
+      seats: r.seats.map((s, i) => seatView(r, s, i)),
     };
   }
   const g = r.game;
@@ -216,7 +242,7 @@ function viewFor(r, seat) {
   return {
     ...base, stage: 'game',
     names: g.names,
-    seats: r.seats.map((s, i) => ({ name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === hostSeat, pid: s.pid })),
+    seats: r.seats.map((s, i) => seatView(r, s, i)),
     n: g.n, plan: g.plan, roundIdx: g.roundIdx, phase: g.phase, turn: g.turn, leader: g.leader,
     bids: g.bids, took: g.took, scores: g.scores,
     handCounts: g.hands.map(h => h.length),
@@ -230,6 +256,7 @@ function viewFor(r, seat) {
     timer: r.deadline && r.turnKey ? { left: Math.max(0, r.deadline - Date.now()), total: r.turnTime * 1000 } : null,
     specialModes: myTurn ? Engine.specialModes(g, seat) : [],
     paused: !!r.vote,
+    rating: g.phase === 'gameOver' ? (g.rating || null) : null,
     vote: r.vote ? {
       target: r.vote.target,
       yes: [...r.vote.yes], no: [...r.vote.no],
@@ -325,6 +352,7 @@ function scheduleBotChecks(r) {
 
 function update(r) {
   r.touched = Date.now();
+  if (r.game && r.game.phase === 'gameOver' && !r.game.rating) rateGame(r, r.game);
   scheduleTurnTimer(r);
   broadcast(r);
   schedule(r);
@@ -434,6 +462,7 @@ function doAction(r, seat, body) {
     if (seat !== r.hostSeat) fail('Новую партию начинает хост');
     if (!g || g.phase !== 'gameOver') fail('Партия ещё не закончена');
     r.seenPlays = new Set();
+    for (const s of r.seats) if (s.bot) { s.uid = null; s.left = false; s.rating = null; } // ушедшие в новой партии не участвуют
     r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff });
     return;
   }
@@ -476,6 +505,43 @@ function doAction(r, seat, body) {
   }
 }
 
+// ---------- рейтинг ----------
+// Партия окончена: если за столом минимум 2 игрока с аккаунтом — считаем попарное Эло и пишем в базу.
+// Результат (g.rating) уходит всем в состоянии стола: { status: 'pending' | 'done' | 'skip' | 'error', ... }.
+function rateGame(r, g) {
+  const seats = r.seats.map((s, i) => ({ s, i })).filter(x => x.s.uid);
+  if (seats.length < Rating.MIN_RATED) {
+    g.rating = { status: 'skip', reason: 'Партия не в рейтинге: нужно минимум двое игроков, вошедших через Google.' };
+    return;
+  }
+  if (!DB.ready()) { g.rating = { status: 'skip', reason: 'Рейтинг сейчас недоступен (нет связи с базой).' }; return; }
+  g.rating = { status: 'pending' };
+  // Места — среди всех за столом (боты и гости тоже занимают места); ушедшие — последние.
+  const all = r.seats.map((s, i) => ({ score: g.scores[i], left: !!s.left }));
+  const placeAll = Rating.places(all);
+  const entries = seats.map(({ s, i }) => ({ playerId: s.uid, score: g.scores[i], left: !!s.left, place: placeAll[i] }));
+  DB.recordMatch({ room: r.code, seats: r.size, rounds: r.rounds, bluff: r.bluff }, entries).then(res => {
+    const changes = {};
+    for (const x of res) {
+      const seat = seats.find(({ s }) => s.uid === x.playerId).i;
+      changes[seat] = { before: x.before, after: x.after, delta: x.delta, place: x.place };
+      if (!r.seats[seat].left) r.seats[seat].rating = x.after;
+    }
+    g.rating = { status: 'done', changes };
+  }).catch(e => {
+    console.error('rating:', e.message);
+    g.rating = { status: 'error', reason: 'Не удалось сохранить рейтинг — партия не засчитана.' };
+  }).finally(() => { if (r.game === g) broadcast(r); });
+}
+
+// Аккаунт по ключу сессии (или null для гостя). Заодно запоминаем имя за столом — оно идёт в таблицу лидеров.
+async function accountOf(session, nick) {
+  if (!session) return null;
+  const acc = await DB.bySession(session);
+  if (acc && nick) { try { await DB.setNick(acc.id, nick); acc.nick = cleanName(nick); } catch {} }
+  return acc;
+}
+
 // ---------- HTTP ----------
 async function handleApi(req, res, url) {
   if (url.pathname === '/api/events' && req.method === 'GET') {
@@ -497,15 +563,46 @@ async function handleApi(req, res, url) {
     req.on('close', () => { if (r.streams.delete(st)) { checkVote(r); update(r); } });
     return;
   }
+  if (url.pathname === '/api/config' && req.method === 'GET') {
+    return sendJson(res, 200, { googleClientId: GOOGLE_CLIENT_ID, ratings: DB.ready() });
+  }
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Метод не поддерживается' });
   const body = await readBody(req);
+  if (url.pathname === '/api/auth/google') {
+    let u;
+    try { u = await Google.verifyIdToken(body.credential, GOOGLE_CLIENT_ID); }
+    catch (e) { fail('Вход через Google не удался: ' + e.message); }
+    let acc;
+    try { acc = await DB.upsertGoogle({ ...u, nick: body.nick }); }
+    catch (e) { console.error('auth db:', e.message); fail('База данных недоступна, попробуйте позже'); }
+    const session = await DB.newSession(acc.id);
+    return sendJson(res, 200, { session, me: acc });
+  }
+  if (url.pathname === '/api/me') {
+    if (!DB.ready()) return sendJson(res, 503, { error: 'База данных недоступна' }); // не путать с «сессии нет»
+    const me = await DB.bySession(body.session).catch(() => null);
+    return sendJson(res, 200, { me });
+  }
+  if (url.pathname === '/api/logout') {
+    if (body.session) await DB.dropSession(body.session).catch(() => {});
+    return sendJson(res, 200, { ok: true });
+  }
+  if (url.pathname === '/api/leaderboard') {
+    const me = await DB.bySession(body.session).catch(() => null);
+    let board;
+    try { board = await DB.leaderboard(50, me && me.id); }
+    catch (e) { fail('Таблица лидеров сейчас недоступна'); }
+    return sendJson(res, 200, board);
+  }
   if (url.pathname === '/api/create') {
-    const { r, token } = createRoom(body);
+    const acc = await accountOf(body.session, body.name);
+    const { r, token } = createRoom(body, acc);
     return sendJson(res, 200, { room: r.code, token });
   }
   if (url.pathname === '/api/join') {
     const r = getRoom(body.room);
-    const { token, rejoined } = joinRoom(r, body.name);
+    const acc = await accountOf(body.session, body.name);
+    const { token, rejoined } = joinRoom(r, body.name, acc);
     update(r);
     return sendJson(res, 200, { room: r.code, token, rejoined });
   }
@@ -535,7 +632,7 @@ function serveStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
-    if (url.pathname === '/health') return sendJson(res, 200, { ok: true, rooms: rooms.size });
+    if (url.pathname === '/health') return sendJson(res, 200, { ok: true, rooms: rooms.size, db: DB.health(), google: !!process.env.GOOGLE_CLIENT_ID });
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
     return serveStatic(req, res, url);
   } catch (e) {
@@ -554,4 +651,5 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 server.listen(PORT, () => console.log(`В Точку: сервер запущен на порту ${PORT}`));
-module.exports = { server, rooms };
+DB.init();
+module.exports = { server, rooms, DB };

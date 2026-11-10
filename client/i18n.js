@@ -27,6 +27,20 @@
     'до {m} карт · {s} с на ход': 'up to {m} cards · {s} s per move', 'до {m} карт · без таймера': 'up to {m} cards · no timer',
     'секунд на ход (0 — без таймера)': 'seconds per move (0 — no timer)', 'Введите имя': 'Enter your name', 'Код комнаты — 4 символа': 'Room code is 4 characters',
     'Язык': 'Language',
+    // аккаунт и рейтинг
+    'Вы вошли: {n} · рейтинг {r}': 'Signed in: {n} · rating {r}', 'Лидеры': 'Leaders', 'Выйти из аккаунта': 'Sign out', 'Выход': 'Sign out',
+    'Войдите, чтобы играть на рейтинг': 'Sign in to play for rating', 'Таблица лидеров': 'Leaderboard', 'Закрыть': 'Close',
+    'Игрок': 'Player', 'Рейтинг': 'Rating', 'Партий': 'Games', 'Побед': 'Wins',
+    'Пока никто не сыграл {n} рейтинговых партий — станьте первым!': 'Nobody has played {n} rated games yet — be the first!',
+    'Войдите через Google на главном экране, чтобы играть на рейтинг.': 'Sign in with Google on the main screen to play for rating.',
+    'Ваш рейтинг {r}. В таблицу вы попадёте после {n} партий — сыграно {g}.': 'Your rating is {r}. You join the table after {n} games — played {g}.',
+    'Рейтинг меняется в партиях, где за столом минимум двое вошедших через Google. Старт — 1000.': 'Rating changes in games with at least two players signed in with Google. Start — 1000.',
+    'Считаем рейтинг…': 'Calculating rating…', 'Ваш рейтинг': 'Your rating', 'Вы играли без аккаунта — рейтинг не меняется.': 'You played without an account — no rating change.',
+    'Партия не в рейтинге: нужно минимум двое игроков, вошедших через Google.': 'Unrated game: at least two players must be signed in with Google.',
+    'Рейтинг сейчас недоступен (нет связи с базой).': 'Rating is unavailable right now (no database connection).',
+    'Не удалось сохранить рейтинг — партия не засчитана.': 'Could not save the rating — the game was not counted.',
+    'База данных недоступна, попробуйте позже': 'Database unavailable, try again later', 'Таблица лидеров сейчас недоступна': 'Leaderboard is unavailable right now',
+    'Вы уже за этим столом — закройте другую вкладку.': 'You are already at this table — close the other tab.',
     // лобби
     '{n} игроков': '{n} players', '{n} раундов': '{n} rounds', 'таймер {s} с': 'timer {s} s', 'без таймера': 'no timer', 'режим обмана': 'bluff mode',
     'Скопировать ссылку': 'Copy link', 'Стол': 'Table', 'Свободно': 'Free', 'займёт бот': 'a bot will sit', '(вы)': '(you)',
@@ -109,6 +123,8 @@
     [/^(Лайк|Дизлайк|Грязь) можно через (\d+) с$/, (m, w, n) => `${{ 'Лайк': 'Like', 'Дизлайк': 'Dislike', 'Грязь': 'Mud' }[w]} available in ${n} s`],
     [/^Игрок «(.+)» уже за столом\./, (m, n) => `Player “${n}” is already at the table. If that’s you, close the other tab or use another name.`],
     [/^Игра уже идёт\. Чтобы вернуться за стол, введите имя, под которым играли: (.+)\.$/, (m, l) => `The game is running. To rejoin, enter the name you played under: ${l}.`],
+    [/^Имя «(.+)» занято игроком с аккаунтом Google\./, (m, n) => `The name “${n}” belongs to a player signed in with Google. If that’s you, sign in with the same account, otherwise pick another name.`],
+    [/^Вход через Google не удался: (.*)$/, (m, e) => `Google sign-in failed: ${e}`],
     [/^Игроков должно быть от (\d+) до (\d+)$/, (m, a, b) => `Players must be from ${a} to ${b}`],
   ];
   function trServer(msg) {

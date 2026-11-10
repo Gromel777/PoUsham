@@ -33,6 +33,133 @@
     if (!r.ok) throw new Error(I18N.trServer(j.error) || T('Ошибка соединения'));
     return j;
   }
+  // ---------- аккаунт Google и рейтинг ----------
+  const AUTH_KEY = 'vtochku-auth';
+  const Auth = {
+    session: load(AUTH_KEY).session || null,
+    me: null, cfg: null, gisInit: false,
+    async init() {
+      try { this.cfg = await fetch('/api/config').then(r => r.json()); } catch {}
+      if (this.session) {
+        try {
+          const r = await fetch('/api/me', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: this.session }) });
+          if (r.ok) { const j = await r.json(); if (j.me) this.me = j.me; else this.forget(); }
+        } catch {}
+      }
+      renderAcct();
+    },
+    forget() { this.session = null; this.me = null; save(AUTH_KEY, { session: null }); },
+    // Скрипт Google грузится асинхронно — ждём, пока появится.
+    whenGis(cb, tries = 0) {
+      if (window.google && google.accounts && google.accounts.id) return cb();
+      if (tries < 60) setTimeout(() => this.whenGis(cb, tries + 1), 250);
+    },
+    renderButton(el) {
+      if (!this.cfg || !this.cfg.googleClientId) return;
+      this.whenGis(() => {
+        if (!this.gisInit) {
+          google.accounts.id.initialize({ client_id: this.cfg.googleClientId, callback: resp => this.onCredential(resp), auto_select: false, ux_mode: 'popup' });
+          this.gisInit = true;
+        }
+        if (!el.isConnected) return;
+        el.innerHTML = '';
+        google.accounts.id.renderButton(el, { type: 'standard', theme: 'filled_black', size: 'medium', shape: 'pill', text: 'signin_with', locale: I18N.lang });
+      });
+    },
+    async onCredential(resp) {
+      const nameEl = $('#name');
+      try {
+        const j = await api('/api/auth/google', { credential: resp.credential, nick: nameEl ? nameEl.value.trim() : '' });
+        this.session = j.session; this.me = j.me;
+        save(AUTH_KEY, { session: j.session });
+        if (nameEl && !nameEl.value.trim()) nameEl.value = j.me.nick;
+        renderAcct();
+        toast(T('Вы вошли: {n} · рейтинг {r}', { n: j.me.nick, r: j.me.rating }));
+      } catch (e) { toast(e.message); }
+    },
+    logout() {
+      const s = this.session;
+      this.forget();
+      if (s) api('/api/logout', { session: s }).catch(() => {});
+      try { google.accounts.id.disableAutoSelect(); } catch {}
+      renderAcct();
+    },
+  };
+  const starSvg = '<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z" fill="currentColor"/></svg>';
+  const rtTag = r => `<span class="rt">${starSvg}${r}</span>`;
+  // Плашка аккаунта на главном экране: кнопка Google или «аватар · имя · рейтинг».
+  function renderAcct() {
+    const box = $('#acct');
+    if (!box) return;
+    const me = Auth.me;
+    const nameEl = $('#name');
+    if (me && nameEl && !nameEl.value.trim() && document.activeElement !== nameEl) nameEl.value = me.nick;
+    if (me) {
+      const pic = me.picture ? `<img class="acct-pic" src="${esc(me.picture)}" referrerpolicy="no-referrer" alt="">` : `<div class="ava acct-ava">${esc(initial(me.nick))}</div>`;
+      box.innerHTML = `${pic}<div class="acct-who"><b>${esc(me.nick)}</b>${rtTag(me.rating)}<span class="hint">${gamesWord(me.games)}</span></div>
+        <button class="btn-ghost acct-btn" data-act="board">${T('Лидеры')}</button><button class="btn-ghost acct-btn" data-act="logout" title="${T('Выйти из аккаунта')}">${T('Выход')}</button>`;
+    } else {
+      box.innerHTML = `<div class="gbtn" id="gbtn"></div><span class="hint acct-hint">${T('Войдите, чтобы играть на рейтинг')}</span><button class="btn-ghost acct-btn" data-act="board">${T('Лидеры')}</button>`;
+      Auth.renderButton($('#gbtn', box));
+    }
+  }
+  function gamesWord(n) {
+    return I18N.lang === 'en' ? `${n} game${n === 1 ? '' : 's'}` : `${n} ${plural(n, 'партия', 'партии', 'партий')}`;
+  }
+  function plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+  }
+  const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + Math.abs(n);
+
+  // Таблица лидеров.
+  async function showBoard() {
+    showModal(`<h2 class="gold-text">${T('Таблица лидеров')}</h2><div id="board" class="board"><div class="loader" style="width:26px;height:26px;margin:18px auto;border-width:2px"></div></div>
+      <div class="actions"><button class="btn-gold" data-act="close">${T('Закрыть')}</button></div>`, 'board-modal');
+    let j;
+    try { j = await api('/api/leaderboard', { session: Auth.session }); }
+    catch (e) { const b = $('#board'); if (b) b.innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+    const b = $('#board');
+    if (!b) return;
+    const me = j.me;
+    if (me && Auth.me) Object.assign(Auth.me, me);
+    const row = (p, isMe) => `<tr class="${isMe ? 'me' : ''} ${p.rank <= 3 ? 'top' + p.rank : ''}"><td class="rk">${p.rank}</td><td class="pn">${esc(p.nick)}${isMe ? ` <span class="hint">${T('(вы)')}</span>` : ''}</td>
+      <td class="rv">${rtTag(p.rating)}</td><td>${p.games}</td><td>${p.wins}</td></tr>`;
+    const inTop = me && j.top.some(p => p.id === me.id);
+    let html = j.top.length
+      ? `<table class="board-t"><tr><th>#</th><th>${T('Игрок')}</th><th>${T('Рейтинг')}</th><th>${T('Партий')}</th><th>${T('Побед')}</th></tr>${j.top.map(p => row(p, me && p.id === me.id)).join('')}
+         ${me && me.rank && !inTop ? `<tr class="gap"><td colspan="5">…</td></tr>${row(me, true)}` : ''}</table>`
+      : `<p class="hint" style="text-align:center">${T('Пока никто не сыграл {n} рейтинговых партий — станьте первым!', { n: j.minGames })}</p>`;
+    if (!me) html += `<p class="hint board-note">${T('Войдите через Google на главном экране, чтобы играть на рейтинг.')}</p>`;
+    else if (!me.rank) html += `<p class="hint board-note">${T('Ваш рейтинг {r}. В таблицу вы попадёте после {n} партий — сыграно {g}.', { r: me.rating, n: j.minGames, g: me.games })}</p>`;
+    html += `<p class="hint board-note">${T('Рейтинг меняется в партиях, где за столом минимум двое вошедших через Google. Старт — 1000.')}</p>`;
+    b.innerHTML = html;
+  }
+
+  // Изменение рейтинга в окне конца партии (приходит с сервера чуть позже самого конца).
+  function renderOverRating(v) {
+    const box = $('#over-rating');
+    if (!box) return;
+    const r = v.rating;
+    const key = r ? r.status : 'none';
+    if (box.dataset.k === key) return;
+    box.dataset.k = key;
+    if (!r) { box.innerHTML = ''; return; }
+    if (r.status === 'pending') { box.innerHTML = `<div class="hint">${T('Считаем рейтинг…')}</div>`; return; }
+    if (r.status !== 'done') { box.innerHTML = `<div class="hint">${esc(I18N.trServer(r.reason || ''))}</div>`; return; }
+    const mine = r.changes[v.you];
+    const others = Object.keys(r.changes).map(Number).filter(p => p !== v.you)
+      .map(p => { const c = r.changes[p]; return `<span class="ro"><b style="color:${nameColor(p)}">${esc(v.names[p])}</b> ${c.after} <i class="${c.delta >= 0 ? 'pos' : 'neg'}">${signed(c.delta)}</i></span>`; }).join('');
+    box.innerHTML = (mine
+      ? `<div class="rt-me ${mine.delta > 0 ? 'up' : mine.delta < 0 ? 'down' : ''}"><span class="lbl">${T('Ваш рейтинг')}</span>${starSvg}<span class="rt-val" id="rt-val">${mine.before}</span><span class="rt-delta" id="rt-delta">${signed(mine.delta)}</span></div>`
+      : `<div class="hint">${T('Вы играли без аккаунта — рейтинг не меняется.')}</div>`) + (others ? `<div class="rt-others">${others}</div>` : '');
+    if (mine) {
+      const val = $('#rt-val'), d = $('#rt-delta');
+      setTimeout(() => { countUp(val, mine.before, mine.after, 1300); d.classList.add('on'); SFX.chip(); }, 350);
+      if (Auth.me) { Auth.me.rating = mine.after; Auth.me.games++; }
+    }
+  }
+
   function connect(room, token) {
     S.room = room; S.token = token; S.err = ''; S.connecting = true;
     save(STORE_KEY, { room, token });
@@ -143,10 +270,11 @@
     const fan = ['Т♠', 'К♥', '7♠', 'Д♦', 'Т♥'];
     const el = setScreen('home', `
       <div class="home">
+        <div class="acct glass" id="acct"></div>
         <div class="home-fan"><div class="home-fan-inner">${fan.map((id, i) => miniCard(id, i, fan.length)).join('')}</div></div>
         <div class="home-panel glass">
           <div class="home-head"><div>${logoHtml()}<div class="logo-sub">${T('заяви и попади')}</div></div>${langSeg()}</div>
-          <label class="field">${T('Ваше имя')}<input id="name" maxlength="20" autocomplete="nickname" value="${esc(sess.name || '')}" placeholder="${T('Как вас зовут?')}"></label>
+          <label class="field">${T('Ваше имя')}<input id="name" maxlength="20" autocomplete="nickname" value="${esc(sess.name || (Auth.me && Auth.me.nick) || '')}" placeholder="${T('Как вас зовут?')}"></label>
           <div class="tabs"><button data-act="tab" data-tab="create">${T('Создать стол')}</button><button data-act="tab" data-tab="join">${T('Войти по коду')}</button></div>
           <div class="pane" data-pane="create">
             <div class="row"><span class="opt-label">${T('Игроков')}</span><div class="seg" id="seg-players">${[2, 3, 4, 5, 6].map(n => `<button data-act="players" data-n="${n}">${n}</button>`).join('')}</div></div>
@@ -174,6 +302,7 @@
     const tv = $('#timer-val', el);
     if (tv) tv.addEventListener('change', () => { S.turnTime = clampTimer(parseInt(tv.value, 10)); syncHome(); });
     syncHome(el);
+    renderAcct();
   }
   function clampTimer(t) { return Number.isFinite(t) ? Math.max(0, Math.min(600, t)) : 30; }
   function syncHome(el = screenEl()) {
@@ -216,7 +345,7 @@
       if (!s) return `<div class="lseat empty"><div class="ava bot">?</div><div><div class="nm">${T('Свободно')}</div><div class="sub">${T('займёт бот')}</div></div></div>`;
       return `<div class="lseat ${i === v.you ? 'me' : ''}" data-i="${i}">
         <div class="ava ${s.online ? '' : 'off'}">${esc(initial(s.name))}</div>
-        <div style="min-width:0"><div class="nm">${esc(s.name)}${i === v.you ? ` <span class="hint">${T('(вы)')}</span>` : ''}</div><div class="sub">${T(s.host ? 'хост' : s.online ? 'в сети' : 'не в сети')}</div></div>
+        <div style="min-width:0"><div class="nm">${esc(s.name)}${i === v.you ? ` <span class="hint">${T('(вы)')}</span>` : ''}</div><div class="sub">${T(s.host ? 'хост' : s.online ? 'в сети' : 'не в сети')}</div>${s.rating != null ? `<div class="sub">${rtTag(s.rating)}</div>` : ''}</div>
         ${v.isHost && !s.host ? `<button class="btn-ghost kick" data-act="kick" data-seat="${i}">${T('Убрать')}</button>` : ''}
       </div>`;
     }).join('');
@@ -410,6 +539,7 @@
       <button class="btn-ghost" data-act="fullscreen">${T(document.fullscreenElement ? 'Выйти из полного экрана' : 'Во весь экран')}</button>
       <button class="btn-ghost" data-act="install">${T('Установить как приложение')}</button>
       <button class="btn-ghost" data-act="rules">${T('Правила')}</button>
+      <button class="btn-ghost" data-act="board">${T('Таблица лидеров')}</button>
       <button class="btn-ghost btn-crimson" data-act="leave-ask">${T('Выйти из-за стола')}</button>
     </div><div class="actions"><button class="btn-gold" data-act="close">${T('Назад')}</button></div>`);
   }
@@ -651,6 +781,7 @@
       if (v.phase !== 'roundDone' && v.phase !== 'gameOver') this.leadKey = leadKey;
       if (v.phase === 'roundDone' && this.resultsShownFor !== v.roundIdx) { this.resultsShownFor = v.roundIdx; await this.showResults(v, fast); }
       if (v.phase === 'gameOver' && !this.overShown) { this.overShown = true; await this.showGameOver(v, fast); }
+      else if (v.phase === 'gameOver') renderOverRating(v);
       this.prev = v;
     },
 
@@ -1431,9 +1562,11 @@
       const arranged = order.length >= 3 ? [podium[1], podium[0], podium[2], ...podium.slice(3)] : podium;
       showModal(`<h2 class="gold-text" style="text-align:center">${T(iWon ? 'Победа!' : 'Игра окончена')}</h2>
         <div class="podium">${arranged.join('')}</div>
+        <div class="over-rating" id="over-rating"></div>
         <div class="actions" style="justify-content:center">${v.isHost ? `<button class="btn-gold" data-act="restart">${T('Ещё партию')}</button>` : `<span class="hint">${T('Новую партию запускает хост')}</span>`}
         <button class="btn-ghost" data-act="scores">${T('Таблица')}</button><button class="btn-ghost" data-act="leave">${T('В меню')}</button></div>`);
       $('#overlay').dataset.kind = 'over';
+      renderOverRating(v);
       FX.confetti(); SFX.win();
       if (iWon) setTimeout(() => FX.confetti(), 900);
     },
@@ -1879,7 +2012,7 @@
       if (!name) { $('#err').textContent = T('Введите имя'); $('#name').focus(); return; }
       const tv = $('#timer-val'); if (tv) S.turnTime = clampTimer(parseInt(tv.value, 10));
       save(STORE_KEY, { name });
-      try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, lang: I18N.lang }); connect(j.room, j.token); }
+      try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, lang: I18N.lang, session: Auth.session }); connect(j.room, j.token); }
       catch (e) { $('#err').textContent = e.message; }
     },
     join: async () => {
@@ -1888,7 +2021,7 @@
       if (!name) { $('#err').textContent = T('Введите имя'); $('#name').focus(); return; }
       if (room.length !== 4) { $('#err').textContent = T('Код комнаты — 4 символа'); return; }
       save(STORE_KEY, { name });
-      try { const j = await api('/api/join', { name, room }); connect(j.room, j.token); }
+      try { const j = await api('/api/join', { name, room, session: Auth.session }); connect(j.room, j.token); }
       catch (e) { $('#err').textContent = e.message; }
     },
     copy: async () => {
@@ -1959,6 +2092,8 @@
     'leave-ask': () => showModal(`<h2 class="gold-text">${T('Выйти из-за стола?')}</h2><p class="hint">${T('Ваше место останется, вернуться можно по коду и тому же имени.')}</p>
       <div class="actions"><button class="btn-ghost" data-act="close">${T('Остаться')}</button><button class="btn-gold btn-crimson" data-act="leave">${T('Выйти')}</button></div>`),
     leave: () => leave(),
+    board: () => showBoard(),
+    logout: () => Auth.logout(),
   };
   document.addEventListener('click', e => {
     SFX.unlock(); Parallax.enableGyro(); Voice.unlock();
@@ -2019,7 +2154,8 @@
     const roomParam = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
     if (sess.room && sess.token && (!roomParam || roomParam === sess.room)) connect(sess.room, sess.token);
     else showHome();
+    Auth.init();
   }
-  window.VT = { S, Game, Social, tierOf, enqueue };
+  window.VT = { S, Game, Social, Auth, tierOf, enqueue };
   init();
 })();

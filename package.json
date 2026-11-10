@@ -4,11 +4,15 @@
   "description": "Онлайн-карточная игра «По ушам»",
   "main": "server/server.js",
   "scripts": {
-    "start": "node server/server.js"
+    "start": "node server/server.js",
+    "test": "node test-engine.js && node test-rating.js && node test-online.js"
   },
   "engines": {
     "node": ">=18"
   },
   "license": "UNLICENSED",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "pg": "^8.16.3"
+  }
 }
