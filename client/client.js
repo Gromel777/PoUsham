@@ -231,7 +231,7 @@
             <button class="icon-btn" data-act="menu" title="Меню">${iconSvg('menu')}</button>
           </div>
         </div>
-        <div class="round-dock"><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> козырь</span><span id="hud-mode"></span></div></div></div>
+        <div class="round-dock"><div class="round-box"><div class="status" id="status"></div><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> козырь</span><span id="hud-mode"></span></div></div></div>
         <div class="me-panel" id="me-panel"></div>
         <div class="action" id="action"></div>
         <div id="vote"></div>
@@ -285,6 +285,16 @@
       <ellipse cx="${cx}" cy="${cy}" rx="330" ry="170" fill="none" stroke="url(#gold)" stroke-opacity=".35" stroke-width="1.5"/>
       <g opacity=".2" transform="translate(${cx - 70} ${cy - 112}) scale(1.4 1)">${Brand.hood({ id: 'tbl' }).replace(/<svg[^>]*>|<\/svg>/g, '')}</g>
       <text x="${cx}" y="${cy + 128}" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="30" letter-spacing="12" fill="#e8c46a" opacity=".22">В ТОЧКУ</text>
+      <defs>
+        <radialGradient id="puckG" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#fff6d0"/><stop offset=".45" stop-color="#e8c46a"/><stop offset="1" stop-color="#8a6420"/></radialGradient>
+        <filter id="puckGlow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="6"/></filter>
+      </defs>
+      <g class="puck" style="display:none">
+        <ellipse class="puck-glow" rx="40" ry="30" fill="#f6d27a" opacity=".55" filter="url(#puckGlow)"/>
+        <ellipse rx="30" ry="22" fill="url(#puckG)" stroke="#5a4012" stroke-width="2"/>
+        <ellipse rx="23" ry="16" fill="none" stroke="#5a4012" stroke-width="1.5" stroke-dasharray="3 3" opacity=".7"/>
+        <g class="puck-arrow"><path d="M-9 -8 L12 0 L-9 8 Z" fill="#241a06"/></g>
+      </g>
     </svg><div class="table-light"></div>`;
   }
   // Дуга неона по краю стола: центр — угол игрока (в градусах), ширина — 50°.
@@ -581,6 +591,7 @@
       this.updateVote(v);
       this.maybeBoom(v, prev, fast);
       this.updateNeon(v);
+      this.updatePuck(v, fast);
       const leadKey = leadersOf(v).join(',');
       if (prev && this.leadKey != null && leadKey !== this.leadKey && v.phase !== 'roundDone' && v.phase !== 'gameOver') await this.leaderChange(v, this.leadKey, fast);
       if (v.phase !== 'roundDone' && v.phase !== 'gameOver') this.leadKey = leadKey;
@@ -609,7 +620,7 @@
     buildSeats(v) {
       const tw = $('#table-wrap', this.el);
       tw.innerHTML = tableSvg(Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
-      this.neonDeg = null;
+      this.neonDeg = null; this.puckDeg = null;
       this.seatsLayer.innerHTML = '';
       this.seatsLayer.className = `seats n${v.n}`;
       this.seatEls = [];
@@ -673,7 +684,7 @@
         box.innerHTML = `<div class="ava"><div class="ring"></div><span class="ini"></span></div>
           <div class="me-id"><div class="nm"></div><div class="sc">0</div></div>
           <div class="me-counters"><div><b class="b1">—</b><span>заявка</span></div><div><b class="b2">0</b><span>взял</span></div></div>
-          <div class="me-right"><div class="status" id="status"></div><div class="pips"></div></div>`;
+          <div class="me-right"><div class="pips"></div></div>`;
       }
       box.querySelector('.ini').textContent = initial(v.names[me]);
       box.querySelector('.nm').textContent = v.names[me];
@@ -1057,6 +1068,40 @@
       }, 120 + n * 55 + 820);
     },
 
+    // Фишка первого хода: лежит на подстаканнике перед тем, кто ходит первым в раунде,
+    // и при смене раунда катится по кругу стола по часовой стрелке к следующему игроку.
+    updatePuck(v, fast) {
+      const tw = $('#table-wrap', this.el);
+      const puck = tw && tw.querySelector('.puck');
+      if (!puck) return;
+      const target = SPOT_ANGLE[spotOf(v, v.leader)];
+      puck.style.display = '';
+      const place = deg => {
+        const a = deg * Math.PI / 180;
+        const x = 500 + Math.cos(a) * 408, y = 300 + Math.sin(a) * 226;
+        puck.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+        puck.querySelector('.puck-arrow').setAttribute('transform', `rotate(${deg.toFixed(1)})`);
+      };
+      if (this.puckDeg == null || fast) { this.puckDeg = target; place(target); return; }
+      let from = this.puckDeg, to = target;
+      while (to <= from) to += 360; // только по часовой стрелке
+      if (to - from >= 360) to -= 360;
+      if (Math.abs(to - from) < 0.5) { place(target); return; }
+      cancelAnimationFrame(this.puckRaf);
+      const t0 = performance.now(), dur = 700 + (to - from) * 3;
+      SFX.puck();
+      const step = now => {
+        const k = Math.min(1, (now - t0) / dur), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+        const deg = from + (to - from) * e;
+        place(deg);
+        puck.classList.toggle('moving', k < 1);
+        this.puckDeg = deg % 360;
+        if (k < 1) this.puckRaf = requestAnimationFrame(step);
+        else { this.puckDeg = target; puck.classList.add('landed'); setTimeout(() => puck.classList.remove('landed'), 600); }
+      };
+      this.puckRaf = requestAnimationFrame(step);
+    },
+
     // Живой неон: спокойный фиолетовый, золотая дуга бежит к тому, чей ход.
     updateNeon(v) {
       const tw = $('#table-wrap', this.el);
@@ -1318,8 +1363,7 @@
     if (lead && !crown) ava.insertAdjacentHTML('beforeend', crownSvg());
     if (!lead && crown) crown.remove();
     const chip = ava.querySelector('.first-chip');
-    if (p === v.leader && !chip) ava.insertAdjacentHTML('beforeend', '<span class="first-chip" title="Ходит первым в этом раунде">▶</span>');
-    if (p !== v.leader && chip) chip.remove();
+    if (chip) chip.remove();
   }
 
   // ---------- мелочи ----------

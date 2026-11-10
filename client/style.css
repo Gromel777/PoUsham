@@ -687,3 +687,21 @@ input, select { font: inherit; }
 @keyframes drain { 20% { filter: saturate(.3) brightness(.6) sepia(.4) hue-rotate(-30deg); transform: scale(.9) } 100% { filter: none; transform: none } }
 .home-foot { flex-wrap: nowrap; gap: 6px; }
 .fs-btn { font-size: 16px !important; padding: 3px 11px !important; line-height: 1; }
+
+/* ================= фишка первого хода на столе ================= */
+.table-wrap .puck .puck-glow { opacity: .35; transition: opacity .3s; }
+.table-wrap .puck.moving .puck-glow { opacity: .9; }
+.table-wrap .puck.landed .puck-glow { animation: puckLand .6s ease-out; }
+@keyframes puckLand { 0% { opacity: 1 } 100% { opacity: .35 } }
+
+/* ================= строка статуса — в блоке раунда справа снизу ================= */
+.round-dock .round-box { min-width: 230px; max-width: 34vw; }
+.round-dock .status { position: static; transform: none; left: auto; bottom: auto; z-index: auto; max-width: 100%; padding: 4px 10px; margin: 0 0 4px; border-radius: 10px;
+  font-size: 13px; text-align: right; white-space: normal; line-height: 1.25; box-shadow: none; background: rgba(255, 255, 255, .04); border: 1px solid rgba(232, 196, 106, .2); }
+.round-dock .status.mine { border-color: var(--gold); color: var(--gold-2); background: rgba(232, 196, 106, .1); box-shadow: 0 0 14px rgba(232, 196, 106, .25); }
+.round-dock .status.warn { border-color: var(--crimson); color: #ffd0d6; background: rgba(90, 10, 25, .45); }
+.round-dock .status .tm { margin-left: 6px; }
+.me-right { max-width: none; }
+
+/* ================= стол на 10% меньше ================= */
+.table-wrap { width: min(calc(var(--VW) * 63), calc(var(--VH) * 122)) !important; height: min(calc(var(--VH) * 63), calc(var(--VW) * 54)) !important; }

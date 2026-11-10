@@ -373,6 +373,39 @@ function socialAction(r, seat, body) {
   fail('Неизвестное действие');
 }
 
+// Боты тоже общаются: изредка ставят лайки и дизлайки, бот-лидер иногда кидается грязью.
+// Кулдауны те же, что у людей (по минуте на каждое действие).
+function botSocialTick(r) {
+  const g = r.game;
+  if (!g || r.vote || g.phase === 'gameOver' || r.streams.size === 0) return;
+  const now = Date.now();
+  for (let b = 0; b < r.seats.length; b++) {
+    const s = r.seats[b];
+    if (!s.bot || Math.random() > 0.08) continue;
+    const others = r.seats.map((_, i) => i).filter(i => i !== b);
+    if (!others.length) continue;
+    // Чаще «общаемся» с живыми игроками.
+    const humans = others.filter(i => !r.seats[i].bot);
+    const pool = humans.length && Math.random() < 0.7 ? humans : others;
+    const to = pool[Math.floor(Math.random() * pool.length)];
+    const ready = k => now - (s[k + 'At'] || 0) >= LIKE_COOLDOWN;
+    let kind = null;
+    if (isLeader(r, b) && ready('mud') && Math.random() < 0.35) kind = 'mud';
+    else if (Math.random() < 0.55 ? ready('like') : false) kind = 'like';
+    else if (ready('dislike')) kind = 'dislike';
+    if (!kind) continue;
+    // Дизлайк — тому, у кого больше очков; лайк — тому, у кого меньше (чтобы выглядело осмысленно).
+    let target = to;
+    if (kind !== 'mud' && others.length > 1) {
+      const sorted = others.slice().sort((a, c) => g.scores[c] - g.scores[a]);
+      if (Math.random() < 0.5) target = kind === 'dislike' ? sorted[0] : sorted[sorted.length - 1];
+    }
+    try { socialAction(r, b, { type: kind, to: target }); } catch { continue; }
+    broadcast(r);
+    break; // не больше одного действия за тик
+  }
+}
+
 // Голос: пересылка сигналов WebRTC (предложение/ответ/кандидаты) нужному игроку по его pid.
 function relayRtc(r, seat, body) {
   const to = r.seats.findIndex(s => s.pid === body.to);
@@ -504,6 +537,8 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) sendJson(res, e instanceof GameError ? 400 : 500, { error: e instanceof GameError ? e.message : 'Ошибка сервера' });
   }
 });
+
+setInterval(() => { for (const r of rooms.values()) { try { botSocialTick(r); } catch (e) { console.error('bot social', e); } } }, 9000);
 
 // Пинг держит SSE-соединения живыми за прокси; уборка старых комнат.
 setInterval(() => { for (const r of rooms.values()) for (const st of r.streams) { try { st.res.write(': ping\n\n'); } catch {} } }, 20000);

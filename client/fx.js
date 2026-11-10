@@ -616,6 +616,7 @@
       },
       coinsFly(n) { if (!ensure()) return; const t = now(); noise(t, 0.5, 'bandpass', 3000, 2, 0.06, { to: 6000, attack: 0.1 }); },
       coinHit(i) { if (!ensure()) return; const t = now(); tone(t, 1800 + (i % 5) * 220, 0.12, 0.07, 'sine', { wet: 0.3 }); tone(t, 3600 + (i % 3) * 300, 0.06, 0.03, 'sine'); },
+      puck() { if (!ensure()) return; const t = now(); noise(t, 0.6, 'bandpass', 900, 3, 0.07, { to: 500, attack: 0.08 }); tone(t + 0.55, 1200, 0.15, 0.06, 'triangle', { wet: 0.3 }); },
       msg() { if (!ensure()) return; const t = now(); tone(t, 880, 0.08, 0.06, 'sine'); tone(t + 0.07, 1320, 0.12, 0.05, 'sine', { wet: 0.2 }); },
       like() { if (!ensure()) return; const t = now(); for (let i = 0; i < 6; i++) tone(t + i * 0.06, 700 + i * 160, 0.12, 0.06, 'triangle', { wet: 0.3 }); },
       emote(id) {
