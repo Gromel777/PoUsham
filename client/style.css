@@ -765,3 +765,9 @@ input, select { font: inherit; }
   .log-head:hover .tg { color: #fff3c4; }
 }
 .icon-btn:active, .dock-btn:active, .btn-ghost:active, .btn-gold:active { transform: scale(.95); transition-duration: .08s; }
+
+/* ================= выбор языка ================= */
+.home-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.lang-seg button { min-width: 38px; font-weight: 800; letter-spacing: .04em; }
+.menu-list .lang-seg { align-self: center; }
+.home-foot { flex-wrap: wrap; row-gap: 6px; }

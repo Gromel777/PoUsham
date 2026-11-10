@@ -51,7 +51,7 @@
   }
 
   function corners(c) {
-    const r = RANKS[c.rank];
+    const r = root.CardLabel ? root.CardLabel(c.rank) : RANKS[c.rank];
     const fs = r === '10' ? 42 : 48;
     const red = isRed(c.suit);
     const one = `<g>
@@ -175,19 +175,22 @@
     RANKS,
     svg: cardSvg,
     backSvg,
-    url(c) { return cache[c.id] || (cache[c.id] = toUrl(cardSvg(c))); },
+    url(c) { const k = (root.CardLang || '') + c.id; return cache[k] || (cache[k] = toUrl(cardSvg(c))); },
     backUrl() { return cache.back || (cache.back = toUrl(backSvg())); },
     parse(id) { const s = id.slice(-1); return { id, suit: s, rank: RANKS.indexOf(id.slice(0, -1)) }; },
   };
   // Выбор темы: 'dark' — чёрные с золотом, 'light' — классические светлые. Личная настройка игрока.
+  // 'sil' — силуэты (по умолчанию), 'dark' — чёрные с золотом, 'light' — классические светлые.
   const Dark = Cards;
-  let theme = 'dark';
-  try { theme = (JSON.parse(localStorage.getItem('vtochku-prefs')) || {}).cards || 'dark'; } catch {}
-  const pickDeck = () => (theme === 'light' && root.CardsLight ? root.CardsLight : Dark);
+  root.CardsDark = Dark;
+  const THEMES = ['sil', 'dark', 'light'];
+  let theme = 'sil';
+  try { const t = (JSON.parse(localStorage.getItem('vtochku-prefs')) || {}).cards; if (THEMES.includes(t)) theme = t; } catch {}
+  const pickDeck = () => (theme === 'light' && root.CardsLight ? root.CardsLight : theme === 'sil' && root.CardsSil ? root.CardsSil : Dark);
   const Facade = {
     RANKS,
     get theme() { return theme; },
-    setTheme(t) { theme = t === 'light' ? 'light' : 'dark'; },
+    setTheme(t) { theme = THEMES.includes(t) ? t : 'sil'; },
     svg: c => pickDeck().svg(c),
     url: c => pickDeck().url(c),
     backUrl: () => pickDeck().backUrl(),

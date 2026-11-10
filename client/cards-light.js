@@ -35,7 +35,7 @@
 
   function corners(c) {
     const col = colorOf(c.suit);
-    const r = RANKS[c.rank];
+    const r = root.CardLabel ? root.CardLabel(c.rank) : RANKS[c.rank];
     const fs = r === '10' ? 40 : 46;
     const one = `<g>
       <text x="27" y="52" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="${fs}" fill="${col}" ${r === '10' ? 'letter-spacing="-3"' : ''}>${r}</text>
@@ -166,7 +166,7 @@
     RANKS,
     svg: cardSvg,
     backSvg,
-    url(c) { return cache[c.id] || (cache[c.id] = toUrl(cardSvg(c))); },
+    url(c) { const k = (root.CardLang || '') + c.id; return cache[k] || (cache[k] = toUrl(cardSvg(c))); },
     backUrl() { return cache.back || (cache.back = toUrl(backSvg())); },
     parse(id) { const s = id.slice(-1); return { id, suit: s, rank: RANKS.indexOf(id.slice(0, -1)) }; },
   };

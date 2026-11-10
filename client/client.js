@@ -8,6 +8,7 @@
   const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const STORE_KEY = 'vtochku-session', PREF_KEY = 'vtochku-prefs';
   const MAX_CARDS = n => Math.min(9, Math.floor(36 / n));
+  const T = I18N.t;
 
   const S = {
     view: null, es: null, room: null, token: null, err: '', connecting: false, prefillCode: '', screen: null, busy: false,
@@ -17,7 +18,10 @@
   // ---------- настройки и сессия ----------
   function load(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } }
   function save(key, patch) { try { localStorage.setItem(key, JSON.stringify({ ...load(key), ...patch })); } catch {} }
-  const prefs = { sound: true, fx: 'high', log: true, cards: 'dark', mutes: {}, ...load(PREF_KEY) };
+  const prefs = { sound: true, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang, ...load(PREF_KEY) };
+  // Новая колода «Силуэты» становится основной и для тех, у кого была сохранена старая.
+  if (!prefs.deckV) { prefs.cards = 'sil'; prefs.deckV = 2; }
+  I18N.set(prefs.lang);
   const savePrefs = () => save(PREF_KEY, prefs);
   function applyPrefs() { SFX.setMuted(!prefs.sound); FX.setQuality(prefs.fx === 'high' ? 1 : 0.4); }
 
@@ -26,7 +30,7 @@
     const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     let j = {};
     try { j = await r.json(); } catch {}
-    if (!r.ok) throw new Error(j.error || 'Ошибка соединения');
+    if (!r.ok) throw new Error(I18N.trServer(j.error) || T('Ошибка соединения'));
     return j;
   }
   function connect(room, token) {
@@ -37,14 +41,14 @@
     es.onmessage = e => { S.connecting = false; const v = JSON.parse(e.data); v._at = Date.now(); enqueue(v); };
     es.addEventListener('rtc', e => { try { const m = JSON.parse(e.data); Voice.onSignal(m.from, m.data); } catch {} });
     es.addEventListener('kicked', e => {
-      let reason = 'Вас убрали со стола.';
-      try { reason = JSON.parse(e.data).reason || reason; } catch {}
+      let reason = T('Вас убрали со стола.');
+      try { reason = I18N.trServer(JSON.parse(e.data).reason) || reason; } catch {}
       es.close(); leave(reason);
     });
     es.onerror = () => {
       if (es.readyState === EventSource.CLOSED) {
         const code = S.room;
-        leave('Не удалось вернуться за стол автоматически. Введите код комнаты и то же имя, под которым играли. Если сервер перезапускался, комната могла пропасть — тогда создайте новую.');
+        leave(T('Не удалось вернуться за стол автоматически. Введите код комнаты и то же имя, под которым играли. Если сервер перезапускался, комната могла пропасть — тогда создайте новую.'));
         S.prefillCode = code || '';
         showHome();
       }
@@ -90,6 +94,12 @@
     pumping = false;
   }
   async function apply(v, fast) {
+    if (v.remount) {
+      if (!S.view || S.view.stage !== 'game' || !Game.el) return;
+      Game.destroy(); S.screen = null; showGameScreen();
+      await Game.update(S.view, true);
+      return;
+    }
     S.view = v;
     try { Social.update(v); } catch (e) { console.error(e); }
     if (v.stage === 'lobby') { if (Game.el) Game.destroy(); showLobby(v); return; }
@@ -111,11 +121,11 @@
     S.screen = name;
     return el;
   }
-  const logoHtml = (size = '') => `<div class="logo-row"><span class="logo-hood">${Brand.hood({ id: 'logo' })}</span><h1 class="logo gold-text" ${size}>В Точку</h1></div>`;
+  const logoHtml = (size = '') => `<div class="logo-row"><span class="logo-hood">${Brand.hood({ id: 'logo' })}</span><h1 class="logo gold-text" ${size}>${T('В Точку')}</h1></div>`;
 
   function showConnecting() {
     setScreen('connecting', `<div class="connecting"><div style="text-align:center"><div class="loader"></div>${logoHtml('style="font-size:34px"')}
-      <div class="hint">Подключаюсь к столу ${esc(S.room || '')}… Если сервер спал, это может занять до минуты.</div></div></div>`);
+      <div class="hint">${T('Подключаюсь к столу {c}… Если сервер спал, это может занять до минуты.', { c: esc(S.room || '') })}</div></div></div>`);
   }
 
   function miniCard(id, i, n) {
@@ -135,25 +145,25 @@
       <div class="home">
         <div class="home-fan"><div class="home-fan-inner">${fan.map((id, i) => miniCard(id, i, fan.length)).join('')}</div></div>
         <div class="home-panel glass">
-          <div>${logoHtml()}<div class="logo-sub">заяви и попади</div></div>
-          <label class="field">Ваше имя<input id="name" maxlength="20" autocomplete="nickname" value="${esc(sess.name || '')}" placeholder="Как вас зовут?"></label>
-          <div class="tabs"><button data-act="tab" data-tab="create">Создать стол</button><button data-act="tab" data-tab="join">Войти по коду</button></div>
+          <div class="home-head"><div>${logoHtml()}<div class="logo-sub">${T('заяви и попади')}</div></div>${langSeg()}</div>
+          <label class="field">${T('Ваше имя')}<input id="name" maxlength="20" autocomplete="nickname" value="${esc(sess.name || '')}" placeholder="${T('Как вас зовут?')}"></label>
+          <div class="tabs"><button data-act="tab" data-tab="create">${T('Создать стол')}</button><button data-act="tab" data-tab="join">${T('Войти по коду')}</button></div>
           <div class="pane" data-pane="create">
-            <div class="row"><span class="opt-label">Игроков</span><div class="seg" id="seg-players">${[2, 3, 4, 5, 6].map(n => `<button data-act="players" data-n="${n}">${n}</button>`).join('')}</div></div>
-            <div class="row"><span class="opt-label">Раундов</span><div class="stepper"><button data-act="rounds" data-d="-1">−</button><b id="rounds-val"></b><button data-act="rounds" data-d="1">+</button></div>
-              <span class="opt-label" style="min-width:0;margin-left:6px">Таймер</span>
+            <div class="row"><span class="opt-label">${T('Игроков')}</span><div class="seg" id="seg-players">${[2, 3, 4, 5, 6].map(n => `<button data-act="players" data-n="${n}">${n}</button>`).join('')}</div></div>
+            <div class="row"><span class="opt-label">${T('Раундов')}</span><div class="stepper"><button data-act="rounds" data-d="-1">−</button><b id="rounds-val"></b><button data-act="rounds" data-d="1">+</button></div>
+              <span class="opt-label" style="min-width:0;margin-left:6px">${T('Таймер')}</span>
               <div class="stepper"><button data-act="timer" data-d="-5">−</button><input class="num-input" id="timer-val" inputmode="numeric" maxlength="3"><button data-act="timer" data-d="5">+</button></div></div>
-            <div class="row"><label class="switch" data-act="bluff" id="bluff-sw"><i></i><span>Режим обмана</span></label><span class="hint" id="timer-hint"></span></div>
-            <button class="btn-gold" data-act="create">Создать стол</button>
+            <div class="row"><label class="switch" data-act="bluff" id="bluff-sw"><i></i><span>${T('Режим обмана')}</span></label><span class="hint" id="timer-hint"></span></div>
+            <button class="btn-gold" data-act="create">${T('Создать стол')}</button>
           </div>
           <div class="pane" data-pane="join">
-            <label class="field code-input">Код комнаты<input id="code" maxlength="4" value="${esc(roomParam)}" placeholder="····" autocapitalize="characters"></label>
-            <button class="btn-gold" data-act="join">Войти</button>
-            <span class="hint">Вылетели из игры? Введите код и то же имя — вернётесь на своё место.</span>
+            <label class="field code-input">${T('Код комнаты')}<input id="code" maxlength="4" value="${esc(roomParam)}" placeholder="····" autocapitalize="characters"></label>
+            <button class="btn-gold" data-act="join">${T('Войти')}</button>
+            <span class="hint">${T('Вылетели из игры? Введите код и то же имя — вернётесь на своё место.')}</span>
           </div>
           <div class="err" id="err">${esc(S.err)}</div>
-          <div class="home-foot"><div class="seg seg-sm" id="seg-theme"><button data-act="theme" data-t="dark">Чёрные</button><button data-act="theme" data-t="light">Светлые</button></div>
-            <button class="btn-ghost" data-act="rules">Правила</button><button class="btn-ghost fs-btn" data-act="fullscreen" title="Во весь экран">⛶</button><button class="btn-ghost" data-act="install">Установить</button></div>
+          <div class="home-foot"><div class="seg seg-sm" id="seg-theme"><button data-act="theme" data-t="sil">${T('Силуэты')}</button><button data-act="theme" data-t="dark">${T('Чёрные')}</button><button data-act="theme" data-t="light">${T('Классика')}</button></div>
+            <button class="btn-ghost" data-act="rules">${T('Правила')}</button><button class="btn-ghost fs-btn" data-act="fullscreen" title="${T('Во весь экран')}">⛶</button><button class="btn-ghost" data-act="install">${T('Установить')}</button></div>
         </div>
       </div>`);
     if (!document.getElementById('fanKF')) {
@@ -173,15 +183,15 @@
     el.querySelectorAll('#seg-players button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.players));
     const rv = $('#rounds-val', el); if (rv) rv.textContent = S.rounds;
     const tv = $('#timer-val', el); if (tv && document.activeElement !== tv) tv.value = S.turnTime;
-    const th = $('#timer-hint', el); if (th) th.textContent = S.turnTime ? `до ${MAX_CARDS(S.players)} карт · ${S.turnTime} с на ход` : `до ${MAX_CARDS(S.players)} карт · без таймера`;
-    const tv2 = $('#timer-val', el); if (tv2) tv2.title = 'секунд на ход (0 — без таймера)';
+    const th = $('#timer-hint', el); if (th) th.textContent = S.turnTime ? T('до {m} карт · {s} с на ход', { m: MAX_CARDS(S.players), s: S.turnTime }) : T('до {m} карт · без таймера', { m: MAX_CARDS(S.players) });
+    const tv2 = $('#timer-val', el); if (tv2) tv2.title = T('секунд на ход (0 — без таймера)');
     const sw = $('#bluff-sw', el); if (sw) sw.classList.toggle('on', S.bluff);
     el.querySelectorAll('#seg-theme button').forEach(b => b.classList.toggle('on', b.dataset.t === prefs.cards));
   }
 
   function joinLink(code) { return `${location.origin}/?room=${code}`; }
   function settingsLine(v) {
-    return `<div class="settings-line"><span>${v.size} игроков</span><span>${v.rounds} раундов</span><span>${v.turnTime ? `таймер ${v.turnTime} с` : 'без таймера'}</span>${v.bluff ? '<span class="bluff">режим обмана</span>' : ''}</div>`;
+    return `<div class="settings-line"><span>${T('{n} игроков', { n: v.size })}</span><span>${T('{n} раундов', { n: v.rounds })}</span><span>${v.turnTime ? T('таймер {s} с', { s: v.turnTime }) : T('без таймера')}</span>${v.bluff ? `<span class="bluff">${T('режим обмана')}</span>` : ''}</div>`;
   }
   function showLobby(v) {
     let el = screenEl().querySelector('.screen:not(.leave)');
@@ -191,10 +201,10 @@
           <div class="lobby-qr glass">
             <div class="qr-frame">${(() => { try { return window.qrSvg(joinLink(v.code), {}); } catch { return ''; } })()}</div>
             <div class="room-code gold-text">${esc(v.code)}</div>
-            <button class="btn-ghost" data-act="copy">Скопировать ссылку</button>
+            <button class="btn-ghost" data-act="copy">${T('Скопировать ссылку')}</button>
           </div>
           <div class="lobby-main">
-            <div class="lobby-title">Стол <span class="gold-text">${esc(v.code)}</span></div>
+            <div class="lobby-title">${T('Стол')} <span class="gold-text">${esc(v.code)}</span></div>
             ${settingsLine(v)}
             <div class="lobby-seats" id="lobby-seats"></div>
             <div class="row" id="lobby-actions"></div>
@@ -203,17 +213,17 @@
     }
     $('#lobby-seats', el).innerHTML = Array.from({ length: v.size }, (_, i) => {
       const s = v.seats[i];
-      if (!s) return `<div class="lseat empty"><div class="ava bot">?</div><div><div class="nm">Свободно</div><div class="sub">займёт бот</div></div></div>`;
+      if (!s) return `<div class="lseat empty"><div class="ava bot">?</div><div><div class="nm">${T('Свободно')}</div><div class="sub">${T('займёт бот')}</div></div></div>`;
       return `<div class="lseat ${i === v.you ? 'me' : ''}" data-i="${i}">
         <div class="ava ${s.online ? '' : 'off'}">${esc(initial(s.name))}</div>
-        <div style="min-width:0"><div class="nm">${esc(s.name)}${i === v.you ? ' <span class="hint">(вы)</span>' : ''}</div><div class="sub">${s.host ? 'хост' : s.online ? 'в сети' : 'не в сети'}</div></div>
-        ${v.isHost && !s.host ? `<button class="btn-ghost kick" data-act="kick" data-seat="${i}">Убрать</button>` : ''}
+        <div style="min-width:0"><div class="nm">${esc(s.name)}${i === v.you ? ` <span class="hint">${T('(вы)')}</span>` : ''}</div><div class="sub">${T(s.host ? 'хост' : s.online ? 'в сети' : 'не в сети')}</div></div>
+        ${v.isHost && !s.host ? `<button class="btn-ghost kick" data-act="kick" data-seat="${i}">${T('Убрать')}</button>` : ''}
       </div>`;
     }).join('');
     $('#lobby-actions', el).innerHTML = (v.isHost
-      ? `<button class="btn-gold" data-act="start">Начать игру</button><span class="hint">Пустые места займут боты</span>`
-      : `<div class="loader" style="width:22px;height:22px;margin:0;border-width:2px"></div><span class="hint">Ждём, когда хост начнёт игру…</span>`) +
-      `<span style="flex:1"></span><button class="btn-ghost" data-act="rules">Правила</button><button class="btn-ghost" data-act="leave">Выйти</button>`;
+      ? `<button class="btn-gold" data-act="start">${T('Начать игру')}</button><span class="hint">${T('Пустые места займут боты')}</span>`
+      : `<div class="loader" style="width:22px;height:22px;margin:0;border-width:2px"></div><span class="hint">${T('Ждём, когда хост начнёт игру…')}</span>`) +
+      `<span style="flex:1"></span><button class="btn-ghost" data-act="rules">${T('Правила')}</button><button class="btn-ghost" data-act="leave">${T('Выйти')}</button>`;
   }
 
   function showGameScreen() {
@@ -223,15 +233,15 @@
         <div class="seats" id="seats"></div>
         <div class="cards" id="cards"></div>
         <div class="checks" id="checks"></div>
-        <div class="log-panel ${prefs.log ? '' : 'closed'}" id="log"><div class="log-head" data-act="log"><span>Журнал</span><span class="tg">${prefs.log ? '−' : '+'}</span></div><div class="log-body" id="log-body"></div></div>
+        <div class="log-panel ${prefs.log ? '' : 'closed'}" id="log"><div class="log-head" data-act="log"><span>${T('Журнал')}</span><span class="tg">${prefs.log ? '−' : '+'}</span></div><div class="log-body" id="log-body"></div></div>
         <div class="hud-right">
           <div class="hud-icons">
-            <button class="icon-btn" data-act="fullscreen" title="Во весь экран">${iconSvg('full')}</button>
-            <button class="icon-btn" data-act="scores" title="Счёт">${iconSvg('scores')}</button>
-            <button class="icon-btn" data-act="menu" title="Меню">${iconSvg('menu')}</button>
+            <button class="icon-btn" data-act="fullscreen" title="${T('Во весь экран')}">${iconSvg('full')}</button>
+            <button class="icon-btn" data-act="scores" title="${T('Счёт')}">${iconSvg('scores')}</button>
+            <button class="icon-btn" data-act="menu" title="${T('Меню')}">${iconSvg('menu')}</button>
           </div>
         </div>
-        <div class="round-dock"><div class="status" id="status"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> козырь</span><span id="hud-mode"></span></div></div></div>
+        <div class="round-dock"><div class="status" id="status"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> ${T('козырь')}</span><span id="hud-mode"></span></div></div></div>
         <div class="me-panel" id="me-panel"></div>
         <div class="action" id="action"></div>
         <div id="vote"></div>
@@ -284,7 +294,7 @@
       <ellipse cx="${cx}" cy="${cy}" rx="372" ry="198" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="18"/>
       <ellipse cx="${cx}" cy="${cy}" rx="330" ry="170" fill="none" stroke="url(#gold)" stroke-opacity=".35" stroke-width="1.5"/>
       <g opacity=".2" transform="translate(${cx - 70} ${cy - 112}) scale(1.4 1)">${Brand.hood({ id: 'tbl' }).replace(/<svg[^>]*>|<\/svg>/g, '')}</g>
-      <text x="${cx}" y="${cy + 128}" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="30" letter-spacing="12" fill="#e8c46a" opacity=".22">В ТОЧКУ</text>
+      <text x="${cx}" y="${cy + 128}" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="30" letter-spacing="12" fill="#e8c46a" opacity=".22">${T('В ТОЧКУ')}</text>
       <defs>
         <radialGradient id="puckG" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#fff6d0"/><stop offset=".45" stop-color="#e8c46a"/><stop offset="1" stop-color="#8a6420"/></radialGradient>
         <filter id="puckGlow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="6"/></filter>
@@ -357,10 +367,21 @@
     clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2600);
   }
   function rulesHtml() {
+    if (I18N.lang === 'en') return `<h2 class="gold-text">Rules of “Spot On”</h2><ul class="rules">
+      <li>36-card deck, 2–6 players. Hearts <b style="color:var(--crimson)">♥</b> are trumps.</li>
+      <li>Rounds go up and down: 1, 2, 3… cards up to the maximum and back. The maximum is 36 ÷ players, but no more than 9 (5 players — 7 cards, 6 — 6). Extra rounds are added at the peak.</li>
+      <li><b>First lead</b> in round one goes to a random player, then passes clockwise (the gold puck on the table).</li>
+      <li><b>Bidding</b> starts with the player after the leader. Bid from 0 up to the number of cards; the total may be anything.</li>
+      <li><b>Play:</b> if you have the suit of the first card, you must play it (no trump then). No such suit — any card, trumps included. <b>7♠</b> can always be played. The strongest card takes the trick and its owner leads next.</li>
+      <li><b>Scoring:</b> exactly your bid — +20 per trick; bid 0 and took 0 — +5; short — −20 per missing trick; over — +2.</li>
+      <li><b>7♠:</b> a normal card; when leading — “Highest on the table!” (everyone plays their strongest card, the trick is yours); when following — the top card (takes the trick).</li>
+      <li><b>Timer:</b> when time runs out, a random honest card is played for you (for bids — an automatic estimate of your hand).</li>
+      <li><b>Bluff mode:</b> any card may be played, breaking the suit rule and “Highest on the table!”. While the trick is on the table anyone can tap “?” on someone else’s card (except the first card of the trick, 7♠ and a move with only one card in hand). Caught — the cheater gives the checker 50 points, the card goes back and an honest card must be played. Wrong — the checker loses 20 points.</li>
+    </ul><div class="actions"><button class="btn-gold" data-act="close">Got it</button></div>`;
     return `<h2 class="gold-text">Правила «В Точку»</h2><ul class="rules">
       <li>Колода 36 карт, 2–6 игроков. Козыри — черви <b style="color:var(--crimson)">♥</b>.</li>
       <li>Раунды идут «горкой»: по 1, 2, 3… карт до максимума и обратно. Максимум — 36 ÷ число игроков, но не больше 9 (5 игроков — 7 карт, 6 — 6). Лишние раунды добавляются на пике.</li>
-      <li><b>Первый ход</b> в первом раунде у случайного игрока, дальше переходит по часовой стрелке (корона ♛).</li>
+      <li><b>Первый ход</b> в первом раунде у случайного игрока, дальше переходит по часовой стрелке (золотая фишка на столе).</li>
       <li><b>Заявка:</b> начинает следующий после ходящего. Можно заявить от 0 до числа карт; сумма заявок может быть любой.</li>
       <li><b>Ходы:</b> есть масть первой карты — кладёте только её (козырь в этом случае нельзя). Масти нет — любую карту, в том числе козырь. <b>7♠</b> можно положить всегда. Взятку забирает сильнейшая карта, её владелец ходит следующим.</li>
       <li><b>Очки:</b> взял ровно заявленное — +20 за карту; заявил 0 и взял 0 — +5; недобор — −20 за каждую; перебор — +2.</li>
@@ -369,30 +390,41 @@
       <li><b>Режим обмана:</b> можно класть любую карту, нарушая правила масти и «Старшие на стол!». Пока взятка на столе, любой может нажать «?» на чужой карте (кроме первой карты взятки, 7♠ и хода, когда у игрока была одна карта). Поймал — обманщик отдаёт проверившему ${50} очков, карта возвращается, и он обязан положить честную. Ошибся — проверивший теряет 20 очков.</li>
     </ul><div class="actions"><button class="btn-gold" data-act="close">Понятно</button></div>`;
   }
+  function langSeg(extra = '') {
+    return `<div class="seg seg-sm lang-seg ${extra}" id="seg-lang">${[['ru', 'RU'], ['en', 'EN']].map(([k, n]) => `<button data-act="lang" data-l="${k}" class="${I18N.lang === k ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+  }
+  // Тексты вне экранов (поворот телефона, заголовок вкладки).
+  function applyLangStatic() {
+    document.title = T('В Точку');
+    const rot = document.querySelector('#rotate .gold-text'); if (rot) rot.textContent = T('Поверните телефон');
+    const rh = document.querySelector('#rotate .hint'); if (rh) rh.textContent = T('«В Точку» рассчитана на горизонтальный экран');
+  }
+  applyLangStatic();
   function showMenu() {
-    showModal(`<h2 class="gold-text">Меню</h2><div class="menu-list">
-      <button class="btn-ghost" data-act="sound">Звук: ${prefs.sound ? 'включён' : 'выключен'}</button>
-      <button class="btn-ghost" data-act="quality">Эффекты: ${prefs.fx === 'high' ? 'максимум' : 'экономно'}</button>
-      <button class="btn-ghost" data-act="log">Журнал: ${prefs.log ? 'показан' : 'скрыт'}</button>
-      <div class="seg" id="seg-theme"><button data-act="theme" data-t="dark" class="${prefs.cards === 'dark' ? 'on' : ''}">Чёрные карты</button><button data-act="theme" data-t="light" class="${prefs.cards === 'light' ? 'on' : ''}">Светлые карты</button></div>
-      <button class="btn-ghost" data-act="fullscreen">${document.fullscreenElement ? 'Выйти из полного экрана' : 'Во весь экран'}</button>
-      <button class="btn-ghost" data-act="install">Установить как приложение</button>
-      <button class="btn-ghost" data-act="rules">Правила</button>
-      <button class="btn-ghost btn-crimson" data-act="leave-ask">Выйти из-за стола</button>
-    </div><div class="actions"><button class="btn-gold" data-act="close">Назад</button></div>`);
+    showModal(`<h2 class="gold-text">${T('Меню')}</h2><div class="menu-list">
+      <button class="btn-ghost" data-act="sound">${T('Звук: {v}', { v: T(prefs.sound ? 'включён' : 'выключен') })}</button>
+      <button class="btn-ghost" data-act="quality">${T('Эффекты: {v}', { v: T(prefs.fx === 'high' ? 'максимум' : 'экономно') })}</button>
+      <button class="btn-ghost" data-act="log">${T('Журнал: {v}', { v: T(prefs.log ? 'показан' : 'скрыт') })}</button>
+      <div class="seg" id="seg-theme">${[['sil', 'Силуэты'], ['dark', 'Чёрные'], ['light', 'Классика']].map(([k, n]) => `<button data-act="theme" data-t="${k}" class="${prefs.cards === k ? 'on' : ''}">${T(n)}</button>`).join('')}</div>
+      ${langSeg()}
+      <button class="btn-ghost" data-act="fullscreen">${T(document.fullscreenElement ? 'Выйти из полного экрана' : 'Во весь экран')}</button>
+      <button class="btn-ghost" data-act="install">${T('Установить как приложение')}</button>
+      <button class="btn-ghost" data-act="rules">${T('Правила')}</button>
+      <button class="btn-ghost btn-crimson" data-act="leave-ask">${T('Выйти из-за стола')}</button>
+    </div><div class="actions"><button class="btn-gold" data-act="close">${T('Назад')}</button></div>`);
   }
   function showScores() {
     const v = S.view;
     if (!v || v.stage !== 'game') return;
-    const head = `<tr><th>#</th><th>Карт</th>${v.names.map((n, p) => `<th style="color:${nameColor(p)}">${esc(n)}</th>`).join('')}</tr>`;
+    const head = `<tr><th>#</th><th>${T('Карт')}</th>${v.names.map((n, p) => `<th style="color:${nameColor(p)}">${esc(n)}</th>`).join('')}</tr>`;
     const rows = v.history.map((h, i) => `<tr><td>${i + 1}</td><td>${h.cards}</td>${h.delta.map((d, p) => {
       const b = (h.bonus && h.bonus[p]) || 0, t = d + b;
       return `<td class="${t >= 0 ? 'pos' : 'neg'}">${h.bids[p]}/${h.took[p]} <b>${t >= 0 ? '+' : ''}${t}</b>${b ? ` <span class="hint">(${b > 0 ? '+' : ''}${b})</span>` : ''}</td>`;
     }).join('')}</tr>`).join('');
-    const total = `<tr><th></th><th>Итого</th>${v.scores.map(s => `<th><span class="gold-text">${s}</span></th>`).join('')}</tr>`;
-    showModal(`<h2 class="gold-text">Счёт</h2><div class="hist-wrap"><table class="hist">${head}${rows}${total}</table></div>
-      <h3 class="hint" style="margin:14px 0 4px">Журнал</h3><div class="log-list">${v.log.slice().reverse().map(l => `<div>${colorNames(l, v.names)}</div>`).join('')}</div>
-      <div class="actions"><button class="btn-gold" data-act="close">Закрыть</button></div>`, 'scores-modal');
+    const total = `<tr><th></th><th>${T('Итого')}</th>${v.scores.map(s => `<th><span class="gold-text">${s}</span></th>`).join('')}</tr>`;
+    showModal(`<h2 class="gold-text">${T('Счёт')}</h2><div class="hist-wrap"><table class="hist">${head}${rows}${total}</table></div>
+      <h3 class="hint" style="margin:14px 0 4px">${T('Журнал')}</h3><div class="log-list">${v.log.slice().reverse().map(l => `<div>${colorNames(I18N.trLog(l), v.names)}</div>`).join('')}</div>
+      <div class="actions"><button class="btn-gold" data-act="close">${T('Закрыть')}</button></div>`, 'scores-modal');
   }
 
   // Полный экран: включить/выключить. На iPhone браузеры его не дают — подсказываем установку на главный экран.
@@ -407,7 +439,7 @@
       if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape').catch(() => {});
     } catch {
       const ios = /iphone|ipod/i.test(navigator.userAgent);
-      toast(ios ? 'На iPhone полный экран доступен только для игры, добавленной на экран «Домой» (Поделиться → На экран «Домой»).' : 'Браузер не разрешил полный экран — попробуйте ещё раз или через меню браузера.');
+      toast(T(ios ? 'На iPhone полный экран доступен только для игры, добавленной на экран «Домой» (Поделиться → На экран «Домой»).' : 'Браузер не разрешил полный экран — попробуйте ещё раз или через меню браузера.'));
     }
   }
   document.addEventListener('fullscreenchange', () => { setTimeout(() => { VIEW.update(); dispatchEvent(new Event('resize')); }, 120); });
@@ -623,9 +655,9 @@
     },
 
     updateHud(v) {
-      $('#hud-round', this.el).textContent = `Раунд ${v.roundIdx + 1}/${v.plan.length}`;
+      $('#hud-round', this.el).textContent = T('Раунд {a}/{b}', { a: v.roundIdx + 1, b: v.plan.length });
       $('#hud-sub', this.el).textContent = poCards(v.plan[v.roundIdx]);
-      $('#hud-mode', this.el).innerHTML = v.bluff ? '<span class="mode-box">обман</span>' : '';
+      $('#hud-mode', this.el).innerHTML = v.bluff ? `<span class="mode-box">${T('обман')}</span>` : '';
     },
 
     updateLog(v) {
@@ -636,7 +668,7 @@
       if (body.dataset.key === key) return;
       body.dataset.key = key;
       const myName = v.names[v.you];
-      body.innerHTML = lines.slice().reverse().map(l => `<div class="${/ОБМАН|проверяет|время вышло/.test(l) ? 'hot' : l.startsWith(myName) ? 'mine' : ''}">${colorNames(l, v.names)}</div>`).join('');
+      body.innerHTML = lines.slice().reverse().map(l => `<div class="${/ОБМАН|проверяет|время вышло/.test(l) ? 'hot' : l.startsWith(myName) ? 'mine' : ''}">${colorNames(I18N.trLog(l), v.names)}</div>`).join('');
     },
 
     buildSeats(v) {
@@ -685,14 +717,14 @@
         setScore(el.querySelector('.sc'), v.scores[p], !!prev);
         const bid = v.bids[p];
         const pb = prev && prev.roundIdx === v.roundIdx ? prev.bids[p] : null;
-        const tag = bid === null ? `<span class="bidtag wait">${v.phase === 'bid' && v.turn === p ? 'думает…' : 'заявка —'}</span>`
-          : `<span class="bidtag ${pb === null && !fresh ? 'pop' : ''}">${v.took[p]} из ${bid}</span>`;
+        const tag = bid === null ? `<span class="bidtag wait">${T(v.phase === 'bid' && v.turn === p ? 'думает…' : 'заявка —')}</span>`
+          : `<span class="bidtag ${pb === null && !fresh ? 'pop' : ''}">${T('{a} из {b}', { a: v.took[p], b: bid })}</span>`;
         el.querySelector('.pips').innerHTML = tag + this.pipsHtml(v, p, prev, fresh);
         if (pb === null && bid !== null && !fresh && prev) SFX.chip();
         if (!this.dealing) this.renderFan(p, v.handCounts[p]);
         let x = '';
-        if (!s.bot && !s.online) x += `<span class="tag off">вылетел</span>`;
-        if (!s.bot && !s.online && !v.vote && v.phase !== 'gameOver') x += `<button class="btn-ghost vote-btn" data-act="voteKick" data-seat="${p}">Заменить ботом</button>`;
+        if (!s.bot && !s.online) x += `<span class="tag off">${T('вылетел')}</span>`;
+        if (!s.bot && !s.online && !v.vote && v.phase !== 'gameOver') x += `<button class="btn-ghost vote-btn" data-act="voteKick" data-seat="${p}">${T('Заменить ботом')}</button>`;
         el.querySelector('.xtra').innerHTML = x;
       }
     },
@@ -705,7 +737,7 @@
       if (!box.firstChild) {
         box.innerHTML = `<div class="ava"><div class="ring"></div><span class="ini"></span></div>
           <div class="me-id"><div class="nm"></div><div class="sc">0</div></div>
-          <div class="me-counters"><div><b class="b1">—</b><span>заявка</span></div><div><b class="b2">0</b><span>взял</span></div></div>
+          <div class="me-counters"><div><b class="b1">—</b><span>${T('заявка')}</span></div><div><b class="b2">0</b><span>${T('взял')}</span></div></div>
           <div class="me-right"><div class="pips"></div></div>`;
       }
       box.querySelector('.ini').textContent = initial(v.names[me]);
@@ -805,7 +837,7 @@
         FX.stamp(p.x, p.y, lc.caught);
       }
       if (lc.caught) {
-        SFX.caught(); banner('ВРЁШЬ!', 'crimson'); vibrate([50, 40, 80]); this.neonFlash('neon-red', 1400);
+        SFX.caught(); banner(T('ВРЁШЬ!'), 'crimson'); vibrate([50, 40, 80]); this.neonFlash('neon-red', 1400);
         this.transferPoints(lc.target, lc.by, lc.delta);
         if (o) {
           this.table.delete(lc.cardId);
@@ -817,7 +849,7 @@
           o.el.remove();
         }
       } else {
-        SFX.honest(); banner('ЧЕСТНО!', 'gold'); vibrate(30);
+        SFX.honest(); banner(T('ЧЕСТНО!'), 'gold'); vibrate(30);
         this.transferPoints(lc.by, null, lc.delta);
         if (o && !o.el.querySelector('.seal')) o.el.insertAdjacentHTML('beforeend', '<span class="seal">✓</span>');
         await wait(350);
@@ -920,9 +952,9 @@
     impact(el, x, y, info, mode) {
       FX.cardImpact(x, y, info);
       SFX.impact(info);
-      if (info.kind === 'legend') { banner(mode === 'command' ? 'СТАРШИЕ НА СТОЛ!' : 'САМАЯ СТАРШАЯ!', 'violet'); vibrate([40, 30, 120]); this.neonFlash('neon-legend', 2200); }
+      if (info.kind === 'legend') { banner(T(mode === 'command' ? 'СТАРШИЕ НА СТОЛ!' : 'САМАЯ СТАРШАЯ!'), 'violet'); vibrate([40, 30, 120]); this.neonFlash('neon-legend', 2200); }
       else if (info.kind === 'heart' && info.level >= 6) this.neonFlash('neon-red', 900);
-      else if (info.kind === 'heart' && info.level >= 8) { banner('ТУЗ КОЗЫРЕЙ!', 'crimson'); vibrate(70); }
+      else if (info.kind === 'heart' && info.level >= 8) { banner(T('ТУЗ КОЗЫРЕЙ!'), 'crimson'); vibrate(70); }
       else if (info.level >= 8) vibrate(30);
       const p = el._p;
       const squash = info.big ? 1.18 : 1.08;
@@ -971,12 +1003,12 @@
     async announceRound(v) {
       const n = v.roundIdx + 1, total = v.plan.length, k = v.plan[v.roundIdx];
       const peak = Math.max(...v.plan);
-      const tag = n === total ? 'ФИНАЛЬНЫЙ РАУНД' : n === 1 ? 'ИГРА НАЧИНАЕТСЯ' : k === peak && v.plan[v.roundIdx - 1] !== peak ? 'ПИК ПАРТИИ' : '';
+      const tag = T(n === total ? 'ФИНАЛЬНЫЙ РАУНД' : n === 1 ? 'ИГРА НАЧИНАЕТСЯ' : k === peak && v.plan[v.roundIdx - 1] !== peak ? 'ПИК ПАРТИИ' : '');
       const a = $('#announce');
       a.innerHTML = `<div class="an-back"></div><div class="an-box">
         ${tag ? `<div class="an-tag">${tag}</div>` : ''}
-        <div class="an-title"><span>РАУНД</span> <b>${n}</b></div>
-        <div class="an-sub">${poCards(k)} · ${n} из ${total}</div>
+        <div class="an-title"><span>${T('РАУНД')}</span> <b>${n}</b></div>
+        <div class="an-sub">${T('{c} · {n} из {t}', { c: poCards(k), n, t: total })}</div>
         <div class="an-line"></div></div>`;
       a.className = 'on' + (n === total ? ' final' : '');
       const cx = VIEW.w / 2, cy = VIEW.h * 0.45;
@@ -1038,7 +1070,7 @@
       FX.shake(6, 0.35);
       SFX.leaderWin();
       vibrate(winner === v.you ? [40, 30, 80] : 20);
-      banner(winner === v.you ? 'ТЫ ЛИДЕР!' : 'НОВЫЙ ЛИДЕР', 'gold', false, v.names[winner]);
+      banner(T(winner === v.you ? 'ТЫ ЛИДЕР!' : 'НОВЫЙ ЛИДЕР'), 'gold', false, v.names[winner]);
       await wait(1300);
     },
 
@@ -1097,6 +1129,7 @@
       const puck = tw && tw.querySelector('.puck');
       if (!puck) return;
       const target = SPOT_ANGLE[spotOf(v, v.leader)];
+      if (target == null) return;
       const mine = v.leader === v.you;
       // У себя фишку закрывают карты руки: она крупнее, с ореолом и выезжает с подстаканника на сукно.
       const kTo = mine ? 1.6 : 1, inTo = mine ? 1 : 0;
@@ -1105,7 +1138,10 @@
       if (this.puckK == null) this.puckK = kTo;
       if (this.puckIn == null) this.puckIn = inTo;
       const place = deg => {
-        const a = deg * Math.PI / 180, inn = this.puckIn;
+        if (!isFinite(this.puckIn)) this.puckIn = inTo;
+        if (!isFinite(this.puckK)) this.puckK = kTo;
+        if (!isFinite(deg)) deg = target;
+        const a = deg * Math.PI / 180, inn = Math.min(1, Math.max(0, this.puckIn));
         // У себя: с подстаканника на сукно слева перед рукой — там его не закрывают ни карты, ни панель заявки.
         const x = 500 + Math.cos(a) * 408 + (262 - 500 - Math.cos(a) * 408) * inn;
         const y = 300 + Math.sin(a) * 226 + (412 - 300 - Math.sin(a) * 226) * inn;
@@ -1115,6 +1151,9 @@
       if (this.puckAnim && this.puckTarget === target && !fast) return; // уже едет туда
       cancelAnimationFrame(this.puckRaf); this.puckAnim = false; this.puckTarget = target;
       if (this.puckDeg == null || fast) { this.puckK = kTo; this.puckIn = inTo; this.puckDeg = target; place(target); return; }
+      if (!isFinite(this.puckDeg)) this.puckDeg = target;
+      if (!isFinite(this.puckIn)) this.puckIn = inTo;
+      if (!isFinite(this.puckK)) this.puckK = kTo;
       let from = this.puckDeg, to = target;
       while (to <= from) to += 360; // только по часовой стрелке
       if (to - from >= 360) to -= 360;
@@ -1202,7 +1241,7 @@
       const mine = (v.phase === 'bid' || v.phase === 'play') && v.turn === v.you;
       const was = prev && (prev.phase === 'bid' || prev.phase === 'play') && prev.turn === prev.you && prev.phase === v.phase && !prev.paused;
       if (!mine || was) return;
-      banner(v.fix ? 'ЗАМЕНИ КАРТУ!' : v.phase === 'bid' ? 'ТВОЯ ЗАЯВКА' : 'ТВОЙ ХОД', v.fix ? 'crimson' : 'gold', true);
+      banner(T(v.fix ? 'ЗАМЕНИ КАРТУ!' : v.phase === 'bid' ? 'ТВОЯ ЗАЯВКА' : 'ТВОЙ ХОД'), v.fix ? 'crimson' : 'gold', true);
       SFX.yourTurn(); vibrate(40);
       [...this.hand.values()].forEach((el, i) => setTimeout(() => { el.classList.remove('boom'); void el.offsetWidth; el.classList.add('boom'); }, i * 45));
     },
@@ -1212,11 +1251,11 @@
       SFX.unlock(); Parallax.enableGyro();
       if (!v || v.stage !== 'game') return;
       const myPlay = v.phase === 'play' && v.turn === v.you && !v.paused;
-      if (!myPlay) { nope(el); toast(v.phase === 'bid' ? 'Сейчас идут заявки' : 'Сейчас не ваш ход'); return; }
+      if (!myPlay) { nope(el); toast(T(v.phase === 'bid' ? 'Сейчас идут заявки' : 'Сейчас не ваш ход')); return; }
       if (!v.legal.includes(id)) {
         nope(el);
         const lead = v.trick && v.trick.plays.length ? v.trick.plays[0].card.suit : null;
-        toast(v.fix ? 'Положите честную карту' : v.trick && v.trick.command ? 'Команда «Старшие на стол!» — нужна самая сильная карта' : `Нужно ходить в масть ${lead} (или 7♠)`);
+        toast(v.fix ? T('Положите честную карту') : v.trick && v.trick.command ? T('Команда «Старшие на стол!» — нужна самая сильная карта') : T('Нужно ходить в масть {s} (или 7♠)', { s: lead }));
         return;
       }
       if (this.sel !== id) { this.sel = id; SFX.click(); this.syncHand(v); this.updateStatus(v); return; }
@@ -1229,14 +1268,14 @@
       this.special = true;
       $('#action', this.el).dataset.kind = 'special';
       $('#action', this.el).innerHTML = `<div class="special-panel glass">
-        <h3 class="gold-text">Как сыграть 7♠?</h3>
+        <h3 class="gold-text">${T('Как сыграть 7♠?')}</h3>
         <div class="row">
-          <button class="btn-ghost" data-act="special" data-mode="normal">Как обычную 7♠</button>
-          ${m.includes('command') ? `<button class="btn-violet" data-act="special" data-mode="command">«Старшие на стол!»</button>` : ''}
-          ${m.includes('top') ? `<button class="btn-violet" data-act="special" data-mode="top">Как самую старшую</button>` : ''}
+          <button class="btn-ghost" data-act="special" data-mode="normal">${T('Как обычную 7♠')}</button>
+          ${m.includes('command') ? `<button class="btn-violet" data-act="special" data-mode="command">${T('«Старшие на стол!»')}</button>` : ''}
+          ${m.includes('top') ? `<button class="btn-violet" data-act="special" data-mode="top">${T('Как самую старшую')}</button>` : ''}
         </div>
-        <span class="hint">${m.includes('command') ? 'Все кладут самую сильную карту, взятка ваша' : 'Карта бьёт всё, взятка ваша'}</span>
-        <button class="btn-ghost" data-act="special-cancel" style="padding:5px 12px">Отмена</button></div>`;
+        <span class="hint">${T(m.includes('command') ? 'Все кладут самую сильную карту, взятка ваша' : 'Карта бьёт всё, взятка ваша')}</span>
+        <button class="btn-ghost" data-act="special-cancel" style="padding:5px 12px">${T('Отмена')}</button></div>`;
     },
     closeSpecial() { if (this.special) { this.special = false; if (this.el) { const a = $('#action', this.el); a.innerHTML = ''; a.dataset.kind = ''; } } },
 
@@ -1260,7 +1299,7 @@
           b = document.createElement('button');
           b.className = 'check-btn'; b.dataset.card = id; b.dataset.act = 'check';
           b.textContent = '?';
-          b.title = 'Проверить на обман';
+          b.title = T('Проверить на обман');
           layer.appendChild(b);
         }
         b.style.left = (o.el._p.x + d.cw * TABLE_SCALE * 0.42) + 'px';
@@ -1300,27 +1339,27 @@
       if (!st) return;
       const nm = p => esc(v.names[p]);
       let t = '', mine = false, warn = false;
-      if (v.paused) t = 'Пауза — голосование';
+      if (v.paused) t = T('Пауза — голосование');
       else if (v.fix) {
         mine = v.fix.p === v.you; warn = true;
-        t = mine ? 'Вас поймали! Положите честную карту' : `${nm(v.fix.p)} пойман на обмане — меняет карту`;
-      } else if (v.phase === 'bid') { mine = v.turn === v.you; t = mine ? 'Ваша заявка' : `Заявляет ${nm(v.turn)}…`; }
+        t = mine ? T('Вас поймали! Положите честную карту') : T('{n} пойман на обмане — меняет карту', { n: nm(v.fix.p) });
+      } else if (v.phase === 'bid') { mine = v.turn === v.you; t = mine ? T('Ваша заявка') : T('Заявляет {n}…', { n: nm(v.turn) }); }
       else if (v.phase === 'play') {
         mine = v.turn === v.you;
         if (mine) {
           const tr = v.trick, lead = tr && tr.plays.length ? tr.plays[0].card.suit : null;
           const need = v.bids[v.you] - v.took[v.you];
-          t = tr && tr.command && tr.plays.length ? 'Старшие на стол — самую сильную' : !lead ? 'Ваш ход — вы ведёте' :
-            v.hand.some(c => c.suit === lead) ? `Ваш ход — в масть ${lead}` : `Ваш ход — масти ${lead} нет`;
-          t += need > 0 ? ` · добрать ${need}` : need === 0 ? ' · заявка выполнена' : ' · перебор';
-          if (this.sel) t = (v.honest && v.honest.length && !v.honest.includes(this.sel)) ? 'Это обман! Нажмите ещё раз, чтобы рискнуть' : 'Нажмите карту ещё раз, чтобы сыграть';
-        } else t = `Ходит ${nm(v.turn)}…`;
-      } else if (v.phase === 'trickDone') t = v.bluff ? `Берёт ${nm(v.trickWinner)} · «?» — проверить` : `Взятку берёт ${nm(v.trickWinner)}`;
-      else if (v.phase === 'roundDone') t = 'Раунд окончен';
+          t = tr && tr.command && tr.plays.length ? T('Старшие на стол — самую сильную') : !lead ? T('Ваш ход — вы ведёте') :
+            v.hand.some(c => c.suit === lead) ? T('Ваш ход — в масть {s}', { s: lead }) : T('Ваш ход — масти {s} нет', { s: lead });
+          t += need > 0 ? T(' · добрать {n}', { n: need }) : T(need === 0 ? ' · заявка выполнена' : ' · перебор');
+          if (this.sel) t = (v.honest && v.honest.length && !v.honest.includes(this.sel)) ? T('Это обман! Нажмите ещё раз, чтобы рискнуть') : T('Нажмите карту ещё раз, чтобы сыграть');
+        } else t = T('Ходит {n}…', { n: nm(v.turn) });
+      } else if (v.phase === 'trickDone') t = T(v.bluff ? 'Берёт {n} · «?» — проверить' : 'Взятку берёт {n}', { n: nm(v.trickWinner) });
+      else if (v.phase === 'roundDone') t = T('Раунд окончен');
       const showTimer = v.timer && mine && (v.phase === 'bid' || v.phase === 'play') && !v.paused;
       st.innerHTML = t + (showTimer ? '<span class="tm"></span>' : '');
       st.classList.toggle('mine', mine && !warn); st.classList.toggle('warn', warn);
-      if (!st.innerHTML) st.innerHTML = '<span class="hint">Ждём…</span>';
+      if (!st.innerHTML) st.innerHTML = `<span class="hint">${T('Ждём…')}</span>`;
       this.tickTimer();
     },
 
@@ -1333,9 +1372,9 @@
         const sum = v.bids.reduce((a, b) => a + (b || 0), 0);
         if (box.dataset.kind === 'bid' + v.roundIdx) return;
         box.dataset.kind = 'bid' + v.roundIdx;
-        box.innerHTML = `<div class="bid-panel glass"><h3 class="gold-text">Ваша заявка</h3>
+        box.innerHTML = `<div class="bid-panel glass"><h3 class="gold-text">${T('Ваша заявка')}</h3>
           <div class="chips">${Array.from({ length: k + 1 }, (_, b) => `<button class="chip" style="animation-delay:${b * 35}ms" data-act="bid" data-b="${b}">${b}</button>`).join('')}</div>
-          <span class="hint">Заявлено другими: ${sum} из ${k}</span></div>`;
+          <span class="hint">${T('Заявлено другими: {a} из {b}', { a: sum, b: k })}</span></div>`;
       } else if (box.dataset.kind) { box.dataset.kind = ''; box.innerHTML = ''; }
     },
 
@@ -1346,10 +1385,10 @@
       const voted = vt.yes.includes(v.you) || vt.no.includes(v.you);
       const canVote = vt.voters.includes(v.you) && !voted;
       const waiting = vt.voters.filter(i => !vt.yes.includes(i) && !vt.no.includes(i)).map(i => esc(v.names[i]));
-      box.innerHTML = `<div class="vote-panel glass"><h3 class="gold-text" style="margin:0 0 6px;font-family:var(--font-title);font-size:24px">Пауза — голосование</h3>
-        <div>Заменить ботом игрока <b>${esc(v.names[vt.target])}</b>? <span class="hint">За: ${vt.yes.length} · Против: ${vt.no.length}</span></div>
-        ${canVote ? `<div class="row" style="justify-content:center;margin-top:8px"><button class="btn-gold" data-act="vote" data-yes="1">Да, заменить</button><button class="btn-ghost" data-act="vote" data-yes="0">Нет, подождём</button></div>` : ''}
-        <div class="hint" style="margin-top:6px">${waiting.length ? 'Ждём голоса: ' + waiting.join(', ') + '. ' : ''}Если игрок вернётся, голосование отменится.</div></div>`;
+      box.innerHTML = `<div class="vote-panel glass"><h3 class="gold-text" style="margin:0 0 6px;font-family:var(--font-title);font-size:24px">${T('Пауза — голосование')}</h3>
+        <div>${T('Заменить ботом игрока {n}?', { n: `<b>${esc(v.names[vt.target])}</b>` })} <span class="hint">${T('За: {a} · Против: {b}', { a: vt.yes.length, b: vt.no.length })}</span></div>
+        ${canVote ? `<div class="row" style="justify-content:center;margin-top:8px"><button class="btn-gold" data-act="vote" data-yes="1">${T('Да, заменить')}</button><button class="btn-ghost" data-act="vote" data-yes="0">${T('Нет, подождём')}</button></div>` : ''}
+        <div class="hint" style="margin-top:6px">${waiting.length ? T('Ждём голоса: {l}. ', { l: waiting.join(', ') }) : ''}${T('Если игрок вернётся, голосование отменится.')}</div></div>`;
     },
 
     async showResults(v, fast) {
@@ -1368,14 +1407,14 @@
       this.leadKey = leadKey;
       const order = v.names.map((_, p) => p).sort((a, b) => v.scores[b] - v.scores[a]);
       const anyBonus = v.bluff || bonus.some(b => b);
-      showModal(`<h2 class="gold-text">Итоги раунда ${v.roundIdx + 1}</h2>
-        <table class="res-table"><tr><th>Игрок</th><th>Заявка / взял</th><th>За раунд</th>${anyBonus ? '<th>Проверки</th>' : ''}<th>Всего</th></tr>
-        ${order.map((p, i) => `<tr class="res-row ${p === v.you ? 'me-row' : ''}" style="animation-delay:${i * 90}ms"><td>${esc(v.names[p])}${p === v.you ? ' <span class="hint">(вы)</span>' : ''}</td>
+      showModal(`<h2 class="gold-text">${T('Итоги раунда {n}', { n: v.roundIdx + 1 })}</h2>
+        <table class="res-table"><tr><th>${T('Игрок')}</th><th>${T('Заявка / взял')}</th><th>${T('За раунд')}</th>${anyBonus ? `<th>${T('Проверки')}</th>` : ''}<th>${T('Всего')}</th></tr>
+        ${order.map((p, i) => `<tr class="res-row ${p === v.you ? 'me-row' : ''}" style="animation-delay:${i * 90}ms"><td>${esc(v.names[p])}${p === v.you ? ` <span class="hint">${T('(вы)')}</span>` : ''}</td>
           <td>${h.bids[p]} / ${h.took[p]}</td><td class="d ${h.delta[p] >= 0 ? 'pos' : 'neg'}" data-count="${h.delta[p]}" data-signed="1">0</td>
           ${anyBonus ? `<td class="d ${bonus[p] > 0 ? 'pos' : bonus[p] < 0 ? 'neg' : 'hint'}">${bonus[p] ? (bonus[p] > 0 ? '+' : '') + bonus[p] : '—'}</td>` : ''}
           <td class="d"><span class="gold-text" data-count="${v.scores[p]}" data-from="${v.scores[p] - h.delta[p] - bonus[p]}">${v.scores[p] - h.delta[p] - bonus[p]}</span></td></tr>`).join('')}
-        </table><div class="actions"><span class="hint" style="margin-right:auto">Следующий раунд: ${poCards(v.plan[v.roundIdx + 1])}</span>
-        <button class="btn-gold" data-act="nextRound">Следующий раунд</button></div>`);
+        </table><div class="actions"><span class="hint" style="margin-right:auto">${T('Следующий раунд: {c}', { c: poCards(v.plan[v.roundIdx + 1]) })}</span>
+        <button class="btn-gold" data-act="nextRound">${T('Следующий раунд')}</button></div>`);
       const ov = $('#overlay');
       ov.dataset.kind = 'results';
       ov.querySelectorAll('[data-count]').forEach(td => countUp(td, +(td.dataset.from || 0), +td.dataset.count, 900, !!td.dataset.signed));
@@ -1390,10 +1429,10 @@
       const iWon = v.scores[v.you] === v.scores[order[0]];
       const podium = order.map((p, i) => `<div class="pl p${i + 1}" style="animation-delay:${(order.length - i) * 150}ms"><div>${esc(v.names[p])}</div><div class="bar">${v.scores[p]}</div></div>`);
       const arranged = order.length >= 3 ? [podium[1], podium[0], podium[2], ...podium.slice(3)] : podium;
-      showModal(`<h2 class="gold-text" style="text-align:center">${iWon ? 'Победа!' : 'Игра окончена'}</h2>
+      showModal(`<h2 class="gold-text" style="text-align:center">${T(iWon ? 'Победа!' : 'Игра окончена')}</h2>
         <div class="podium">${arranged.join('')}</div>
-        <div class="actions" style="justify-content:center">${v.isHost ? '<button class="btn-gold" data-act="restart">Ещё партию</button>' : '<span class="hint">Новую партию запускает хост</span>'}
-        <button class="btn-ghost" data-act="scores">Таблица</button><button class="btn-ghost" data-act="leave">В меню</button></div>`);
+        <div class="actions" style="justify-content:center">${v.isHost ? `<button class="btn-gold" data-act="restart">${T('Ещё партию')}</button>` : `<span class="hint">${T('Новую партию запускает хост')}</span>`}
+        <button class="btn-ghost" data-act="scores">${T('Таблица')}</button><button class="btn-ghost" data-act="leave">${T('В меню')}</button></div>`);
       $('#overlay').dataset.kind = 'over';
       FX.confetti(); SFX.win();
       if (iWon) setTimeout(() => FX.confetti(), 900);
@@ -1419,13 +1458,8 @@
   }
 
   // ---------- мелочи ----------
-  function initial(name) { return (String(name || '?').replace(/^Бот\s+/, '').trim()[0] || '?').toUpperCase(); }
-  function poCards(n) {
-    if (n == null) return '';
-    const m10 = n % 10, m100 = n % 100;
-    const w = m10 === 1 && m100 !== 11 ? 'карте' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'карты' : 'карт';
-    return `по ${n} ${w}`;
-  }
+  function initial(name) { return (String(name || '?').replace(/^(Бот|Bot)\s+/, '').trim()[0] || '?').toUpperCase(); }
+  function poCards(n) { return n == null ? '' : I18N.poCards(n); }
   function setScore(el, val, animate) {
     if (el.dataset.v === String(val)) return;
     const from = +(el.dataset.v || 0);
@@ -1517,7 +1551,7 @@
         if (e.from !== v.you) SFX.msg();
       } else if (e.kind === 'phrase') {
         if (isMuted(name, 'emote')) return;
-        this.bubble(e.from, e.id, 'phrase');
+        this.bubble(e.from, T(e.id), 'phrase');
         SFX.msg();
       } else if (e.kind === 'emote') {
         if (isMuted(name, 'emote')) return;
@@ -1662,7 +1696,7 @@
       const key = msgs.map(m => m.seq).join(',');
       if (list.dataset.key === key) return;
       list.dataset.key = key;
-      list.innerHTML = msgs.map(m => `<div class="${m.from === v.you ? 'mine' : ''}"><b style="color:${nameColor(m.from)}">${esc(m.name)}:</b> ${esc(m.text)}</div>`).join('') || '<div class="hint">Сообщений пока нет</div>';
+      list.innerHTML = msgs.map(m => `<div class="${m.from === v.you ? 'mine' : ''}"><b style="color:${nameColor(m.from)}">${esc(m.name)}:</b> ${esc(m.text)}</div>`).join('') || `<div class="hint">${T('Сообщений пока нет')}</div>`;
       list.scrollTop = list.scrollHeight;
     },
     badge() { const b = $('#chat-badge'); b.textContent = this.unread; b.classList.toggle('on', this.unread > 0); },
@@ -1717,16 +1751,16 @@
       const left = k => Math.ceil(Math.max(0, this.readyAt[k] - now) / 1000);
       const L = left('like'), D = left('dislike'), M = left('mud');
       const pop = $('#ava-menu');
-      pop.innerHTML = `<div class="am-title">${esc(s.name)}${s.bot ? ' <span class="hint">бот</span>' : ''}</div>
+      pop.innerHTML = `<div class="am-title">${esc(s.name)}${s.bot ? ` <span class="hint">${T('бот')}</span>` : ''}</div>
         <div class="am-acts">
-          <button class="am-act like" data-act="like" data-seat="${seat}" ${L ? 'disabled' : ''}><span>👍</span>${L ? `${L} с` : 'Лайк'}</button>
-          <button class="am-act dislike" data-act="dislike" data-seat="${seat}" ${D ? 'disabled' : ''}><span>👎</span>${D ? `${D} с` : 'Дизлайк'}</button>
-          <button class="am-act mud" data-act="mud" data-seat="${seat}" ${M || !this.canMud ? 'disabled' : ''} title="${this.canMud ? 'Кинуть грязью' : 'Только для лидера по очкам'}"><span>🟤</span>${!this.canMud ? 'Только лидер' : M ? `${M} с` : 'Грязью!'}</button>
+          <button class="am-act like" data-act="like" data-seat="${seat}" ${L ? 'disabled' : ''}><span>👍</span>${L ? T('{n} с', { n: L }) : T('Лайк')}</button>
+          <button class="am-act dislike" data-act="dislike" data-seat="${seat}" ${D ? 'disabled' : ''}><span>👎</span>${D ? T('{n} с', { n: D }) : T('Дизлайк')}</button>
+          <button class="am-act mud" data-act="mud" data-seat="${seat}" ${M || !this.canMud ? 'disabled' : ''} title="${T(this.canMud ? 'Кинуть грязью' : 'Только для лидера по очкам')}"><span>🟤</span>${!this.canMud ? T('Только лидер') : M ? T('{n} с', { n: M }) : T('Грязью!')}</button>
         </div>
         <div class="am-row">
-          <button class="am-tg ${m.voice ? 'on' : ''}" data-act="mute" data-what="voice" data-seat="${seat}" ${s.bot ? 'disabled' : ''}><span>🎙</span>${m.voice ? 'Голос выкл' : 'Голос'}</button>
-          <button class="am-tg ${m.chat ? 'on' : ''}" data-act="mute" data-what="chat" data-seat="${seat}"><span>💬</span>${m.chat ? 'Чат выкл' : 'Чат'}</button>
-          <button class="am-tg ${m.emote ? 'on' : ''}" data-act="mute" data-what="emote" data-seat="${seat}"><span>😀</span>${m.emote ? 'Эмоции выкл' : 'Эмоции'}</button>
+          <button class="am-tg ${m.voice ? 'on' : ''}" data-act="mute" data-what="voice" data-seat="${seat}" ${s.bot ? 'disabled' : ''}><span>🎙</span>${T(m.voice ? 'Голос выкл' : 'Голос')}</button>
+          <button class="am-tg ${m.chat ? 'on' : ''}" data-act="mute" data-what="chat" data-seat="${seat}"><span>💬</span>${T(m.chat ? 'Чат выкл' : 'Чат')}</button>
+          <button class="am-tg ${m.emote ? 'on' : ''}" data-act="mute" data-what="emote" data-seat="${seat}"><span>😀</span>${T(m.emote ? 'Эмоции выкл' : 'Эмоции')}</button>
         </div>`;
       pop.style.left = Math.min(VIEW.w - 150, Math.max(150, x)) + 'px';
       pop.style.top = (y > VIEW.h / 2 ? y - 70 : y + 70) + 'px';
@@ -1747,7 +1781,7 @@
         const a = (i / emotes.length) * Math.PI * 2 - Math.PI / 2;
         return `<button class="wheel-item" style="--x:${(Math.cos(a) * 74).toFixed(1)}px;--y:${(Math.sin(a) * 74).toFixed(1)}px;animation-delay:${i * 25}ms" data-act="emote" data-id="${e}">${e}</button>`;
       }).join('')}<div class="wheel-hub">😀</div></div>
-        <div class="phrases">${(v.phrases || []).map(p => `<button class="phrase" data-act="emote" data-id="${esc(p)}">${esc(p)}</button>`).join('')}</div>`;
+        <div class="phrases">${(v.phrases || []).map(p => `<button class="phrase" data-act="emote" data-id="${esc(p)}">${esc(T(p))}</button>`).join('')}</div>`;
       pick.classList.add('on');
     },
   };
@@ -1774,19 +1808,29 @@
     catch (e) { toast(e.message); }
   }
 
+  function relabelDock() {
+    const set = (sel, fn) => { const e = $(sel); if (e) fn(e); };
+    set('#chat-panel .chat-head span', e => { e.textContent = T('Чат стола'); });
+    set('#chat-input', e => { e.placeholder = T('Сообщение…'); });
+    set('#dock [data-act="chat"]', e => { e.title = T('Чат'); });
+    set('#dock [data-act="emotes"]', e => { e.title = T('Эмоции'); });
+    set('#ptt', e => { e.title = T('Нажми и говори'); const sp = e.querySelector('span'); if (sp) sp.textContent = T('говорить'); });
+    const l = $('#chat-list'); if (l) l.dataset.key = '';
+    if (S.view) { try { Social.renderChat(S.view); } catch {} }
+  }
   function buildDock() {
     const dock = document.createElement('div');
     dock.id = 'dock';
     dock.innerHTML = `
       <div class="chat-panel glass" id="chat-panel">
-        <div class="chat-head"><span>Чат стола</span><button data-act="chat-close">✕</button></div>
+        <div class="chat-head"><span>${T('Чат стола')}</span><button data-act="chat-close">✕</button></div>
         <div class="chat-list" id="chat-list"></div>
-        <form class="chat-form" id="chat-form"><input id="chat-input" maxlength="200" placeholder="Сообщение…" autocomplete="off"><button class="btn-gold" type="submit">➤</button></form>
+        <form class="chat-form" id="chat-form"><input id="chat-input" maxlength="200" placeholder="${T('Сообщение…')}" autocomplete="off"><button class="btn-gold" type="submit">➤</button></form>
       </div>
       <div class="dock-btns">
-        <button class="dock-btn" data-act="chat" title="Чат">💬<i id="chat-badge"></i></button>
-        <button class="dock-btn" data-act="emotes" title="Эмоции">😀</button>
-        <button class="dock-btn ptt" id="ptt" title="Нажми и говори">🎙<span>говорить</span></button>
+        <button class="dock-btn" data-act="chat" title="${T('Чат')}">💬<i id="chat-badge"></i></button>
+        <button class="dock-btn" data-act="emotes" title="${T('Эмоции')}">😀</button>
+        <button class="dock-btn ptt" id="ptt" title="${T('Нажми и говори')}">🎙<span>${T('говорить')}</span></button>
       </div>
       <div class="emo-pick glass" id="emo-pick"></div>`;
     $('#app').appendChild(dock);
@@ -1806,10 +1850,10 @@
     const down = async e => {
       e.preventDefault();
       ptt.setPointerCapture && ptt.setPointerCapture(e.pointerId);
-      if (!Voice.supported) { toast('Этот браузер не поддерживает голосовой чат'); return; }
+      if (!Voice.supported) { toast(T('Этот браузер не поддерживает голосовой чат')); return; }
       ptt.classList.add('active');
       const r = await Voice.startTalk();
-      if (r === 'denied') { ptt.classList.remove('active'); toast('Нет доступа к микрофону — разрешите его в настройках браузера'); }
+      if (r === 'denied') { ptt.classList.remove('active'); toast(T('Нет доступа к микрофону — разрешите его в настройках браузера')); }
       else if (!ptt.classList.contains('active')) Voice.stopTalk();
       else SFX.click();
     };
@@ -1832,24 +1876,24 @@
     bluff: () => { S.bluff = !S.bluff; syncHome(); },
     create: async () => {
       const name = $('#name').value.trim();
-      if (!name) { $('#err').textContent = 'Введите имя'; $('#name').focus(); return; }
+      if (!name) { $('#err').textContent = T('Введите имя'); $('#name').focus(); return; }
       const tv = $('#timer-val'); if (tv) S.turnTime = clampTimer(parseInt(tv.value, 10));
       save(STORE_KEY, { name });
-      try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff }); connect(j.room, j.token); }
+      try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, lang: I18N.lang }); connect(j.room, j.token); }
       catch (e) { $('#err').textContent = e.message; }
     },
     join: async () => {
       const name = $('#name').value.trim();
       const room = $('#code').value.trim().toUpperCase();
-      if (!name) { $('#err').textContent = 'Введите имя'; $('#name').focus(); return; }
-      if (room.length !== 4) { $('#err').textContent = 'Код комнаты — 4 символа'; return; }
+      if (!name) { $('#err').textContent = T('Введите имя'); $('#name').focus(); return; }
+      if (room.length !== 4) { $('#err').textContent = T('Код комнаты — 4 символа'); return; }
       save(STORE_KEY, { name });
       try { const j = await api('/api/join', { name, room }); connect(j.room, j.token); }
       catch (e) { $('#err').textContent = e.message; }
     },
     copy: async () => {
       const link = joinLink(S.view.code);
-      try { await navigator.clipboard.writeText(link); toast('Ссылка скопирована'); } catch { toast(link); }
+      try { await navigator.clipboard.writeText(link); toast(T('Ссылка скопирована')); } catch { toast(link); }
     },
     kick: b => act({ type: 'kick', seat: +b.dataset.seat }),
     start: () => act({ type: 'start' }),
@@ -1860,7 +1904,7 @@
     check: b => {
       if (armedCheck !== b) {
         if (armedCheck) { armedCheck.classList.remove('armed'); armedCheck.textContent = '?'; }
-        armedCheck = b; b.classList.add('armed'); b.textContent = 'Проверить? (−20, если честно)';
+        armedCheck = b; b.classList.add('armed'); b.textContent = T('Проверить? (−20, если честно)');
         clearTimeout(armedT); armedT = setTimeout(() => { if (armedCheck) { armedCheck.classList.remove('armed'); armedCheck.textContent = '?'; armedCheck = null; } }, 2800);
         return;
       }
@@ -1881,11 +1925,22 @@
       const m = { ...mutesOf(s.name) };
       m[b.dataset.what] = !m[b.dataset.what];
       prefs.mutes[s.name] = m; savePrefs();
-      toast(`${s.name}: ${{ voice: 'голос', chat: 'чат', emote: 'эмоции и лайки' }[b.dataset.what]} ${m[b.dataset.what] ? 'заблокированы' : 'снова видны'}`);
+      toast(`${s.name}: ${T({ voice: 'голос', chat: 'чат', emote: 'эмоции и лайки' }[b.dataset.what])} ${T(m[b.dataset.what] ? 'заблокированы' : 'снова видны')}`);
       Social.syncVoice(v); Social.renderChat(v); Social.decorateAvatars(v);
       Social.openAvatarMenu(+b.dataset.seat);
     },
     theme: b => { prefs.cards = b.dataset.t; savePrefs(); Cards.setTheme(prefs.cards); syncHome(); if (S.screen === 'home') { showHomeFanRefresh(); } Game.refreshFaces(); if ($('#overlay').classList.contains('on') && $('#overlay .menu-list')) showMenu(); },
+    lang: b => {
+      const l = b.dataset.l;
+      if (l === I18N.lang) return;
+      const nm = $('#name'); if (nm && nm.value.trim()) save(STORE_KEY, { name: nm.value.trim() });
+      prefs.lang = l; savePrefs(); I18N.set(l); applyLangStatic(); relabelDock();
+      const menuOpen = $('#overlay').classList.contains('on') && $('#overlay .menu-list');
+      if (S.screen === 'home') { S.screen = null; showHome(); }
+      else if (S.screen === 'lobby' && S.view) { S.screen = null; showLobby(S.view); }
+      else if (S.screen === 'game' && S.view) enqueue({ remount: true }); // пересобрать стол в очереди, после текущей анимации
+      if (menuOpen) showMenu();
+    },
     install: () => installApp(),
     voteKick: b => act({ type: 'voteKick', seat: +b.dataset.seat }),
     vote: b => act({ type: 'vote', value: b.dataset.yes === '1' }),
@@ -1901,8 +1956,8 @@
       const lp = $('#log'); if (lp) { lp.classList.toggle('closed', !prefs.log); lp.querySelector('.tg').textContent = prefs.log ? '−' : '+'; }
       if (b.closest('.modal')) showMenu();
     },
-    'leave-ask': () => showModal(`<h2 class="gold-text">Выйти из-за стола?</h2><p class="hint">Ваше место останется, вернуться можно по коду и тому же имени.</p>
-      <div class="actions"><button class="btn-ghost" data-act="close">Остаться</button><button class="btn-gold btn-crimson" data-act="leave">Выйти</button></div>`),
+    'leave-ask': () => showModal(`<h2 class="gold-text">${T('Выйти из-за стола?')}</h2><p class="hint">${T('Ваше место останется, вернуться можно по коду и тому же имени.')}</p>
+      <div class="actions"><button class="btn-ghost" data-act="close">${T('Остаться')}</button><button class="btn-gold btn-crimson" data-act="leave">${T('Выйти')}</button></div>`),
     leave: () => leave(),
   };
   document.addEventListener('click', e => {
@@ -1939,11 +1994,12 @@
     if (installEvt) { installEvt.prompt(); try { await installEvt.userChoice; } catch {} installEvt = null; return; }
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
     const standalone = matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone;
-    showModal(`<h2 class="gold-text">Установить «В Точку»</h2>
-      ${standalone ? '<p>Игра уже установлена и открыта как приложение.</p>' : ios
-        ? '<p>На iPhone: нажмите <b>«Поделиться»</b> (квадрат со стрелкой) внизу Safari → <b>«На экран „Домой“»</b> → «Добавить».</p><p class="hint">После этого игра запускается во весь экран, как приложение.</p>'
-        : '<p>Откройте меню браузера (⋮) → <b>«Установить приложение»</b> или <b>«Добавить на главный экран»</b>.</p><p class="hint">После этого игра запускается во весь экран, как приложение.</p>'}
-      <div class="actions"><button class="btn-gold" data-act="close">Понятно</button></div>`);
+    const en = I18N.lang === 'en';
+    showModal(`<h2 class="gold-text">${T('Установить «В Точку»')}</h2>
+      ${standalone ? `<p>${T('Игра уже установлена и открыта как приложение.')}</p>` : ios
+        ? (en ? T('IOS_INSTALL') : '<p>На iPhone: нажмите <b>«Поделиться»</b> (квадрат со стрелкой) внизу Safari → <b>«На экран „Домой“»</b> → «Добавить».</p><p class="hint">После этого игра запускается во весь экран, как приложение.</p>')
+        : (en ? T('ANDROID_INSTALL') : '<p>Откройте меню браузера (⋮) → <b>«Установить приложение»</b> или <b>«Добавить на главный экран»</b>.</p><p class="hint">После этого игра запускается во весь экран, как приложение.</p>')}
+      <div class="actions"><button class="btn-gold" data-act="close">${T('Понятно')}</button></div>`);
   }
   function showHomeFanRefresh() {
     document.querySelectorAll('.home-fan .card').forEach((el, i) => {

@@ -10,6 +10,7 @@ const { Engine, Bots } = require('../engine/engine.js');
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, '..');
 const BOT_NAMES = ['Бот Аня', 'Бот Борис', 'Бот Вика', 'Бот Гоша', 'Бот Даша'];
+const BOT_NAMES_EN = ['Bot Anna', 'Bot Boris', 'Bot Vika', 'Bot Gosha', 'Bot Dasha'];
 const BOT_DELAY = 1000;
 const TRICK_PAUSE = 2100; // время на эффекты последней карты и показ, кто взял
 const TRICK_PAUSE_BLUFF = 5000; // в режиме обмана — время, чтобы успеть проверить
@@ -26,6 +27,8 @@ const STATIC = {
   '/qrcode.js': 'client/qrcode.js',
   '/cards.js': 'client/cards.js',
   '/cards-light.js': 'client/cards-light.js',
+  '/cards-sil.js': 'client/cards-sil.js',
+  '/i18n.js': 'client/i18n.js',
   '/brand.js': 'client/brand.js',
   '/viewport.js': 'client/viewport.js',
   '/voice.js': 'client/voice.js',
@@ -84,7 +87,7 @@ function seatOf(r, token) { return token ? r.seats.findIndex(s => s.token === to
 function requireSeat(r, token) { const s = seatOf(r, token); if (s < 0) fail('Вы не за этим столом'); return s; }
 function isOnline(r, seat) { for (const st of r.streams) if (st.seat === seat) return true; return false; }
 
-function createRoom({ name, players, rounds, turnTime, bluff }) {
+function createRoom({ name, players, rounds, turnTime, bluff, lang }) {
   const size = clampInt(players, Engine.MIN_PLAYERS, Engine.MAX_PLAYERS, 4);
   const r = {
     code: newCode(),
@@ -92,6 +95,7 @@ function createRoom({ name, players, rounds, turnTime, bluff }) {
     rounds: clampInt(rounds, 1, 60, 2 * Engine.maxCards(size) - 1),
     turnTime: clampInt(turnTime, 0, 600, DEFAULT_TURN_TIME), // секунд на ход, 0 — без таймера
     bluff: !!bluff,
+    lang: lang === 'en' ? 'en' : 'ru', // язык имён ботов
     turnTimer: null, turnKey: null, deadline: 0, checkTimers: [],
     chat: [], social: [], socialSeq: 0,
     seats: [],
@@ -156,7 +160,7 @@ function lobbyKick(r, target) {
 function replaceWithBot(r, target) {
   const s = r.seats[target];
   dropStreams(r, target, 'Голосованием ваше место отдано боту.');
-  s.bot = true; s.token = null; s.name = `${s.name} (бот)`;
+  s.bot = true; s.token = null; s.name = `${s.name} (${r.lang === 'en' ? 'bot' : 'бот'})`;
   r.game.names[target] = s.name;
   gameLog(r, `${s.name}: место игрока занял бот`);
   if (target === r.hostSeat) {
@@ -183,7 +187,7 @@ function checkVote(r) {
 
 function startGame(r) {
   let b = 0;
-  while (r.seats.length < r.size) r.seats.push({ name: BOT_NAMES[b++], token: null, bot: true, pid: newPid() });
+  while (r.seats.length < r.size) r.seats.push({ name: (r.lang === 'en' ? BOT_NAMES_EN : BOT_NAMES)[b++], token: null, bot: true, pid: newPid() });
   r.seenPlays = new Set();
   r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff });
 }
