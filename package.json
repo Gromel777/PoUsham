@@ -1,0 +1,14 @@
+{
+  "name": "pousham",
+  "version": "0.1.0",
+  "description": "Онлайн-карточная игра «По ушам»",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
