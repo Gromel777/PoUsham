@@ -109,12 +109,12 @@ const Engine = (() => {
   // Честный ход по правилам:
   // — есть масть первой карты → только эта масть (козырь нельзя), 7♠ можно всегда;
   // — масти нет → любая карта;
-  // — после «Старшие на стол!» → только самая сильная карта.
+  // — после «Старшие на стол!» → только самая сильная карта (или 7♠ — её можно всегда).
   function strictLegal(g, p) {
     const h = g.hands[p];
     const t = g.trick;
     if (!t || t.plays.length === 0) return h.slice();
-    if (t.command) return [strongestOf(h)];
+    if (t.command) { const s = strongestOf(h); const sp = h.find(c => c.id === SPECIAL_ID && c !== s); return sp ? [s, sp] : [s]; }
     const suit = leadSuit(t);
     if (!h.some(c => c.suit === suit)) return h.slice();
     return h.filter(c => c.suit === suit || c.id === SPECIAL_ID);
@@ -147,9 +147,10 @@ const Engine = (() => {
     if (!card) throw new Error(g.fix ? 'Нужно заменить карту честной' : 'Эту карту сейчас нельзя положить');
     if (mode !== 'normal' && (card.id !== SPECIAL_ID || !specialModes(g, p).includes(mode))) throw new Error('Так сыграть эту карту нельзя');
     const lawful = strictLegal(g, p).some(c => c.id === cardId);
+    const forced = g.hands[p].length === 1; // выбора не было — проверять бессмысленно
     g.hands[p] = g.hands[p].filter(c => c.id !== cardId);
     const t = g.trick;
-    const play = { p, card, mode, absolute: mode !== 'normal', lawful, checked: false };
+    const play = { p, card, mode, absolute: mode !== 'normal', lawful, checked: false, forced };
     if (mode === 'command') t.command = true;
     const note = mode === 'command' ? ' — «СТАРШИЕ НА СТОЛ!»' : mode === 'top' ? ' — как самая старшая!' : '';
     if (g.fix) {
@@ -181,10 +182,14 @@ const Engine = (() => {
     if (!g.bluff) return 'Проверки доступны только в режиме обмана';
     if (g.fix) return 'Подождите: идёт замена карты';
     if (g.phase !== 'play' && g.phase !== 'trickDone') return 'Сейчас проверять нельзя';
-    const pl = g.trick && g.trick.plays.find(x => x.card.id === cardId);
+    const idx = g.trick ? g.trick.plays.findIndex(x => x.card.id === cardId) : -1;
+    const pl = idx >= 0 ? g.trick.plays[idx] : null;
     if (!pl) return 'Этой карты нет на столе';
     if (pl.p === ch) return 'Свою карту проверять нельзя';
     if (pl.checked) return 'Эту карту уже проверили';
+    if (idx === 0) return 'Первую карту взятки проверять нельзя — ею можно ходить любой';
+    if (pl.card.id === SPECIAL_ID) return '7♠ можно класть всегда — проверять нечего';
+    if (pl.forced) return 'У игрока была одна карта — выбора не было';
     return null;
   }
   function check(g, ch, cardId) {
@@ -317,7 +322,7 @@ const Bots = (() => {
   // Подозрительная ли карта для бота: игрок не ответил в масть первой карты.
   function suspicion(g, botSeat, pl) {
     const t = g.trick;
-    if (!t || !t.plays.length || pl.checked || pl.p === botSeat) return 0;
+    if (!t || !t.plays.length || pl.checked || pl.p === botSeat || pl.forced) return 0;
     const idx = t.plays.indexOf(pl);
     if (idx <= 0) return 0;
     const lead = t.plays[0].card.suit;

@@ -678,3 +678,12 @@ input, select { font: inherit; }
 @keyframes splatIn { from { transform: scale(.2); opacity: 0 } }
 @keyframes splatOut { to { opacity: 0; transform: translateY(8px) } }
 @keyframes drip { 0% { transform: scaleY(.2) } 70% { transform: scaleY(1) } 100% { transform: scaleY(1.1); opacity: .6 } }
+
+/* ================= перелёт очков ================= */
+.coin-fly { position: fixed; left: 0; top: 0; z-index: 77; width: 18px; height: 18px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 35% 30%, #fff6d0, #f4dc94 35%, #c7952e 70%, #7a5a18); box-shadow: 0 0 10px rgba(246, 210, 122, .8), inset 0 0 0 2px rgba(122, 90, 24, .7); }
+.coin-tag { position: fixed; left: 0; top: 0; z-index: 78; font-family: var(--font-title); font-weight: 700; font-size: 34px; pointer-events: none; color: var(--gold-2); text-shadow: 0 0 14px rgba(246, 210, 122, .8), 0 2px 6px #000; }
+.ava.drain { animation: drain 1.1s ease-out; }
+@keyframes drain { 20% { filter: saturate(.3) brightness(.6) sepia(.4) hue-rotate(-30deg); transform: scale(.9) } 100% { filter: none; transform: none } }
+.home-foot { flex-wrap: nowrap; gap: 6px; }
+.fs-btn { font-size: 16px !important; padding: 3px 11px !important; line-height: 1; }

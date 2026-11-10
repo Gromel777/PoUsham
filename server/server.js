@@ -235,7 +235,7 @@ function viewFor(r, seat) {
 // Карты на столе без скрытого признака «честно/нечестно».
 function publicTrick(t) {
   if (!t) return null;
-  return { ...t, plays: t.plays.map(pl => ({ p: pl.p, card: pl.card, mode: pl.mode, absolute: pl.absolute, checked: pl.checked })) };
+  return { ...t, plays: t.plays.map(pl => ({ p: pl.p, card: pl.card, mode: pl.mode, absolute: pl.absolute, checked: pl.checked, forced: pl.forced })) };
 }
 
 function broadcast(r) {

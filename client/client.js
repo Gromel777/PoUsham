@@ -153,7 +153,7 @@
           </div>
           <div class="err" id="err">${esc(S.err)}</div>
           <div class="home-foot"><div class="seg seg-sm" id="seg-theme"><button data-act="theme" data-t="dark">Чёрные</button><button data-act="theme" data-t="light">Светлые</button></div>
-            <button class="btn-ghost" data-act="rules">Правила</button><button class="btn-ghost" data-act="install">Установить</button></div>
+            <button class="btn-ghost" data-act="rules">Правила</button><button class="btn-ghost fs-btn" data-act="fullscreen" title="Во весь экран">⛶</button><button class="btn-ghost" data-act="install">Установить</button></div>
         </div>
       </div>`);
     if (!document.getElementById('fanKF')) {
@@ -226,6 +226,7 @@
         <div class="log-panel ${prefs.log ? '' : 'closed'}" id="log"><div class="log-head" data-act="log"><span>Журнал</span><span class="tg">${prefs.log ? '−' : '+'}</span></div><div class="log-body" id="log-body"></div></div>
         <div class="hud-right">
           <div class="hud-icons">
+            <button class="icon-btn" data-act="fullscreen" title="Во весь экран">${iconSvg('full')}</button>
             <button class="icon-btn" data-act="scores" title="Счёт">${iconSvg('scores')}</button>
             <button class="icon-btn" data-act="menu" title="Меню">${iconSvg('menu')}</button>
           </div>
@@ -317,6 +318,7 @@
     const p = {
       scores: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
       menu: '<path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+      full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
     }[name];
     return `<svg viewBox="0 0 24 24">${p}</svg>`;
   }
@@ -346,7 +348,7 @@
       <li><b>Очки:</b> взял ровно заявленное — +20 за карту; заявил 0 и взял 0 — +5; недобор — −20 за каждую; перебор — +2.</li>
       <li><b>7♠:</b> как обычная карта; первым ходом — «Старшие на стол!» (все кладут самую сильную карту, взятка ваша); в ответ — как самая старшая (забирает взятку).</li>
       <li><b>Таймер:</b> если время на ход вышло, за игрока кладётся случайная честная карта (на заявку — автоматическая оценка руки).</li>
-      <li><b>Режим обмана:</b> можно класть любую карту, нарушая правила масти и «Старшие на стол!». Пока взятка на столе, любой может нажать «Проверить» под чужой картой. Поймал — обманщик отдаёт проверившему ${50} очков, карта возвращается, и он обязан положить честную. Ошибся — проверивший теряет 20 очков.</li>
+      <li><b>Режим обмана:</b> можно класть любую карту, нарушая правила масти и «Старшие на стол!». Пока взятка на столе, любой может нажать «?» на чужой карте (кроме первой карты взятки, 7♠ и хода, когда у игрока была одна карта). Поймал — обманщик отдаёт проверившему ${50} очков, карта возвращается, и он обязан положить честную. Ошибся — проверивший теряет 20 очков.</li>
     </ul><div class="actions"><button class="btn-gold" data-act="close">Понятно</button></div>`;
   }
   function showMenu() {
@@ -355,6 +357,7 @@
       <button class="btn-ghost" data-act="quality">Эффекты: ${prefs.fx === 'high' ? 'максимум' : 'экономно'}</button>
       <button class="btn-ghost" data-act="log">Журнал: ${prefs.log ? 'показан' : 'скрыт'}</button>
       <div class="seg" id="seg-theme"><button data-act="theme" data-t="dark" class="${prefs.cards === 'dark' ? 'on' : ''}">Чёрные карты</button><button data-act="theme" data-t="light" class="${prefs.cards === 'light' ? 'on' : ''}">Светлые карты</button></div>
+      <button class="btn-ghost" data-act="fullscreen">${document.fullscreenElement ? 'Выйти из полного экрана' : 'Во весь экран'}</button>
       <button class="btn-ghost" data-act="install">Установить как приложение</button>
       <button class="btn-ghost" data-act="rules">Правила</button>
       <button class="btn-ghost btn-crimson" data-act="leave-ask">Выйти из-за стола</button>
@@ -374,13 +377,22 @@
       <div class="actions"><button class="btn-gold" data-act="close">Закрыть</button></div>`);
   }
 
+  // Полный экран: включить/выключить. На iPhone браузеры его не дают — подсказываем установку на главный экран.
   async function goFullscreen() {
+    const d = document.documentElement;
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    const req = d.requestFullscreen || d.webkitRequestFullscreen;
     try {
-      const d = document.documentElement;
-      if (!document.fullscreenElement) await (d.requestFullscreen || d.webkitRequestFullscreen).call(d);
+      if (fsEl) { await (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      if (!req) throw new Error('no fullscreen');
+      await req.call(d, { navigationUI: 'hide' });
       if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape').catch(() => {});
-    } catch { toast('Браузер не разрешает полный экран — добавьте сайт на главный экран телефона.'); }
+    } catch {
+      const ios = /iphone|ipod/i.test(navigator.userAgent);
+      toast(ios ? 'На iPhone полный экран доступен только для игры, добавленной на экран «Домой» (Поделиться → На экран «Домой»).' : 'Браузер не разрешил полный экран — попробуйте ещё раз или через меню браузера.');
+    }
   }
+  document.addEventListener('fullscreenchange', () => { setTimeout(() => { VIEW.update(); dispatchEvent(new Event('resize')); }, 120); });
 
   // ---------- параллакс: мышь и наклон телефона ----------
   const Parallax = (() => {
@@ -761,7 +773,7 @@
       }
       if (lc.caught) {
         SFX.caught(); banner('ВРЁШЬ!', 'crimson'); vibrate([50, 40, 80]); this.neonFlash('neon-red', 1400);
-        floater(tx, ty - 30, -lc.delta); floater(bx, by - 30, lc.delta);
+        this.transferPoints(lc.target, lc.by, lc.delta);
         if (o) {
           this.table.delete(lc.cardId);
           await wait(450);
@@ -773,7 +785,7 @@
         }
       } else {
         SFX.honest(); banner('ЧЕСТНО!', 'gold'); vibrate(30);
-        floater(bx, by - 30, -lc.delta);
+        this.transferPoints(lc.by, null, lc.delta);
         if (o && !o.el.querySelector('.seal')) o.el.insertAdjacentHTML('beforeend', '<span class="seal">✓</span>');
         await wait(350);
       }
@@ -997,6 +1009,54 @@
       await wait(1300);
     },
 
+    // Переход очков: золотые монеты летят по дуге от проигравшего к победителю.
+    // to = null — очки сгорают (ошибочная проверка): монеты улетают в центр стола и рассыпаются.
+    transferPoints(from, to, amount) {
+      const [x1, y1] = this.seatCenter(from);
+      const d = dims();
+      const [x2, y2] = to == null ? [d.cx, d.cy] : this.seatCenter(to);
+      floater(x1, y1 - 30, -amount);
+      const avFrom = from === S.view.you ? $('#me-panel .ava', this.el) : this.seatEls[from] && this.seatEls[from].querySelector('.ava');
+      if (avFrom) { avFrom.classList.remove('drain'); void avFrom.offsetWidth; avFrom.classList.add('drain'); setTimeout(() => avFrom.classList.remove('drain'), 1200); }
+      FX.burst(x1, y1, { n: 14, colors: ['#ff4d5e', '#ffc08a'], speed: [60, 160], size: [1.5, 2.5], g: 0, life: [0.3, 0.6] });
+      const n = Math.min(14, 4 + Math.round(amount / 5));
+      const mx = (x1 + x2) / 2, my = Math.min(y1, y2) - 90 - Math.abs(x2 - x1) * 0.08;
+      const tag = document.createElement('div');
+      tag.className = 'coin-tag';
+      tag.textContent = (to == null ? '−' : '+') + amount;
+      $('#app').appendChild(tag);
+      tag.animate([
+        { transform: `translate(${x1}px, ${y1 - 20}px) translate(-50%,-50%) scale(.6)`, opacity: 0 },
+        { transform: `translate(${mx}px, ${my - 20}px) translate(-50%,-50%) scale(1.4)`, opacity: 1, offset: 0.5 },
+        { transform: `translate(${x2}px, ${y2 - 34}px) translate(-50%,-50%) scale(1)`, opacity: to == null ? 0 : 1 },
+      ], { duration: 1000, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' }).finished.then(() => setTimeout(() => tag.remove(), 400)).catch(() => tag.remove());
+      SFX.coinsFly(n);
+      for (let i = 0; i < n; i++) {
+        const c = document.createElement('div');
+        c.className = 'coin-fly';
+        $('#app').appendChild(c);
+        const jx = rnd(-40, 40), jy = rnd(-30, 30);
+        const a = c.animate([
+          { transform: `translate(${x1}px, ${y1}px) translate(-50%,-50%) scale(.5) rotateY(0deg)`, opacity: 0 },
+          { transform: `translate(${mx + jx}px, ${my + jy}px) translate(-50%,-50%) scale(1.2) rotateY(540deg)`, opacity: 1, offset: 0.5 },
+          { transform: `translate(${x2 + rnd(-8, 8)}px, ${y2 + rnd(-8, 8)}px) translate(-50%,-50%) scale(${to == null ? 0.2 : 0.8}) rotateY(1080deg)`, opacity: to == null ? 0 : 1 },
+        ], { duration: 820 + i * 22, delay: 120 + i * 55, easing: 'cubic-bezier(.45,.05,.55,1)', fill: 'forwards' });
+        a.finished.then(() => {
+          c.remove();
+          if (to == null) FX.burst(x2 + rnd(-10, 10), y2 + rnd(-10, 10), { n: 4, type: 'dust', colors: ['#8a6a3a'], speed: [20, 60], g: -30, life: [0.5, 0.8], size: [10, 16], size2: 1.4 });
+          else { FX.burst(x2, y2, { n: 5, colors: FX.GOLD, speed: [60, 160], size: [1.5, 2.5], g: 0, life: [0.25, 0.5] }); if (i % 2 === 0) SFX.coinHit(i); }
+        }).catch(() => c.remove());
+      }
+      setTimeout(() => {
+        if (to == null) { FX.ring(x2, y2, { r1: 70, color: '#8a6a3a', width: 2 }); return; }
+        FX.ring(x2, y2, { r1: 90, color: '#f6d27a', width: 4 });
+        FX.raysAt(x2, y2, { count: 10, len: 140, color: 'rgba(246,210,122,1)', life: 0.7, a: 0.4, force: true });
+        const av = to === S.view.you ? $('#me-panel .ava', this.el) : this.seatEls[to] && this.seatEls[to].querySelector('.ava');
+        if (av) av.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.3)' }, { transform: 'scale(1)' }], { duration: 450, easing: 'cubic-bezier(.3,1.6,.5,1)' });
+        SFX.win();
+      }, 120 + n * 55 + 820);
+    },
+
     // Живой неон: спокойный фиолетовый, золотая дуга бежит к тому, чей ход.
     updateNeon(v) {
       const tw = $('#table-wrap', this.el);
@@ -1089,8 +1149,9 @@
       if (!layer) return;
       const can = v.bluff && !v.fix && !v.paused && (v.phase === 'play' || v.phase === 'trickDone') && v.trick;
       const want = new Map();
-      if (can) for (const pl of v.trick.plays) {
-        if (pl.p === v.you || pl.checked) continue;
+      if (can) for (const [idx, pl] of v.trick.plays.entries()) {
+        // Не проверяются: свои карты, уже проверенные, первая карта взятки, 7♠ и вынужденный ход (одна карта на руке).
+        if (pl.p === v.you || pl.checked || idx === 0 || pl.card.id === '7♠' || pl.forced) continue;
         const o = this.table.get(pl.card.id);
         if (o) want.set(pl.card.id, o);
       }
