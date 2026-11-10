@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>По ушам — прототип</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #eef2ee; color: #1d241f; }
+  #app { max-width: 960px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; margin: 0 0 12px; }
+  h3 { font-size: 15px; margin: 0 0 8px; color: #44524a; text-transform: uppercase; letter-spacing: .04em; }
+  .panel { background: #fff; border: 1px solid #d3dbd5; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+  .seat { border: 2px solid #d3dbd5; border-radius: 10px; padding: 8px 10px; background: #fafcfa; }
+  .seat.turn { border-color: #2e7d4f; background: #eaf6ee; }
+  .seat .name { font-weight: 700; }
+  .seat .meta { font-size: 13px; color: #55625a; margin-top: 2px; }
+  .card { display: inline-block; min-width: 42px; padding: 8px 6px; margin: 2px; border: 1px solid #9aa59e; border-radius: 7px;
+          background: #fff; font-weight: 700; font-size: 17px; text-align: center; color: #1d241f; font-family: inherit; }
+  .card.red { color: #c62828; }
+  .card.special { box-shadow: 0 0 0 2px #7b1fa2 inset; }
+  button { font: inherit; cursor: pointer; }
+  button.card:hover:not(:disabled) { transform: translateY(-3px); border-color: #2e7d4f; }
+  button.card:disabled { opacity: .35; cursor: default; }
+  .btn { padding: 8px 14px; border-radius: 8px; border: 1px solid #2e7d4f; background: #2e7d4f; color: #fff; font-weight: 600; }
+  .btn.alt { background: #fff; color: #2e7d4f; }
+  .btn.purple { background: #7b1fa2; border-color: #7b1fa2; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .table-area { min-height: 70px; }
+  .play { display: inline-flex; flex-direction: column; align-items: center; margin-right: 10px; font-size: 12px; color: #55625a; }
+  .play.win .card { box-shadow: 0 0 0 3px #2e7d4f; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 700; background: #f3e5f5; color: #7b1fa2; }
+  .hint { color: #55625a; font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border-bottom: 1px solid #e3e8e4; padding: 4px 6px; text-align: center; }
+  th { color: #44524a; }
+  td.pos { color: #2e7d4f; } td.neg { color: #c62828; }
+  .log { font-size: 13px; color: #44524a; max-height: 180px; overflow: auto; }
+  .log div { padding: 1px 0; }
+  label { font-size: 14px; }
+  input, select { font: inherit; padding: 6px; border-radius: 6px; border: 1px solid #9aa59e; }
+  details summary { cursor: pointer; font-weight: 600; }
+  .rules li { margin-bottom: 4px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ===== ENGINE =====
+// Чистая логика игры без DOM — этот блок переносится на любой движок как есть.
+const Engine = (() => {
+  const SUITS = ['♠', '♣', '♦', '♥'];
+  const TRUMP = '♥';
+  const RANKS = ['6', '7', '8', '9', '10', 'В', 'Д', 'К', 'Т'];
+  const SPECIAL_ID = '7♠';
+  const MAX_CARDS = 9;
+  // Порядок мастей при равном достоинстве (только для «старшей карты»): ♥ > ♠ > ♣ > ♦
+  const SUIT_TIE = { '♥': 3, '♠': 2, '♣': 1, '♦': 0 };
+  const SUIT_SORT = { '♠': 0, '♣': 1, '♦': 2, '♥': 3 };
+
+  function makeDeck() {
+    const d = [];
+    for (const s of SUITS) for (let r = 0; r < RANKS.length; r++) d.push({ id: RANKS[r] + s, suit: s, rank: r });
+    return d;
+  }
+  function shuffle(a, rng = Math.random) {
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  // Абсолютная сила карты: козырь выше любой некозырной, затем достоинство, затем масть.
+  function strength(c) { return (c.suit === TRUMP ? 100 : 0) + c.rank * 4 + SUIT_TIE[c.suit]; }
+  // «Бьёт» как в Дураке: старшая той же масти или козырь по некозырной.
+  function beats(c, b) { return c.suit === b.suit ? c.rank > b.rank : c.suit === TRUMP; }
+  function strongestOf(cards) { return cards.reduce((a, c) => (strength(c) > strength(a) ? c : a)); }
+  function handSort(a, b) { return SUIT_SORT[a.suit] - SUIT_SORT[b.suit] || a.rank - b.rank; }
+
+  // План раундов: 1..9, дополнительные девятки, 9..1 вниз. При коротких партиях — симметричная «горка».
+  function roundPlan(n) {
+    const up = [], down = [];
+    if (n >= 2 * MAX_CARDS - 1) {
+      for (let k = 1; k <= MAX_CARDS; k++) up.push(k);
+      const extra = Array(n - (2 * MAX_CARDS - 1)).fill(MAX_CARDS);
+      for (let k = MAX_CARDS - 1; k >= 1; k--) down.push(k);
+      return [...up, ...extra, ...down];
+    }
+    const peak = Math.ceil(n / 2);
+    for (let k = 1; k <= peak; k++) up.push(k);
+    const startDown = n % 2 === 0 ? peak : peak - 1;
+    for (let k = startDown; k >= 1; k--) down.push(k);
+    return [...up, ...down];
+  }
+
+  function scoreFor(bid, took) {
+    if (took === bid) return bid === 0 ? 5 : 20 * bid;
+    if (took < bid) return -20 * (bid - took);
+    return 2; // перебор — всегда +2
+  }
+
+  function log(g, msg) { g.log.push(msg); if (g.log.length > 300) g.log.shift(); }
+
+  function newGame({ players, rounds, names }) {
+    if (players < 2 || players > 4) throw new Error('Игроков должно быть от 2 до 4');
+    const g = {
+      n: players, names, plan: roundPlan(rounds), roundIdx: 0,
+      scores: Array(players).fill(0), history: [], log: [],
+      firstLeader: Math.floor(Math.random() * players),
+    };
+    startRound(g);
+    return g;
+  }
+
+  function startRound(g) {
+    const k = g.plan[g.roundIdx];
+    const deck = shuffle(makeDeck());
+    g.hands = [];
+    for (let p = 0; p < g.n; p++) g.hands.push(deck.splice(0, k).sort(handSort));
+    g.bids = Array(g.n).fill(null);
+    g.took = Array(g.n).fill(0);
+    // Первый ход: в 1-м раунде случайный игрок, дальше право переходит по часовой стрелке.
+    const leader = (g.firstLeader + g.roundIdx) % g.n;
+    g.leader = leader;
+    g.turn = (leader + 1) % g.n;
+    g.phase = 'bid';
+    g.trick = null; g.lastTrick = null; g.trickWinner = null;
+    log(g, `— Раунд ${g.roundIdx + 1}/${g.plan.length}: по ${k} карт. Первый ход у ${g.names[leader]}, заявки начинает ${g.names[g.turn]}.`);
+  }
+
+  function placeBid(g, p, b) {
+    if (g.phase !== 'bid' || g.turn !== p) throw new Error('Сейчас не ваша заявка');
+    if (!Number.isInteger(b) || b < 0 || b > g.hands[p].length) throw new Error('Недопустимая заявка');
+    g.bids[p] = b;
+    log(g, `${g.names[p]} заявляет ${b}`);
+    if (g.bids.every(x => x !== null)) {
+      g.phase = 'play';
+      g.turn = g.leader;
+      g.trick = { leader: g.leader, plays: [], command: false };
+      const sum = g.bids.reduce((a, x) => a + x, 0);
+      log(g, `Заявлено всего ${sum} из ${g.plan[g.roundIdx]}. Первым ходит ${g.names[g.leader]}.`);
+    } else {
+      g.turn = (p + 1) % g.n;
+    }
+  }
+
+  // Какие карты игрок может положить сейчас.
+  // Ответ в масть: если есть масть первой карты — кладёшь её; козыри ♥ и 7♠ можно класть всегда.
+  // Нет масти — любая карта. После команды «Старшие на стол!» — только самая сильная карта.
+  function leadSuit(trick) { return trick && trick.plays.length ? trick.plays[0].card.suit : null; }
+  function legalPlays(g, p) {
+    const h = g.hands[p];
+    const t = g.trick;
+    if (!t || t.plays.length === 0) return h.slice();
+    if (t.command) return [strongestOf(h)];
+    const suit = leadSuit(t);
+    if (!h.some(c => c.suit === suit)) return h.slice();
+    return h.filter(c => c.suit === suit || c.suit === TRUMP || c.id === SPECIAL_ID);
+  }
+  // Режимы розыгрыша 7♠: 'normal' — как обычная 7♠ (всегда);
+  // 'command' — первым ходом: «Старшие на стол!», все кладут самую сильную карту, взятка ходившего;
+  // 'top' — в ответ: 7♠ считается самой старшей картой и забирает взятку.
+  function specialModes(g, p) {
+    if (g.phase !== 'play' || g.turn !== p) return [];
+    const t = g.trick;
+    if (!legalPlays(g, p).some(c => c.id === SPECIAL_ID)) return [];
+    return t.plays.length === 0 ? ['normal', 'command'] : ['normal', 'top'];
+  }
+  function currentBest(trick) {
+    const abs = trick.plays.find(pl => pl.absolute);
+    if (abs) return abs;
+    let best = trick.plays[0];
+    for (const pl of trick.plays.slice(1)) if (beats(pl.card, best.card)) best = pl;
+    return best;
+  }
+
+  function playCard(g, p, cardId, mode = 'normal') {
+    if (g.phase !== 'play' || g.turn !== p) throw new Error('Сейчас не ваш ход');
+    const card = legalPlays(g, p).find(c => c.id === cardId);
+    if (!card) throw new Error('Эту карту сейчас нельзя положить');
+    if (mode !== 'normal' && (card.id !== SPECIAL_ID || !specialModes(g, p).includes(mode))) throw new Error('Так сыграть эту карту нельзя');
+    g.hands[p] = g.hands[p].filter(c => c.id !== cardId);
+    const t = g.trick;
+    const play = { p, card, mode, absolute: mode !== 'normal' };
+    if (mode === 'command') t.command = true;
+    t.plays.push(play);
+    const note = mode === 'command' ? ' — «СТАРШИЕ НА СТОЛ!»' : mode === 'top' ? ' — как самая старшая!' : '';
+    log(g, `${g.names[p]}: ${card.id}${note}`);
+    if (t.plays.length === g.n) {
+      const w = currentBest(t).p;
+      g.took[w]++;
+      g.trickWinner = w;
+      g.phase = 'trickDone';
+      log(g, `Взятку забирает ${g.names[w]}`);
+    } else {
+      g.turn = (p + 1) % g.n;
+    }
+  }
+
+  function nextTrick(g) {
+    if (g.phase !== 'trickDone') return;
+    g.lastTrick = { ...g.trick, winner: g.trickWinner };
+    if (g.hands.every(h => h.length === 0)) { scoreRound(g); return; }
+    g.trick = { leader: g.trickWinner, plays: [], command: false };
+    g.turn = g.trickWinner;
+    g.phase = 'play';
+  }
+
+  function scoreRound(g) {
+    const delta = g.bids.map((b, p) => scoreFor(b, g.took[p]));
+    delta.forEach((d, p) => { g.scores[p] += d; });
+    g.history.push({ cards: g.plan[g.roundIdx], bids: [...g.bids], took: [...g.took], delta });
+    g.trick = null;
+    g.phase = g.roundIdx === g.plan.length - 1 ? 'gameOver' : 'roundDone';
+    log(g, `Итог раунда: ${g.names.map((nm, p) => `${nm} ${delta[p] >= 0 ? '+' : ''}${delta[p]}`).join(', ')}`);
+  }
+
+  function nextRound(g) {
+    if (g.phase !== 'roundDone') return;
+    g.roundIdx++;
+    startRound(g);
+  }
+
+  return { SUITS, TRUMP, RANKS, SPECIAL_ID, strength, beats, strongestOf, roundPlan, scoreFor,
+           newGame, placeBid, legalPlays, leadSuit, specialModes, currentBest, playCard, nextTrick, nextRound };
+})();
+
+// ===== BOTS =====
+// Простые эвристики: оценить руку для заявки, затем добирать или сбрасывать по ситуации.
+const Bots = (() => {
+  const E = Engine;
+  function winChance(c, n) {
+    let pr;
+    if (c.id === E.SPECIAL_ID) return 0.95; // 7♠ почти гарантированно берёт взятку
+    if (c.suit === E.TRUMP) pr = 0.25 + 0.75 * (c.rank / 8);
+    else pr = [0.03, 0.03, 0.03, 0.03, 0.05, 0.08, 0.15, 0.3, 0.55][c.rank];
+    const f = n === 2 ? 1.2 : n === 3 ? 1 : 0.85;
+    return Math.min(1, pr * f);
+  }
+  function bid(g, p) {
+    const h = g.hands[p];
+    const est = h.reduce((a, c) => a + winChance(c, g.n), 0);
+    return Math.max(0, Math.min(h.length, Math.round(est)));
+  }
+  const byStr = (a, b) => E.strength(a) - E.strength(b);
+  function play(g, p) {
+    const legal = E.legalPlays(g, p).sort(byStr);
+    const need = g.bids[p] - g.took[p];
+    const t = g.trick;
+    const modes = E.specialModes(g, p);
+    const mv = (c, mode = 'normal') => ({ cardId: c.id, mode });
+    const special = legal.find(c => c.id === E.SPECIAL_ID);
+    if (t.plays.length === 0) {
+      if (need > 0 && modes.includes('command')) return mv(special, 'command');
+      return mv(need > 0 ? legal[legal.length - 1] : legal[0]);
+    }
+    const bestPlay = E.currentBest(t);
+    if (bestPlay.absolute) return mv(legal[0]); // взятку уже не перебить — сбросить мелочь
+    const best = bestPlay.card;
+    const winners = legal.filter(c => c.id !== E.SPECIAL_ID && E.beats(c, best));
+    const losers = legal.filter(c => !E.beats(c, best));
+    if (need > 0) {
+      if (winners.length) return mv(winners[0]);
+      if (modes.includes('top')) return mv(special, 'top');
+      return mv(legal[0]);
+    }
+    return mv(losers.length ? losers[losers.length - 1] : legal[0]);
+  }
+  return { bid, play };
+})();
+
+// ===== UI =====
+const HUMAN = 0;
+const BOT_NAMES = ['Бот Аня', 'Бот Борис', 'Бот Вика'];
+let G = null;
+const ui = { players: 4, rounds: 17, pendingSpecial: false, timer: null, error: '' };
+const app = document.getElementById('app');
+
+function esc(s) { return String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
+function cardHtml(c, extra = '') {
+  const red = c.suit === '♥' || c.suit === '♦';
+  return `<span class="card ${red ? 'red' : ''} ${c.id === Engine.SPECIAL_ID ? 'special' : ''} ${extra}">${c.id}</span>`;
+}
+
+function startGame() {
+  const names = ['Вы', ...BOT_NAMES.slice(0, ui.players - 1)];
+  G = Engine.newGame({ players: ui.players, rounds: ui.rounds, names });
+  ui.pendingSpecial = false;
+  render(); schedule();
+}
+
+function schedule() {
+  clearTimeout(ui.timer);
+  if (!G) return;
+  if (G.phase === 'trickDone') {
+    ui.timer = setTimeout(() => { Engine.nextTrick(G); render(); schedule(); }, 1400);
+  } else if ((G.phase === 'bid' || G.phase === 'play') && G.turn !== HUMAN) {
+    ui.timer = setTimeout(botAct, 700);
+  }
+}
+function botAct() {
+  const p = G.turn;
+  if (G.phase === 'bid') Engine.placeBid(G, p, Bots.bid(G, p));
+  else if (G.phase === 'play') { const m = Bots.play(G, p); Engine.playCard(G, p, m.cardId, m.mode); }
+  render(); schedule();
+}
+function act(fn) {
+  try { ui.error = ''; fn(); } catch (e) { ui.error = e.message; }
+  render(); schedule();
+}
+
+// Обработчики кнопок
+window.onSetup = (key, val) => { ui[key] = Number(val); render(); };
+window.onStart = () => startGame();
+window.onQuit = () => {
+  if (G && G.phase !== 'gameOver' && !ui.confirmQuit) { ui.confirmQuit = true; render(); return; }
+  ui.confirmQuit = false; clearTimeout(ui.timer); G = null; render();
+};
+window.onQuitCancel = () => { ui.confirmQuit = false; render(); };
+window.onBid = b => act(() => Engine.placeBid(G, HUMAN, b));
+window.onCard = id => {
+  if (id === Engine.SPECIAL_ID && Engine.specialModes(G, HUMAN).length > 1) { ui.pendingSpecial = true; render(); return; }
+  act(() => Engine.playCard(G, HUMAN, id, 'normal'));
+};
+window.onSpecial = mode => { ui.pendingSpecial = false; act(() => Engine.playCard(G, HUMAN, Engine.SPECIAL_ID, mode)); };
+window.onSpecialCancel = () => { ui.pendingSpecial = false; render(); };
+window.onNextRound = () => act(() => Engine.nextRound(G));
+
+function rulesHtml() {
+  return `<details class="panel"><summary>Правила (как реализовано в прототипе)</summary><ul class="rules">
+    <li>Колода 36 карт, 2–4 игрока. Козыри — черви ♥.</li>
+    <li>Раунды: по 1, 2 … 9 карт, затем по убыванию до 1. Если раундов больше 17 — добавляются лишние раунды по 9 карт.</li>
+    <li><b>Право первого хода:</b> в первом раунде достаётся случайному игроку, в каждом следующем переходит к соседу по часовой стрелке (★ в таблице игроков).</li>
+    <li><b>Заявление:</b> начинает игрок по часовой стрелке после того, у кого первый ход. Заявить можно от 0 до числа карт на руке.</li>
+    <li><b>Ходы:</b> первым ходит игрок с ★. Остальные по часовой стрелке отвечают <b>в масть</b> первой карты; козырь ♥ и 7♠ можно положить всегда. Если нужной масти нет — любую карту. Бьёт старшая карта той же масти или козырь, как в Дураке. Взятку забирает сильнейшая карта, и её владелец ходит следующим.</li>
+    <li><b>Очки:</b> взял ровно заявленное — +20 за каждую карту; заявил 0 и взял 0 — +5; недобор — −20 за каждую недостающую; перебор — +2.</li>
+    <li><b>7♠ — особая карта.</b> Её всегда можно сыграть как обычную 7♠. Если ходишь ею первым — можно скомандовать «Старшие на стол!»: все кладут свою самую сильную карту, а взятку забирает ходивший. Если отвечаешь ею — можно сыграть её как самую старшую карту и забрать взятку.</li>
+    <li>Сумма заявок может быть любой — больше или меньше числа карт в раунде.</li>
+    <li>«Самая сильная карта» (для команды 7♠) при равном достоинстве: ♥ &gt; ♠ &gt; ♣ &gt; ♦.</li>
+  </ul></details>`;
+}
+
+function renderSetup() {
+  const plan = Engine.roundPlan(ui.rounds);
+  app.innerHTML = `
+    <h1>По ушам — прототип</h1>
+    <div class="panel">
+      <h3>Новая игра</h3>
+      <div class="row">
+        <label>Игроков: <select onchange="onSetup('players', this.value)">
+          ${[2, 3, 4].map(n => `<option ${n === ui.players ? 'selected' : ''}>${n}</option>`).join('')}
+        </select></label>
+        <label>Раундов: <input type="number" min="1" max="40" value="${ui.rounds}" style="width:70px"
+          onchange="onSetup('rounds', Math.max(1, Math.min(40, this.value | 0)))"></label>
+        <button class="btn" onclick="onStart()">Начать</button>
+      </div>
+      <p class="hint">Карт по раундам: ${plan.join(', ')}</p>
+    </div>
+    ${rulesHtml()}`;
+}
+
+function renderGame() {
+  const g = G;
+  const k = g.plan[g.roundIdx];
+  const myTurn = g.turn === HUMAN && (g.phase === 'bid' || g.phase === 'play');
+
+  const seats = g.names.map((nm, p) => {
+    const isTurn = g.turn === p && (g.phase === 'bid' || g.phase === 'play');
+    const bid = g.bids[p] === null ? '—' : g.bids[p];
+    return `<div class="seat ${isTurn ? 'turn' : ''}">
+      <div class="name">${esc(nm)} ${p === g.leader ? '★' : ''}</div>
+      <div class="meta">Очки: <b>${g.scores[p]}</b></div>
+      <div class="meta">Заявка: <b>${bid}</b> · Взял: <b>${g.took[p]}</b></div>
+      <div class="meta">Карт на руке: ${g.hands[p].length}</div>
+    </div>`;
+  }).join('');
+
+  // Стол
+  let table = '<span class="hint">Пусто</span>';
+  const t = g.trick;
+  if (t && t.plays.length) {
+    const winP = g.phase === 'trickDone' ? g.trickWinner : null;
+    table = (t.command ? '<div style="margin-bottom:6px"><span class="badge">7♠ — «СТАРШИЕ НА СТОЛ!» Все кладут самую сильную карту</span></div>' : '') +
+      t.plays.map(pl => `<div class="play ${pl.p === winP ? 'win' : ''}">${cardHtml(pl.card)}${esc(g.names[pl.p])}${pl.mode === 'top' ? '<span class="badge">старшая!</span>' : ''}</div>`).join('');
+  }
+  let last = '';
+  if (g.lastTrick && g.phase !== 'trickDone') {
+    last = `<div class="hint" style="margin-top:6px">Прошлая взятка (${esc(g.names[g.lastTrick.winner])}): ${g.lastTrick.plays.map(pl => pl.card.id).join(' ')}</div>`;
+  }
+
+  // Действия
+  let action = '';
+  if (g.phase === 'bid') {
+    if (myTurn) {
+      action = `<h3>Ваша заявка</h3><div class="row">${Array.from({ length: k + 1 }, (_, b) =>
+        `<button class="btn alt" onclick="onBid(${b})">${b}</button>`).join('')}</div>`;
+    } else action = `<span class="hint">Заявляет ${esc(g.names[g.turn])}…</span>`;
+  } else if (g.phase === 'play') {
+    if (myTurn && ui.pendingSpecial) {
+      const modes = Engine.specialModes(g, HUMAN);
+      action = `<h3>Как сыграть 7♠?</h3><div class="row">
+        <button class="btn alt" onclick="onSpecial('normal')">Как обычную 7♠</button>
+        ${modes.includes('command') ? `<button class="btn purple" onclick="onSpecial('command')">«Старшие на стол!» — забрать взятку</button>` : ''}
+        ${modes.includes('top') ? `<button class="btn purple" onclick="onSpecial('top')">Как самую старшую — забрать взятку</button>` : ''}
+        <button class="btn alt" onclick="onSpecialCancel()">Отмена</button></div>`;
+    } else if (myTurn) {
+      const need = g.bids[HUMAN] - g.took[HUMAN];
+      const forced = t.command && t.plays.length > 0;
+      action = `<b>Ваш ход.</b> <span class="hint">${forced ? 'Команда «Старшие на стол!» — нужно положить самую сильную карту.' :
+        t.plays.length === 0 ? 'Вы ведёте взятку.' :
+        g.hands[HUMAN].some(c => c.suit === Engine.leadSuit(t)) ? `Ходите в масть ${Engine.leadSuit(t)} (или козырем ♥ / 7♠).` :
+        `Масти ${Engine.leadSuit(t)} нет — можно любую карту.`} Осталось добрать: ${need > 0 ? need : 0}${need < 0 ? ' (уже перебор)' : ''}.</span>`;
+    } else action = `<span class="hint">Ходит ${esc(g.names[g.turn])}…</span>`;
+  } else if (g.phase === 'trickDone') {
+    action = `<span class="hint">Взятку забирает ${esc(g.names[g.trickWinner])}…</span>`;
+  } else if (g.phase === 'roundDone') {
+    action = `<b>Раунд окончен.</b> <button class="btn" onclick="onNextRound()">Следующий раунд</button>`;
+  } else if (g.phase === 'gameOver') {
+    const max = Math.max(...g.scores);
+    const winners = g.names.filter((_, p) => g.scores[p] === max).join(', ');
+    action = `<b>Игра окончена! Победитель: ${esc(winners)} (${max} очков).</b> <button class="btn" onclick="onQuit()">Новая игра</button>`;
+  }
+
+  // Рука
+  const legalIds = (g.phase === 'play' && myTurn && !ui.pendingSpecial) ? new Set(Engine.legalPlays(g, HUMAN).map(c => c.id)) : new Set();
+  const hand = g.hands[HUMAN].map(c => {
+    const red = c.suit === '♥' || c.suit === '♦';
+    return `<button class="card ${red ? 'red' : ''} ${c.id === Engine.SPECIAL_ID ? 'special' : ''}" ${legalIds.has(c.id) ? '' : 'disabled'}
+      onclick="onCard('${c.id}')">${c.id}</button>`;
+  }).join('') || '<span class="hint">Карт нет</span>';
+
+  // История
+  const head = `<tr><th>#</th><th>Карт</th>${g.names.map(n => `<th>${esc(n)}</th>`).join('')}</tr>`;
+  const rows = g.history.map((h, i) => `<tr><td>${i + 1}</td><td>${h.cards}</td>${h.delta.map((d, p) =>
+    `<td class="${d >= 0 ? 'pos' : 'neg'}">${h.bids[p]}/${h.took[p]}: ${d >= 0 ? '+' : ''}${d}</td>`).join('')}</tr>`).join('');
+  const total = `<tr><th></th><th>Итого</th>${g.scores.map(s => `<th>${s}</th>`).join('')}</tr>`;
+
+  app.innerHTML = `
+    <div class="bar"><h1>По ушам</h1>
+      <div class="row"><span>Раунд <b>${g.roundIdx + 1}/${g.plan.length}</b> · по <b>${k}</b> карт · Козырь <b style="color:#c62828">♥</b></span>
+      ${ui.confirmQuit
+        ? `<span>Бросить партию?</span> <button class="btn" onclick="onQuit()">Да</button> <button class="btn alt" onclick="onQuitCancel()">Нет</button>`
+        : `<button class="btn alt" onclick="onQuit()">Новая игра</button>`}</div></div>
+    <div class="seats" style="margin-bottom:12px">${seats}</div>
+    <div class="panel"><h3>Стол</h3><div class="table-area">${table}</div>${last}</div>
+    <div class="panel">${action}${ui.error ? `<div style="color:#c62828;margin-top:6px">${esc(ui.error)}</div>` : ''}</div>
+    <div class="panel"><h3>Ваши карты</h3>${hand}</div>
+    <div class="panel"><h3>Таблица очков (заявка/взял: очки)</h3><table>${head}${rows}${total}</table></div>
+    <div class="panel"><h3>Журнал</h3><div class="log">${g.log.slice(-40).reverse().map(l => `<div>${esc(l)}</div>`).join('')}</div></div>
+    ${rulesHtml()}`;
+}
+
+function render() { if (!G) renderSetup(); else renderGame(); }
+render();
+</script>
+</body>
+</html>
