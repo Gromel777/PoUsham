@@ -10,8 +10,8 @@ const { Engine, Bots } = require('../engine/engine.js');
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, '..');
 const BOT_NAMES = ['Бот Аня', 'Бот Борис', 'Бот Вика'];
-const BOT_DELAY = 800;
-const TRICK_PAUSE = 1500;
+const BOT_DELAY = 1000;
+const TRICK_PAUSE = 2100; // время на эффекты последней карты и показ, кто взял
 const ROOM_TTL = 3 * 60 * 60 * 1000; // пустая комната живёт 3 часа
 
 const STATIC = {
@@ -20,6 +20,8 @@ const STATIC = {
   '/client.js': 'client/client.js',
   '/style.css': 'client/style.css',
   '/qrcode.js': 'client/qrcode.js',
+  '/cards.js': 'client/cards.js',
+  '/fx.js': 'client/fx.js',
   '/engine.js': 'engine/engine.js',
 };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };

@@ -2,12 +2,32 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07060b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>По ушам</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Manrope:wght@500;700;800&display=swap">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<div id="app"></div>
+<div id="app">
+  <div id="shake">
+    <div class="bg"></div>
+    <div class="motes"></div>
+    <main id="screen"></main>
+  </div>
+  <canvas id="fx"></canvas>
+  <div class="banner" id="banner"></div>
+  <div id="overlay"></div>
+  <div id="toast"></div>
+  <div id="rotate"><div><div class="ph"></div><div class="gold-text" style="font-family:var(--font-title);font-size:28px;font-weight:700">Поверните телефон</div><div class="hint">Игра рассчитана на горизонтальный экран</div></div></div>
+</div>
+<script src="/cards.js"></script>
+<script src="/fx.js"></script>
 <script src="/qrcode.js"></script>
 <script src="/client.js"></script>
 </body>
