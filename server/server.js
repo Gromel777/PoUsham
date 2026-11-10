@@ -103,6 +103,57 @@ function joinRoom(r, name) {
   return { token, rejoined: false };
 }
 
+// ---------- кик и голосование ----------
+const humanSeats = r => r.seats.map((s, i) => i).filter(i => !r.seats[i].bot);
+function gameLog(r, msg) { if (r.game) { r.game.log.push(msg); if (r.game.log.length > 300) r.game.log.shift(); } }
+
+// Закрыть соединения игрока и сообщить ему, что его убрали со стола.
+function dropStreams(r, seat, reason) {
+  for (const st of [...r.streams]) {
+    if (st.seat !== seat) continue;
+    r.streams.delete(st);
+    try { st.res.write(`event: kicked\ndata: ${JSON.stringify({ reason })}\n\n`); st.res.end(); } catch {}
+  }
+}
+
+// Лобби: хост убирает игрока, места остальных сдвигаются.
+function lobbyKick(r, target) {
+  if (!r.seats[target] || target === r.hostSeat) fail('Этого игрока убрать нельзя');
+  dropStreams(r, target, 'Хост убрал вас из комнаты.');
+  r.seats.splice(target, 1);
+  for (const st of r.streams) if (st.seat > target) st.seat--;
+  if (r.hostSeat > target) r.hostSeat--;
+}
+
+// Игра: место вылетевшего игрока занимает бот.
+function replaceWithBot(r, target) {
+  const s = r.seats[target];
+  dropStreams(r, target, 'Голосованием ваше место отдано боту.');
+  s.bot = true; s.token = null; s.name = `${s.name} (бот)`;
+  r.game.names[target] = s.name;
+  gameLog(r, `${s.name}: место игрока занял бот`);
+  if (target === r.hostSeat) {
+    const next = humanSeats(r)[0];
+    if (next !== undefined) { r.hostSeat = next; gameLog(r, `Новый хост — ${r.seats[next].name}`); }
+  }
+}
+
+// Голосуют все, кто в сети (кроме того, за кого голосуют). Пока не проголосовали все — пауза.
+function voters(r) { return humanSeats(r).filter(i => i !== r.vote.target && isOnline(r, i)); }
+function checkVote(r) {
+  const v = r.vote;
+  if (!v) return;
+  const name = r.seats[v.target].name;
+  if (isOnline(r, v.target)) { r.vote = null; gameLog(r, `${name} вернулся — голосование отменено`); return; }
+  const list = voters(r);
+  for (const i of [...v.yes]) if (!list.includes(i)) v.yes.delete(i);
+  for (const i of [...v.no]) if (!list.includes(i)) v.no.delete(i);
+  if (!list.every(i => v.yes.has(i) || v.no.has(i))) return;
+  r.vote = null;
+  if (v.yes.size > v.no.size) { gameLog(r, `Голосование: ${name} заменён ботом (${v.yes.size} за, ${v.no.size} против)`); replaceWithBot(r, v.target); }
+  else gameLog(r, `Голосование: ${name} остаётся за столом (${v.yes.size} за, ${v.no.size} против)`);
+}
+
 function startGame(r) {
   let b = 0;
   while (r.seats.length < r.size) r.seats.push({ name: BOT_NAMES[b++], token: null, bot: true });
@@ -133,6 +184,12 @@ function viewFor(r, seat) {
     history: g.history, log: g.log.slice(-40),
     legal: myTurn && g.phase === 'play' ? Engine.legalPlays(g, seat).map(c => c.id) : [],
     specialModes: myTurn ? Engine.specialModes(g, seat) : [],
+    paused: !!r.vote,
+    vote: r.vote ? {
+      target: r.vote.target,
+      yes: [...r.vote.yes], no: [...r.vote.no],
+      voters: voters(r),
+    } : null,
   };
 }
 
@@ -146,7 +203,7 @@ function broadcast(r) {
 function schedule(r) {
   clearTimeout(r.timer);
   const g = r.game;
-  if (!g) return;
+  if (!g || r.vote) return; // голосование — пауза
   if (g.phase === 'trickDone') {
     r.timer = setTimeout(() => { Engine.nextTrick(g); update(r); }, TRICK_PAUSE);
   } else if ((g.phase === 'bid' || g.phase === 'play') && r.seats[g.turn].bot) {
@@ -177,7 +234,33 @@ function doAction(r, seat, body) {
     r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name) });
     return;
   }
+  if (type === 'kick') {
+    if (seat !== r.hostSeat) fail('Убирать игроков может только хост');
+    if (r.game) fail('Во время игры — только голосованием');
+    lobbyKick(r, Number(body.seat));
+    return;
+  }
   if (!g) fail('Игра ещё не началась');
+  if (type === 'voteKick') {
+    const target = Number(body.seat);
+    if (r.vote) fail('Голосование уже идёт');
+    if (!r.seats[target] || r.seats[target].bot || target === seat) fail('За этого игрока голосовать нельзя');
+    if (isOnline(r, target)) fail('Игрок в сети — голосовать можно только за вылетевшего');
+    r.vote = { target, yes: new Set([seat]), no: new Set() };
+    gameLog(r, `${r.seats[seat].name} предлагает заменить ботом игрока ${r.seats[target].name}. Игра на паузе.`);
+    checkVote(r);
+    return;
+  }
+  if (type === 'vote') {
+    const v = r.vote;
+    if (!v) fail('Голосования нет');
+    if (!voters(r).includes(seat)) fail('Вы не участвуете в этом голосовании');
+    if (v.yes.has(seat) || v.no.has(seat)) fail('Вы уже проголосовали');
+    (body.value ? v.yes : v.no).add(seat);
+    checkVote(r);
+    return;
+  }
+  if (r.vote) fail('Игра на паузе: идёт голосование');
   try {
     if (type === 'bid') Engine.placeBid(g, seat, Number(body.value));
     else if (type === 'play') Engine.playCard(g, seat, String(body.cardId), body.mode || 'normal');
@@ -205,8 +288,9 @@ async function handleApi(req, res, url) {
     const st = { res, seat };
     r.streams.add(st);
     r.touched = Date.now();
-    broadcast(r);
-    req.on('close', () => { r.streams.delete(st); broadcast(r); });
+    checkVote(r);
+    update(r);
+    req.on('close', () => { if (r.streams.delete(st)) { checkVote(r); update(r); } });
     return;
   }
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Метод не поддерживается' });

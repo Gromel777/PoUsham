@@ -28,6 +28,14 @@ function connect(room, token) {
     if (!(S.view.stage === 'game' && S.view.turn === S.view.you && S.view.phase === 'play')) S.pendingSpecial = false;
     render();
   };
+  es.addEventListener('kicked', e => {
+    let reason = 'Вас убрали со стола.';
+    try { reason = JSON.parse(e.data).reason || reason; } catch {}
+    es.close();
+    leave();
+    S.err = reason;
+    render();
+  });
   es.onerror = () => {
     if (es.readyState === EventSource.CLOSED) {
       const code = S.room;
@@ -92,6 +100,9 @@ window.onCard = id => {
 window.onSpecial = mode => { S.pendingSpecial = false; act({ type: 'play', cardId: '7♠', mode }); };
 window.onSpecialCancel = () => { S.pendingSpecial = false; render(); };
 window.onNextRound = () => act({ type: 'nextRound' });
+window.onKick = seat => act({ type: 'kick', seat });
+window.onVoteKick = seat => act({ type: 'voteKick', seat });
+window.onVote = yes => act({ type: 'vote', value: yes });
 
 // ---------- отрисовка ----------
 const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -144,7 +155,8 @@ function renderLobby(v) {
   const seats = Array.from({ length: v.size }, (_, i) => {
     const s = v.seats[i];
     if (!s) return `<div class="seat"><div class="name hint">Свободно</div><div class="meta">займёт бот, если никто не придёт</div></div>`;
-    return `<div class="seat ${i === v.you ? 'me' : ''}"><div class="name"><span class="dot ${s.online ? '' : 'off'}"></span>${esc(s.name)}${s.host ? ' (хост)' : ''}</div></div>`;
+    const kick = v.isHost && !s.host ? `<div style="margin-top:6px"><button class="btn alt" onclick="onKick(${i})">Убрать</button></div>` : '';
+    return `<div class="seat ${i === v.you ? 'me' : ''}"><div class="name"><span class="dot ${s.online ? '' : 'off'}"></span>${esc(s.name)}${s.host ? ' (хост)' : ''}${i === v.you ? ' (вы)' : ''}</div>${s.online ? '' : '<div class="meta">не в сети</div>'}${kick}</div>`;
   }).join('');
   app.innerHTML = `
     <div class="bar"><h1>По ушам</h1><button class="btn alt" onclick="onLeave()">Выйти</button></div>
@@ -176,6 +188,8 @@ function renderGame(v) {
       <div class="meta">Очки: <b>${v.scores[p]}</b></div>
       <div class="meta">Заявка: <b>${v.bids[p] === null ? '—' : v.bids[p]}</b> · Взял: <b>${v.took[p]}</b></div>
       <div class="meta">Карт: ${v.handCounts[p]}</div>
+      ${!s.bot && !s.online ? `<div class="meta" style="color:#c62828">вылетел</div>${!v.vote && p !== me
+        ? `<div style="margin-top:6px"><button class="btn alt" onclick="onVoteKick(${p})">Заменить ботом</button></div>` : ''}` : ''}
     </div>`;
   }).join('');
 
@@ -189,7 +203,16 @@ function renderGame(v) {
     ? `<div class="hint" style="margin-top:6px">Прошлая взятка (${esc(v.names[v.lastTrick.winner])}): ${v.lastTrick.plays.map(pl => pl.card.id).join(' ')}</div>` : '';
 
   let action = '';
-  if (v.phase === 'bid') {
+  if (v.vote) {
+    const vt = v.vote;
+    const voted = vt.yes.includes(me) || vt.no.includes(me);
+    const canVote = vt.voters.includes(me) && !voted;
+    const waiting = vt.voters.filter(i => !vt.yes.includes(i) && !vt.no.includes(i)).map(i => esc(v.names[i]));
+    action = `<h3>Пауза — голосование</h3>
+      <div>Заменить ботом игрока <b>${esc(v.names[vt.target])}</b>? <span class="hint">За: ${vt.yes.length} · Против: ${vt.no.length}</span></div>
+      ${canVote ? `<div class="row" style="margin-top:6px"><button class="btn" onclick="onVote(true)">Да, заменить</button><button class="btn alt" onclick="onVote(false)">Нет, подождём</button></div>` : ''}
+      <div class="hint" style="margin-top:6px">${waiting.length ? 'Ждём голоса: ' + waiting.join(', ') : ''} Если ${esc(v.names[vt.target])} вернётся, голосование отменится.</div>`;
+  } else if (v.phase === 'bid') {
     action = myTurn
       ? `<h3>Ваша заявка</h3><div class="row">${Array.from({ length: k + 1 }, (_, b) => `<button class="btn alt" onclick="onBid(${b})">${b}</button>`).join('')}</div>`
       : `<span class="hint">Заявляет ${esc(v.names[v.turn])}…</span>`;
