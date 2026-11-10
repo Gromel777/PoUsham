@@ -19,6 +19,8 @@ const ROOM_TTL = 3 * 60 * 60 * 1000; // пустая комната живёт 3
 const STATIC = {
   '/': 'client/index.html',
   '/index.html': 'client/index.html',
+  '/privacy': 'client/privacy.html',
+  '/privacy.html': 'client/privacy.html',
   '/client.js': 'client/client.js',
   '/style.css': 'client/style.css',
   '/qrcode.js': 'client/qrcode.js',
