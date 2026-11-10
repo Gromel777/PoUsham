@@ -231,7 +231,7 @@
             <button class="icon-btn" data-act="menu" title="Меню">${iconSvg('menu')}</button>
           </div>
         </div>
-        <div class="round-dock"><div class="round-box"><div class="status" id="status"></div><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> козырь</span><span id="hud-mode"></span></div></div></div>
+        <div class="round-dock"><div class="status" id="status"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> козырь</span><span id="hud-mode"></span></div></div></div>
         <div class="me-panel" id="me-panel"></div>
         <div class="action" id="action"></div>
         <div id="vote"></div>
@@ -288,10 +288,18 @@
       <defs>
         <radialGradient id="puckG" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#fff6d0"/><stop offset=".45" stop-color="#e8c46a"/><stop offset="1" stop-color="#8a6420"/></radialGradient>
         <filter id="puckGlow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="6"/></filter>
+        <filter id="puckHalo" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="16"/></filter>
+        <linearGradient id="puckShine" x1="0" y1="0" x2="1" y2=".35">
+          <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".42" stop-color="#fff" stop-opacity="0"/>
+          <stop offset=".5" stop-color="#fffbe6" stop-opacity=".85"/><stop offset=".58" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+          <animateTransform attributeName="gradientTransform" type="translate" values="-1 0; 1 0; 1 0" keyTimes="0; .6; 1" dur="2.4s" repeatCount="indefinite"/>
+        </linearGradient>
       </defs>
       <g class="puck" style="display:none">
+        <ellipse class="puck-halo" rx="70" ry="52" fill="#ffd25e" filter="url(#puckHalo)"/>
         <ellipse class="puck-glow" rx="40" ry="30" fill="#f6d27a" opacity=".55" filter="url(#puckGlow)"/>
         <ellipse rx="30" ry="22" fill="url(#puckG)" stroke="#5a4012" stroke-width="2"/>
+        <ellipse class="puck-shine" rx="30" ry="22" fill="url(#puckShine)"/>
         <ellipse rx="23" ry="16" fill="none" stroke="#5a4012" stroke-width="1.5" stroke-dasharray="3 3" opacity=".7"/>
         <g class="puck-arrow"><path d="M-9 -8 L12 0 L-9 8 Z" fill="#241a06"/></g>
       </g>
@@ -376,15 +384,15 @@
   function showScores() {
     const v = S.view;
     if (!v || v.stage !== 'game') return;
-    const head = `<tr><th>#</th><th>Карт</th>${v.names.map(n => `<th>${esc(n)}</th>`).join('')}</tr>`;
+    const head = `<tr><th>#</th><th>Карт</th>${v.names.map((n, p) => `<th style="color:${nameColor(p)}">${esc(n)}</th>`).join('')}</tr>`;
     const rows = v.history.map((h, i) => `<tr><td>${i + 1}</td><td>${h.cards}</td>${h.delta.map((d, p) => {
       const b = (h.bonus && h.bonus[p]) || 0, t = d + b;
       return `<td class="${t >= 0 ? 'pos' : 'neg'}">${h.bids[p]}/${h.took[p]} <b>${t >= 0 ? '+' : ''}${t}</b>${b ? ` <span class="hint">(${b > 0 ? '+' : ''}${b})</span>` : ''}</td>`;
     }).join('')}</tr>`).join('');
-    const total = `<tr><th></th><th>Итого</th>${v.scores.map(s => `<th class="gold-text">${s}</th>`).join('')}</tr>`;
-    showModal(`<h2 class="gold-text">Счёт</h2><table class="hist">${head}${rows}${total}</table>
-      <h3 class="hint" style="margin:14px 0 4px">Журнал</h3><div class="log-list">${v.log.slice().reverse().map(l => `<div>${esc(l)}</div>`).join('')}</div>
-      <div class="actions"><button class="btn-gold" data-act="close">Закрыть</button></div>`);
+    const total = `<tr><th></th><th>Итого</th>${v.scores.map(s => `<th><span class="gold-text">${s}</span></th>`).join('')}</tr>`;
+    showModal(`<h2 class="gold-text">Счёт</h2><div class="hist-wrap"><table class="hist">${head}${rows}${total}</table></div>
+      <h3 class="hint" style="margin:14px 0 4px">Журнал</h3><div class="log-list">${v.log.slice().reverse().map(l => `<div>${colorNames(l, v.names)}</div>`).join('')}</div>
+      <div class="actions"><button class="btn-gold" data-act="close">Закрыть</button></div>`, 'scores-modal');
   }
 
   // Полный экран: включить/выключить. На iPhone браузеры его не дают — подсказываем установку на главный экран.
@@ -437,6 +445,8 @@
     return { enableGyro };
   })();
 
+  // #app никогда не должен прокручиваться (фокус/скролл к элементу сдвигал весь стол).
+  { const app = document.getElementById('app'); if (app) app.addEventListener('scroll', () => { app.scrollLeft = 0; app.scrollTop = 0; }); }
   // ---------- геометрия ----------
   function dims() {
     const W = VIEW.w, H = VIEW.h;
@@ -447,6 +457,18 @@
   const rel = (v, p) => (p - v.you + v.n) % v.n;
   const SPOTS = { 2: ['me', 'top'], 3: ['me', 'tl', 'tr'], 4: ['me', 'left', 'top', 'right'], 5: ['me', 'left', 'tl', 'tr', 'right'], 6: ['me', 'left', 'tl', 'top', 'tr', 'right'] };
   const spotOf = (v, p) => SPOTS[v.n][rel(v, p)];
+  // Цвет игрока по месту за столом — одинаковый у всех клиентов (чат, журнал, таблички).
+  const NAME_COLORS = ['#6fd3ff', '#ff8fb1', '#9be37a', '#c9a2ff', '#ffb35c', '#5fe0c4'];
+  const nameColor = p => NAME_COLORS[((p % 6) + 6) % 6];
+  // Экранировать строку и раскрасить в ней имена игроков.
+  function colorNames(text, names) {
+    const safe = esc(text);
+    const list = names.map((n, p) => ({ n: esc(n), p })).filter(o => o.n).sort((a, b) => b.n.length - a.n.length);
+    if (!list.length) return safe;
+    const re = new RegExp(list.map(o => o.n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+    const byName = new Map(list.map(o => [o.n, o.p]));
+    return safe.replace(re, m => `<span class="pn" style="color:${nameColor(byName.get(m))}">${m}</span>`);
+  }
   const SPOT_ANGLE = { me: 90, left: 180, right: 0, top: -90, tl: -128, tr: -52 };
   const CHAIR_ROT = { left: -90, right: 90, top: 0, tl: -28, tr: 28 };
   function slotXY(spot, d, n) {
@@ -474,7 +496,7 @@
     }
     return { x, y, rot: r, s };
   }
-  let TABLE_SCALE = 0.78;
+  let TABLE_SCALE = 0.66;
   const ME_PANEL_H = 68;
 
   // Тема и уровень эффекта по масти и старшинству.
@@ -519,7 +541,7 @@
     resultsShownFor: -1, overShown: false, dealing: false, checkSeq: 0, timerTick: 0, lastTickSec: -1,
 
     mount(el) {
-      TABLE_SCALE = 0.78;
+      TABLE_SCALE = 0.66;
       Object.assign(this, { el, prev: null, hand: new Map(), table: new Map(), seatEls: [], sel: null, special: false, resultsShownFor: -1, overShown: false, checkSeq: 0 });
       this.cardsLayer = $('#cards', el); this.seatsLayer = $('#seats', el); this.checksLayer = $('#checks', el);
       this.applyDims();
@@ -569,7 +591,7 @@
       const newRound = newGame || prev.roundIdx !== v.roundIdx;
       if (!prev) { this.checkSeq = v.lastCheck ? v.lastCheck.seq : 0; this.leadKey = leadersOf(v).join(','); }
       this.updateHud(v);
-      if (!prev || this.seatEls.length !== v.n) { TABLE_SCALE = v.n >= 5 ? 0.72 : 0.78; this.buildSeats(v); }
+      if (!prev || this.seatEls.length !== v.n) { TABLE_SCALE = v.n >= 5 ? 0.61 : 0.66; this.buildSeats(v); }
       this.updateLog(v);
       if (newRound) {
         closeModalIf('results'); closeModalIf('over');
@@ -614,13 +636,13 @@
       if (body.dataset.key === key) return;
       body.dataset.key = key;
       const myName = v.names[v.you];
-      body.innerHTML = lines.slice().reverse().map(l => `<div class="${/ОБМАН|проверяет|время вышло/.test(l) ? 'hot' : l.startsWith(myName) ? 'mine' : ''}">${esc(l)}</div>`).join('');
+      body.innerHTML = lines.slice().reverse().map(l => `<div class="${/ОБМАН|проверяет|время вышло/.test(l) ? 'hot' : l.startsWith(myName) ? 'mine' : ''}">${colorNames(l, v.names)}</div>`).join('');
     },
 
     buildSeats(v) {
       const tw = $('#table-wrap', this.el);
       tw.innerHTML = tableSvg(Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
-      this.neonDeg = null; this.puckDeg = null;
+      this.neonDeg = null; this.puckDeg = null; this.puckK = null; this.puckIn = null; this.puckAnim = false; cancelAnimationFrame(this.puckRaf);
       this.seatsLayer.innerHTML = '';
       this.seatsLayer.className = `seats n${v.n}`;
       this.seatEls = [];
@@ -659,7 +681,7 @@
         ava.classList.toggle('bot', s.bot); ava.classList.toggle('off', !s.online);
         el.querySelector('.ini').textContent = initial(s.name);
         markAvatar(ava, v, p);
-        el.querySelector('.nm').textContent = s.name;
+        el.querySelector('.nm').textContent = s.name; el.style.setProperty('--pc', nameColor(p));
         setScore(el.querySelector('.sc'), v.scores[p], !!prev);
         const bid = v.bids[p];
         const pb = prev && prev.roundIdx === v.roundIdx ? prev.bids[p] : null;
@@ -687,7 +709,7 @@
           <div class="me-right"><div class="pips"></div></div>`;
       }
       box.querySelector('.ini').textContent = initial(v.names[me]);
-      box.querySelector('.nm').textContent = v.names[me];
+      box.querySelector('.nm').textContent = v.names[me]; box.style.setProperty('--pc', nameColor(me));
       const ava = box.querySelector('.ava');
       markAvatar(ava, v, me);
       setScore(box.querySelector('.sc'), v.scores[me], !!prev);
@@ -1075,29 +1097,59 @@
       const puck = tw && tw.querySelector('.puck');
       if (!puck) return;
       const target = SPOT_ANGLE[spotOf(v, v.leader)];
+      const mine = v.leader === v.you;
+      // У себя фишку закрывают карты руки: она крупнее, с ореолом и выезжает с подстаканника на сукно.
+      const kTo = mine ? 1.6 : 1, inTo = mine ? 1 : 0;
       puck.style.display = '';
+      puck.classList.toggle('mine', mine);
+      if (this.puckK == null) this.puckK = kTo;
+      if (this.puckIn == null) this.puckIn = inTo;
       const place = deg => {
-        const a = deg * Math.PI / 180;
-        const x = 500 + Math.cos(a) * 408, y = 300 + Math.sin(a) * 226;
-        puck.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+        const a = deg * Math.PI / 180, inn = this.puckIn;
+        // У себя: с подстаканника на сукно слева перед рукой — там его не закрывают ни карты, ни панель заявки.
+        const x = 500 + Math.cos(a) * 408 + (262 - 500 - Math.cos(a) * 408) * inn;
+        const y = 300 + Math.sin(a) * 226 + (412 - 300 - Math.sin(a) * 226) * inn;
+        puck.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${this.puckK.toFixed(3)})`);
         puck.querySelector('.puck-arrow').setAttribute('transform', `rotate(${deg.toFixed(1)})`);
       };
-      if (this.puckDeg == null || fast) { this.puckDeg = target; place(target); return; }
+      if (this.puckAnim && this.puckTarget === target && !fast) return; // уже едет туда
+      cancelAnimationFrame(this.puckRaf); this.puckAnim = false; this.puckTarget = target;
+      if (this.puckDeg == null || fast) { this.puckK = kTo; this.puckIn = inTo; this.puckDeg = target; place(target); return; }
       let from = this.puckDeg, to = target;
       while (to <= from) to += 360; // только по часовой стрелке
       if (to - from >= 360) to -= 360;
-      if (Math.abs(to - from) < 0.5) { place(target); return; }
-      cancelAnimationFrame(this.puckRaf);
-      const t0 = performance.now(), dur = 700 + (to - from) * 3;
-      SFX.puck();
+      const kFrom = this.puckK, inFrom = this.puckIn;
+      const roll = to - from >= 0.5;
+      // Сначала (если фишка была у меня) съезжает обратно на подстаканник, потом катится, потом (если ко мне) выезжает на сукно.
+      const tOut = inFrom > 0.01 && roll ? 320 : 0;
+      const tRoll = roll ? 700 + (to - from) * 3 : 0;
+      const tIn = inTo > 0.01 && roll ? 420 : Math.abs(inTo - inFrom) > 0.01 ? 420 : 0;
+      const total = tOut + tRoll + tIn;
+      if (!total) { this.puckK = kTo; this.puckIn = inTo; place(target); return; }
+      if (roll) SFX.puck();
+      const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      const t0 = performance.now();
+      this.puckAnim = true;
       const step = now => {
-        const k = Math.min(1, (now - t0) / dur), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
-        const deg = from + (to - from) * e;
+        const el = now - t0;
+        let deg = from;
+        if (el < tOut) { this.puckIn = inFrom * (1 - ease(el / tOut)); }
+        else if (el < tOut + tRoll) {
+          this.puckIn = roll && tOut ? 0 : this.puckIn;
+          const e = ease((el - tOut) / tRoll);
+          deg = from + (to - from) * e;
+          this.puckK = kFrom + (kTo - kFrom) * e;
+        } else {
+          deg = to;
+          this.puckK = kTo;
+          const base = roll ? 0 : inFrom;
+          this.puckIn = tIn ? base + (inTo - base) * ease(Math.min(1, (el - tOut - tRoll) / tIn)) : inTo;
+        }
         place(deg);
-        puck.classList.toggle('moving', k < 1);
         this.puckDeg = deg % 360;
-        if (k < 1) this.puckRaf = requestAnimationFrame(step);
-        else { this.puckDeg = target; puck.classList.add('landed'); setTimeout(() => puck.classList.remove('landed'), 600); }
+        puck.classList.toggle('moving', el < total);
+        if (el < total) this.puckRaf = requestAnimationFrame(step);
+        else { this.puckAnim = false; this.puckDeg = target; this.puckK = kTo; this.puckIn = inTo; place(target); puck.classList.add('landed'); setTimeout(() => puck.classList.remove('landed'), 600); }
       };
       this.puckRaf = requestAnimationFrame(step);
     },
@@ -1610,7 +1662,7 @@
       const key = msgs.map(m => m.seq).join(',');
       if (list.dataset.key === key) return;
       list.dataset.key = key;
-      list.innerHTML = msgs.map(m => `<div class="${m.from === v.you ? 'mine' : ''}"><b>${esc(m.name)}:</b> ${esc(m.text)}</div>`).join('') || '<div class="hint">Сообщений пока нет</div>';
+      list.innerHTML = msgs.map(m => `<div class="${m.from === v.you ? 'mine' : ''}"><b style="color:${nameColor(m.from)}">${esc(m.name)}:</b> ${esc(m.text)}</div>`).join('') || '<div class="hint">Сообщений пока нет</div>';
       list.scrollTop = list.scrollHeight;
     },
     badge() { const b = $('#chat-badge'); b.textContent = this.unread; b.classList.toggle('on', this.unread > 0); },
