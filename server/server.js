@@ -25,6 +25,7 @@ const STATIC = {
   '/cards.js': 'client/cards.js',
   '/cards-light.js': 'client/cards-light.js',
   '/brand.js': 'client/brand.js',
+  '/viewport.js': 'client/viewport.js',
   '/voice.js': 'client/voice.js',
   '/sw.js': 'client/sw.js',
   '/manifest.webmanifest': 'client/manifest.webmanifest',

@@ -40,11 +40,14 @@
   }
   function resize() {
     if (!cv) return;
+    // Канвас живёт в виртуальных координатах сцены (см. viewport.js), но рисуется в реальном разрешении.
+    const V = root.VIEW || { w: innerWidth, h: innerHeight, s: 1 };
     dpr = Math.min(2, devicePixelRatio || 1);
-    W = innerWidth; H = innerHeight;
-    cv.width = W * dpr; cv.height = H * dpr;
+    W = V.w; H = V.h;
+    const k = dpr * V.s;
+    cv.width = Math.round(W * k); cv.height = Math.round(H * k);
     cv.style.width = W + 'px'; cv.style.height = H + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(k, 0, 0, k, 0, 0);
   }
   function kick() {
     if (running || !ctx) return;

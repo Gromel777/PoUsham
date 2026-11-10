@@ -121,7 +121,7 @@
   function miniCard(id, i, n) {
     const c = Cards.parse(id);
     const a = (i - (n - 1) / 2) * 13;
-    return `<div class="card hc" style="--cw:min(27vh,16vw);--ch:calc(var(--cw) * 1.4);transform-origin:50% 115%;transform:translate(-50%,-55%) rotate(${a}deg) translateZ(${i * 8}px);animation:fanIn .9s ${0.15 + i * 0.1}s cubic-bezier(.2,.9,.3,1.2) both">
+    return `<div class="card hc" style="--cw:min(calc(var(--VH) * 27), calc(var(--VW) * 12.5));--ch:calc(var(--cw) * 1.4);transform-origin:50% 115%;transform:translate(-50%,-55%) rotate(${a}deg) translateZ(${i * 8}px);animation:fanIn .9s ${0.15 + i * 0.1}s cubic-bezier(.2,.9,.3,1.2) both">
       <div class="aura" style="opacity:.5;background:radial-gradient(closest-side,rgba(232,196,106,.35),transparent)"></div>
       <div class="ci"><div class="face front" style="background-image:${Cards.url(c)}"></div></div></div>`;
   }
@@ -394,7 +394,7 @@
     const go = () => { if (!raf) raf = requestAnimationFrame(frame); };
     addEventListener('pointermove', e => {
       if (e.pointerType !== 'mouse') return;
-      tx = (e.clientX / innerWidth - 0.5) * 2; ty = (e.clientY / innerHeight - 0.5) * 2; go();
+      tx = (e.clientX / window.innerWidth - 0.5) * 2; ty = (e.clientY / window.innerHeight - 0.5) * 2; go();
     });
     function onOrient(e) {
       if (e.beta == null) return;
@@ -417,7 +417,7 @@
 
   // ---------- геометрия ----------
   function dims() {
-    const W = innerWidth, H = innerHeight;
+    const W = VIEW.w, H = VIEW.h;
     const ch = Math.round(Math.max(76, Math.min(H * 0.3, W * 0.145, 210)));
     const cw = Math.round(ch * 0.714);
     return { W, H, ch, cw, cx: W / 2, cy: H * 0.45 };
@@ -535,11 +535,10 @@
     },
     seatCenter(p) {
       const v = S.view;
-      if (v && p === v.you) { const a = $('#me-panel .ava', this.el); if (a) { const r = a.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; } }
+      if (v && p === v.you) { const a = $('#me-panel .ava', this.el); if (a) { return VIEW.center(a); } }
       const s = this.seatEls[p];
-      if (!s) return [innerWidth / 2, innerHeight / 2];
-      const r = s.querySelector('.ava').getBoundingClientRect();
-      return [r.left + r.width / 2, r.top + r.height / 2];
+      if (!s) return [VIEW.w / 2, VIEW.h / 2];
+      return VIEW.center(s.querySelector('.ava'));
     },
 
     async update(v, fast) {
@@ -768,7 +767,7 @@
           await wait(450);
           o.el.classList.remove('winner');
           o.el.classList.add('down');
-          if (lc.target === v.you) { await fly(o.el, { x: tx + 60, y: innerHeight + 40, rot: 0, s: 1 }, { dur: 520 }); }
+          if (lc.target === v.you) { await fly(o.el, { x: tx + 60, y: VIEW.h + 40, rot: 0, s: 1 }, { dur: 520 }); }
           else await fly(o.el, { x: tx, y: ty, rot: rnd(-30, 30), s: 0.35 }, { dur: 520 });
           o.el.remove();
         }
@@ -935,11 +934,11 @@
         <div class="an-sub">${poCards(k)} · ${n} из ${total}</div>
         <div class="an-line"></div></div>`;
       a.className = 'on' + (n === total ? ' final' : '');
-      const cx = innerWidth / 2, cy = innerHeight * 0.45;
+      const cx = VIEW.w / 2, cy = VIEW.h * 0.45;
       SFX.roundGong(n === total);
       setTimeout(() => {
-        FX.ring(cx, cy, { r1: Math.max(innerWidth, innerHeight) * 0.6, color: '#f6d27a', width: 5, life: 0.8 });
-        FX.raysAt(cx, cy, { count: 16, len: Math.max(innerWidth, innerHeight) * 0.7, color: 'rgba(246,210,122,1)', life: 1.3, a: 0.3, spin: 0.6, force: true });
+        FX.ring(cx, cy, { r1: Math.max(VIEW.w, VIEW.h) * 0.6, color: '#f6d27a', width: 5, life: 0.8 });
+        FX.raysAt(cx, cy, { count: 16, len: Math.max(VIEW.w, VIEW.h) * 0.7, color: 'rgba(246,210,122,1)', life: 1.3, a: 0.3, spin: 0.6, force: true });
         FX.burst(cx, cy, { n: 50, colors: FX.GOLD, speed: [200, 600], size: [1.5, 3], g: 120, life: [0.6, 1.2] });
         if (n === total) { FX.ring(cx, cy, { r1: 260, color: '#ff4d5e', width: 4, delay: 0.1 }); FX.shake(8, 0.4); }
         else FX.shake(4, 0.25);
@@ -964,7 +963,7 @@
       fly.className = 'crown-fly';
       fly.innerHTML = crownSvg();
       $('#app').appendChild(fly);
-      let from = [innerWidth / 2, -60];
+      let from = [VIEW.w / 2, -60];
       if (lost.length) {
         const [lx, ly] = this.seatCenter(lost[0]);
         from = [lx, ly - 30];
@@ -1327,8 +1326,8 @@
     avatarCenter(seat) {
       if (Game.el) return Game.seatCenter(seat);
       const a = document.querySelector(`.lseat[data-i="${seat}"] .ava`);
-      if (a) { const r = a.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }
-      return [innerWidth / 2, innerHeight / 2];
+      if (a) { return VIEW.center(a); }
+      return [VIEW.w / 2, VIEW.h / 2];
     },
     avatarEl(seat) {
       const v = S.view;
@@ -1375,8 +1374,8 @@
       const b = document.createElement('div');
       b.className = `bubble ${kind}`;
       b.textContent = text;
-      const up = y > innerHeight * 0.5;
-      b.style.left = Math.min(innerWidth - 120, Math.max(120, x)) + 'px';
+      const up = y > VIEW.h * 0.5;
+      b.style.left = Math.min(VIEW.w - 120, Math.max(120, x)) + 'px';
       b.style.top = (up ? y - 44 : y + 44) + 'px';
       b.classList.add(up ? 'up' : 'down');
       $('#app').appendChild(b);
@@ -1490,9 +1489,9 @@
           <button class="am-tg ${m.chat ? 'on' : ''}" data-act="mute" data-what="chat" data-seat="${seat}"><span>💬</span>${m.chat ? 'Чат выкл' : 'Чат'}</button>
           <button class="am-tg ${m.emote ? 'on' : ''}" data-act="mute" data-what="emote" data-seat="${seat}"><span>😀</span>${m.emote ? 'Эмоции выкл' : 'Эмоции'}</button>
         </div>`;
-      pop.style.left = Math.min(innerWidth - 150, Math.max(150, x)) + 'px';
-      pop.style.top = (y > innerHeight / 2 ? y - 70 : y + 70) + 'px';
-      pop.classList.toggle('above', y > innerHeight / 2);
+      pop.style.left = Math.min(VIEW.w - 150, Math.max(150, x)) + 'px';
+      pop.style.top = (y > VIEW.h / 2 ? y - 70 : y + 70) + 'px';
+      pop.classList.toggle('above', y > VIEW.h / 2);
       pop.classList.add('on');
       pop.dataset.seat = seat;
       clearInterval(this.amT);
