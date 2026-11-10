@@ -75,17 +75,32 @@ function createRoom({ name, players, rounds }) {
   };
   const token = newToken();
   r.seats.push({ name: cleanName(name), token, bot: false });
-  r.host = token;
+  r.hostSeat = 0;
   rooms.set(r.code, r);
   return { r, token };
 }
 
+// Вход в комнату. Если за столом есть отключившийся игрок с тем же именем — это он вернулся:
+// отдаём ему его место с новым ключом (старый ключ перестаёт работать).
 function joinRoom(r, name) {
-  if (r.game) fail('Игра в этой комнате уже началась');
+  const nm = cleanName(name);
+  const same = r.seats.findIndex(s => !s.bot && s.name.toLowerCase() === nm.toLowerCase());
+  if (same >= 0) {
+    if (isOnline(r, same)) fail(`Игрок «${r.seats[same].name}» уже за столом. Если это вы — закройте другую вкладку или введите другое имя.`);
+    const token = newToken();
+    r.seats[same].token = token;
+    return { token, rejoined: true };
+  }
+  if (r.game) {
+    const offline = r.seats.filter((s, i) => !s.bot && !isOnline(r, i)).map(s => s.name);
+    fail(offline.length
+      ? `Игра уже идёт. Чтобы вернуться за стол, введите имя, под которым играли: ${offline.join(', ')}.`
+      : 'Игра в этой комнате уже идёт, свободных мест нет.');
+  }
   if (r.seats.length >= r.size) fail('Свободных мест нет');
   const token = newToken();
-  r.seats.push({ name: cleanName(name), token, bot: false });
-  return token;
+  r.seats.push({ name: nm, token, bot: false });
+  return { token, rejoined: false };
 }
 
 function startGame(r) {
@@ -96,7 +111,7 @@ function startGame(r) {
 
 // Что видит конкретный игрок: только свои карты, у остальных — количество.
 function viewFor(r, seat) {
-  const hostSeat = seatOf(r, r.host);
+  const hostSeat = r.hostSeat;
   const base = { code: r.code, you: seat, isHost: seat === hostSeat, size: r.size, rounds: r.rounds };
   if (!r.game) {
     return {
@@ -151,13 +166,13 @@ function doAction(r, seat, body) {
   const g = r.game;
   const type = body.type;
   if (type === 'start') {
-    if (r.seats[seat].token !== r.host) fail('Начать игру может только хост');
+    if (seat !== r.hostSeat) fail('Начать игру может только хост');
     if (r.game) fail('Игра уже идёт');
     startGame(r);
     return;
   }
   if (type === 'restart') {
-    if (r.seats[seat].token !== r.host) fail('Новую партию начинает хост');
+    if (seat !== r.hostSeat) fail('Новую партию начинает хост');
     if (!g || g.phase !== 'gameOver') fail('Партия ещё не закончена');
     r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name) });
     return;
@@ -202,9 +217,9 @@ async function handleApi(req, res, url) {
   }
   if (url.pathname === '/api/join') {
     const r = getRoom(body.room);
-    const token = joinRoom(r, body.name);
+    const { token, rejoined } = joinRoom(r, body.name);
     update(r);
-    return sendJson(res, 200, { room: r.code, token });
+    return sendJson(res, 200, { room: r.code, token, rejoined });
   }
   if (url.pathname === '/api/action') {
     const r = getRoom(body.room);

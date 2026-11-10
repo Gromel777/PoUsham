@@ -2,7 +2,7 @@
 'use strict';
 const app = document.getElementById('app');
 const STORE_KEY = 'pousham-session';
-const S = { view: null, es: null, room: null, token: null, pendingSpecial: false, err: '', confirmQuit: false, busy: false };
+const S = { view: null, es: null, room: null, token: null, pendingSpecial: false, err: '', confirmQuit: false, busy: false, connecting: false, prefillCode: '' };
 
 // ---------- хранение сессии (переживает перезагрузку страницы) ----------
 function loadSession() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; } }
@@ -18,24 +18,32 @@ async function api(path, body) {
   return j;
 }
 function connect(room, token) {
-  S.room = room; S.token = token; S.err = '';
+  S.room = room; S.token = token; S.err = ''; S.connecting = true;
   saveSession({ room, token });
   if (S.es) S.es.close();
   const es = new EventSource(`/api/events?room=${encodeURIComponent(room)}&token=${encodeURIComponent(token)}`);
   es.onmessage = e => {
     S.view = JSON.parse(e.data);
+    S.connecting = false;
     if (!(S.view.stage === 'game' && S.view.turn === S.view.you && S.view.phase === 'play')) S.pendingSpecial = false;
     render();
   };
   es.onerror = () => {
-    if (es.readyState === EventSource.CLOSED) { S.err = 'Комната не найдена или закрыта.'; leave(); }
+    if (es.readyState === EventSource.CLOSED) {
+      const code = S.room;
+      leave();
+      S.prefillCode = code || '';
+      S.err = 'Не удалось вернуться за стол автоматически. Введите код комнаты и то же имя, под которым играли, — и нажмите «Войти». ' +
+        'Если сервер перезапускался, комната могла пропасть — тогда создайте новую.';
+      render();
+    }
   };
   S.es = es;
   history.replaceState(null, '', '?room=' + room);
 }
 function leave() {
   if (S.es) S.es.close();
-  S.es = null; S.view = null; S.room = null; S.token = null; S.confirmQuit = false;
+  S.es = null; S.view = null; S.room = null; S.token = null; S.confirmQuit = false; S.connecting = false;
   clearRoom();
   history.replaceState(null, '', '/');
   render();
@@ -105,7 +113,7 @@ function rulesHtml() {
 
 function renderHome() {
   const sess = loadSession();
-  const roomParam = new URLSearchParams(location.search).get('room') || '';
+  const roomParam = new URLSearchParams(location.search).get('room') || S.prefillCode || '';
   app.innerHTML = `
     <h1>По ушам</h1>
     <div class="panel col">
@@ -125,6 +133,7 @@ function renderHome() {
         <h3>Войти по коду</h3>
         <label>Код комнаты: <input id="code" maxlength="4" value="${esc(roomParam)}" style="width:90px;text-transform:uppercase"></label>
         <div><button class="btn" onclick="onJoin()">Войти</button></div>
+        <span class="hint">Вылетели из игры? Введите код и то же имя — вернётесь на своё место.</span>
       </div>
     </div>
     ${errHtml()}
@@ -236,6 +245,10 @@ function renderGame(v) {
 }
 
 function render() {
+  if (!S.view && S.connecting) {
+    app.innerHTML = `<h1>По ушам</h1><div class="panel">Подключаюсь к столу ${esc(S.room || '')}… <span class="hint">Если сервер спал, это может занять до минуты.</span></div>`;
+    return;
+  }
   if (!S.view) renderHome();
   else if (S.view.stage === 'lobby') renderLobby(S.view);
   else renderGame(S.view);
