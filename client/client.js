@@ -205,7 +205,7 @@
       const s = v.seats[i];
       if (!s) return `<div class="lseat empty"><div class="ava bot">?</div><div><div class="nm">Свободно</div><div class="sub">займёт бот</div></div></div>`;
       return `<div class="lseat ${i === v.you ? 'me' : ''}" data-i="${i}">
-        <div class="ava ${s.online ? '' : 'off'}">${esc(initial(s.name))}${s.host ? crownSvg() : ''}</div>
+        <div class="ava ${s.online ? '' : 'off'}">${esc(initial(s.name))}</div>
         <div style="min-width:0"><div class="nm">${esc(s.name)}${i === v.you ? ' <span class="hint">(вы)</span>' : ''}</div><div class="sub">${s.host ? 'хост' : s.online ? 'в сети' : 'не в сети'}</div></div>
         ${v.isHost && !s.host ? `<button class="btn-ghost kick" data-act="kick" data-seat="${i}">Убрать</button>` : ''}
       </div>`;
@@ -295,17 +295,21 @@
   }
 
   // Кресло: высокая кожаная спинка с каретной стяжкой и золотыми заклёпками.
+  // Кресло: круглая кожаная спинка с каретной стяжкой и золотыми заклёпками по кругу.
   function chairSvg() {
     let tufts = '';
-    for (let r = 0; r < 3; r++) for (let c = 0; c < 4 - (r % 2); c++) tufts += `<circle cx="${34 + c * 24 + (r % 2) * 12}" cy="${30 + r * 22}" r="2.6" fill="#050506"/>`;
+    for (let r = 1; r <= 3; r++) {
+      const n = r * 6;
+      for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + r; tufts += `<circle cx="${(80 + Math.cos(a) * r * 18).toFixed(1)}" cy="${(80 + Math.sin(a) * r * 18).toFixed(1)}" r="2.4" fill="#040405"/>`; }
+    }
     let studs = '';
-    for (let i = 0; i <= 20; i++) { const a = Math.PI + (i / 20) * Math.PI; studs += `<circle cx="${(80 + Math.cos(a) * 66).toFixed(1)}" cy="${(80 + Math.sin(a) * 66).toFixed(1)}" r="2" fill="#d9b45a"/>`; }
-    return `<svg viewBox="0 0 160 140">
-      <defs><radialGradient id="chl" cx=".5" cy=".3" r=".8"><stop offset="0" stop-color="#3a3a42"/><stop offset=".7" stop-color="#141418"/><stop offset="1" stop-color="#060608"/></radialGradient></defs>
-      <path d="M8 80 A72 72 0 0 1 152 80 L152 130 Q80 142 8 130 Z" fill="url(#chl)" stroke="#000" stroke-width="2"/>
-      <path d="M14 80 A66 66 0 0 1 146 80" fill="none" stroke="#fff" stroke-opacity=".1" stroke-width="5"/>
+    for (let i = 0; i < 36; i++) { const a = (i / 36) * Math.PI * 2; studs += `<circle cx="${(80 + Math.cos(a) * 70).toFixed(1)}" cy="${(80 + Math.sin(a) * 70).toFixed(1)}" r="2.1" fill="#d9b45a"/>`; }
+    return `<svg viewBox="0 0 160 160">
+      <defs><radialGradient id="chl" cx=".45" cy=".35" r=".75"><stop offset="0" stop-color="#3e3e46"/><stop offset=".65" stop-color="#16161a"/><stop offset="1" stop-color="#060608"/></radialGradient></defs>
+      <circle cx="80" cy="80" r="77" fill="url(#chl)" stroke="#000" stroke-width="3"/>
+      <circle cx="80" cy="80" r="64" fill="none" stroke="#000" stroke-opacity=".5" stroke-width="2"/>
+      <path d="M28 52 A60 60 0 0 1 120 30" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="7" stroke-linecap="round"/>
       ${studs}${tufts}
-      <path d="M20 102 Q80 112 140 102" stroke="#000" stroke-opacity=".5" stroke-width="2" fill="none"/>
     </svg>`;
   }
 
@@ -428,15 +432,25 @@
     const rx = d.cw * (n >= 5 ? 1.6 : 1.15), ry = d.ch * (n >= 5 ? 0.28 : 0.3);
     return [d.cx + Math.cos(a) * rx, d.cy + Math.sin(a) * ry];
   }
-  function handXY(i, m, d, sel) {
+  function handXY(i, m, d, sel, focus = -1, hover = false) {
     const c = (m - 1) / 2, off = i - c;
     const avail = Math.min(d.W * 0.6, d.cw * 0.8 * m + d.cw);
     const step = m > 1 ? Math.min(d.cw * 0.74, (avail - d.cw) / (m - 1)) : 0;
     const rot = off * Math.min(5, 34 / Math.max(m, 1));
     // Рука по центру, над плашкой игрока (плашка внизу по центру).
     let y = d.H - ME_PANEL_H - d.ch * 0.3 + off * off * Math.min(3.2, 20 / Math.max(m, 1));
-    if (sel) y -= d.ch * 0.3;
-    return { x: d.cx + off * step, y, rot, s: sel ? 1.08 : 1 };
+    let x = d.cx + off * step, s = 1, r = rot;
+    // Соседи выбранной/наведённой карты раздвигаются.
+    if (focus >= 0 && focus !== i && m > 1) {
+      const dist = i - focus;
+      x += Math.sign(dist) * d.cw * 0.34 * Math.max(0, 1 - (Math.abs(dist) - 1) * 0.35);
+    }
+    if (focus === i) {
+      if (sel) { y -= d.ch * 0.3; s = 1.1; }
+      else if (hover) { y -= d.ch * 0.2; s = 1.2; }
+      r = rot * 0.4;
+    }
+    return { x, y, rot: r, s };
   }
   let TABLE_SCALE = 0.78;
   const ME_PANEL_H = 68;
@@ -490,6 +504,21 @@
       this.onResize = () => { this.applyDims(); if (S.view && S.view.stage === 'game') this.relayout(S.view); };
       addEventListener('resize', this.onResize);
       this.cardsLayer.addEventListener('click', e => { const c = e.target.closest('.inhand'); if (c) this.tapHand(c.dataset.id, c); });
+      // Наведение мышью: карта увеличивается, соседние раздвигаются.
+      this.cardsLayer.addEventListener('pointerover', e => {
+        if (e.pointerType !== 'mouse') return;
+        const c = e.target.closest('.inhand');
+        if (c && this.hover !== c.dataset.id) { this.hover = c.dataset.id; if (S.view) this.syncHand(S.view); }
+      });
+      this.cardsLayer.addEventListener('pointerout', e => {
+        if (e.pointerType !== 'mouse') return;
+        const c = e.target.closest('.inhand');
+        if (c && (!e.relatedTarget || !c.contains(e.relatedTarget)) && this.hover === c.dataset.id) {
+          this.hover = null;
+          clearTimeout(this.hoverT);
+          this.hoverT = setTimeout(() => { if (!this.hover && S.view) this.syncHand(S.view); }, 60);
+        }
+      });
       clearInterval(this.timerTick);
       this.timerTick = setInterval(() => this.tickTimer(), 200);
     },
@@ -517,7 +546,7 @@
       const prev = this.prev;
       const newGame = !prev || (prev.phase === 'gameOver' && v.phase !== 'gameOver');
       const newRound = newGame || prev.roundIdx !== v.roundIdx;
-      if (!prev) this.checkSeq = v.lastCheck ? v.lastCheck.seq : 0;
+      if (!prev) { this.checkSeq = v.lastCheck ? v.lastCheck.seq : 0; this.leadKey = leadersOf(v).join(','); }
       this.updateHud(v);
       if (!prev || this.seatEls.length !== v.n) { TABLE_SCALE = v.n >= 5 ? 0.72 : 0.78; this.buildSeats(v); }
       this.updateLog(v);
@@ -527,6 +556,7 @@
         await this.collectStale(v, true);
         this.updateSeats(v, prev, true);
         this.updateMe(v, null);
+        if (!fast) await this.announceRound(v);
         await this.deal(v, fast);
       }
       await this.applyCheck(v, fast);
@@ -540,6 +570,9 @@
       this.updateVote(v);
       this.maybeBoom(v, prev, fast);
       this.updateNeon(v);
+      const leadKey = leadersOf(v).join(',');
+      if (prev && this.leadKey != null && leadKey !== this.leadKey && v.phase !== 'roundDone' && v.phase !== 'gameOver') await this.leaderChange(v, this.leadKey, fast);
+      if (v.phase !== 'roundDone' && v.phase !== 'gameOver') this.leadKey = leadKey;
       if (v.phase === 'roundDone' && this.resultsShownFor !== v.roundIdx) { this.resultsShownFor = v.roundIdx; await this.showResults(v, fast); }
       if (v.phase === 'gameOver' && !this.overShown) { this.overShown = true; await this.showGameOver(v, fast); }
       this.prev = v;
@@ -603,9 +636,7 @@
         const ava = el.querySelector('.ava');
         ava.classList.toggle('bot', s.bot); ava.classList.toggle('off', !s.online);
         el.querySelector('.ini').textContent = initial(s.name);
-        const oldCrown = ava.querySelector('.crown');
-        if (p === v.leader && !oldCrown) ava.insertAdjacentHTML('beforeend', crownSvg());
-        if (p !== v.leader && oldCrown) oldCrown.remove();
+        markAvatar(ava, v, p);
         el.querySelector('.nm').textContent = s.name;
         setScore(el.querySelector('.sc'), v.scores[p], !!prev);
         const bid = v.bids[p];
@@ -636,9 +667,7 @@
       box.querySelector('.ini').textContent = initial(v.names[me]);
       box.querySelector('.nm').textContent = v.names[me];
       const ava = box.querySelector('.ava');
-      const oldCrown = ava.querySelector('.crown');
-      if (me === v.leader && !oldCrown) ava.insertAdjacentHTML('beforeend', crownSvg());
-      if (me !== v.leader && oldCrown) oldCrown.remove();
+      markAvatar(ava, v, me);
       setScore(box.querySelector('.sc'), v.scores[me], !!prev);
       const b1 = box.querySelector('.b1'), b2 = box.querySelector('.b2');
       const nb = bid === null ? '—' : String(bid);
@@ -864,6 +893,9 @@
       if (!myPlay || !v.legal.includes(this.sel)) this.sel = null;
       if (!myPlay) this.closeSpecial();
       const honest = new Set(v.honest || v.legal);
+      if (this.hover && !ids.includes(this.hover)) this.hover = null;
+      const focusId = this.sel || this.hover;
+      const focusIdx = focusId ? ids.indexOf(focusId) : -1;
       v.hand.forEach((c, i) => {
         let el = this.hand.get(c.id);
         if (!el) {
@@ -877,8 +909,8 @@
         el.classList.toggle('bluffy', legal && !honest.has(c.id));
         el.classList.toggle('illegal', myPlay && !legal);
         el.classList.toggle('sel', this.sel === c.id);
-        el.style.zIndex = 100 + i;
-        const to = handXY(i, ids.length, d, this.sel === c.id);
+        el.style.zIndex = (c.id === focusId ? 200 : 100) + i;
+        const to = handXY(i, ids.length, d, this.sel === c.id, focusIdx, focusId === this.hover && !this.sel);
         const cur = el._p || {};
         if (cur.x !== to.x || cur.y !== to.y || cur.rot !== to.rot || cur.s !== to.s) place(el, to);
       });
@@ -889,6 +921,81 @@
       for (const o of this.table.values()) { const [x, y] = slotXY(o.spot, d, v.n); place(o.el, { ...o.el._p, x, y }); }
       this.syncHand(v);
       this.updateChecks(v);
+    },
+
+    // Объявление раунда: на весь экран, с ударом, лучами и гонгом.
+    async announceRound(v) {
+      const n = v.roundIdx + 1, total = v.plan.length, k = v.plan[v.roundIdx];
+      const peak = Math.max(...v.plan);
+      const tag = n === total ? 'ФИНАЛЬНЫЙ РАУНД' : n === 1 ? 'ИГРА НАЧИНАЕТСЯ' : k === peak && v.plan[v.roundIdx - 1] !== peak ? 'ПИК ПАРТИИ' : '';
+      const a = $('#announce');
+      a.innerHTML = `<div class="an-back"></div><div class="an-box">
+        ${tag ? `<div class="an-tag">${tag}</div>` : ''}
+        <div class="an-title"><span>РАУНД</span> <b>${n}</b></div>
+        <div class="an-sub">${poCards(k)} · ${n} из ${total}</div>
+        <div class="an-line"></div></div>`;
+      a.className = 'on' + (n === total ? ' final' : '');
+      const cx = innerWidth / 2, cy = innerHeight * 0.45;
+      SFX.roundGong(n === total);
+      setTimeout(() => {
+        FX.ring(cx, cy, { r1: Math.max(innerWidth, innerHeight) * 0.6, color: '#f6d27a', width: 5, life: 0.8 });
+        FX.raysAt(cx, cy, { count: 16, len: Math.max(innerWidth, innerHeight) * 0.7, color: 'rgba(246,210,122,1)', life: 1.3, a: 0.3, spin: 0.6, force: true });
+        FX.burst(cx, cy, { n: 50, colors: FX.GOLD, speed: [200, 600], size: [1.5, 3], g: 120, life: [0.6, 1.2] });
+        if (n === total) { FX.ring(cx, cy, { r1: 260, color: '#ff4d5e', width: 4, delay: 0.1 }); FX.shake(8, 0.4); }
+        else FX.shake(4, 0.25);
+      }, 260);
+      await wait(1500);
+      a.classList.add('out');
+      await wait(380);
+      a.className = '';
+      a.innerHTML = '';
+    },
+
+    // Смена лидера: корона летит от прежнего лидера к новому, взрыв золота; прежний — «теряет корону».
+    async leaderChange(v, oldKey, fast) {
+      const now = leadersOf(v);
+      const old = oldKey ? oldKey.split(',').map(Number) : [];
+      if (fast || now.length !== 1 || old.includes(now[0])) return;
+      const winner = now[0];
+      const lost = old.filter(p => !now.includes(p));
+      const [wx, wy] = this.seatCenter(winner);
+      this.crownFlying = true;
+      const fly = document.createElement('div');
+      fly.className = 'crown-fly';
+      fly.innerHTML = crownSvg();
+      $('#app').appendChild(fly);
+      let from = [innerWidth / 2, -60];
+      if (lost.length) {
+        const [lx, ly] = this.seatCenter(lost[0]);
+        from = [lx, ly - 30];
+        lost.forEach(p => {
+          const av = p === v.you ? $('#me-panel .ava', this.el) : this.seatEls[p] && this.seatEls[p].querySelector('.ava');
+          if (av) { av.classList.remove('lost'); void av.offsetWidth; av.classList.add('lost'); }
+          const [x, y] = this.seatCenter(p);
+          FX.burst(x, y - 26, { n: 18, type: 'dust', colors: ['#8a8a92'], speed: [30, 100], g: 60, life: [0.8, 1.3], size: [14, 24], size2: 1.6 });
+          FX.burst(x, y - 26, { n: 10, type: 'shard', colors: ['#d4a541', '#8a6420'], speed: [80, 200], g: 420, life: [0.7, 1.1], size: [4, 7] });
+        });
+        SFX.leaderLose();
+      }
+      const a = fly.animate([
+        { transform: `translate(${from[0]}px, ${from[1]}px) translate(-50%,-50%) scale(1.4) rotate(0deg)`, opacity: lost.length ? 1 : 0 },
+        { transform: `translate(${(from[0] + wx) / 2}px, ${Math.min(from[1], wy) - 120}px) translate(-50%,-50%) scale(3.2) rotate(360deg)`, opacity: 1, offset: 0.55 },
+        { transform: `translate(${wx}px, ${wy - 34}px) translate(-50%,-50%) scale(1.1) rotate(720deg)`, opacity: 1 },
+      ], { duration: 1100, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+      await a.finished.catch(() => {});
+      fly.remove();
+      this.crownFlying = false;
+      this.updateSeats(v, null); this.updateMe(v, null);
+      FX.ring(wx, wy, { r1: 160, color: '#f6d27a', width: 6 });
+      FX.ring(wx, wy, { r1: 90, color: '#fff3c4', width: 3, delay: 0.1 });
+      FX.raysAt(wx, wy, { count: 14, len: 260, color: 'rgba(246,210,122,1)', life: 1.2, a: 0.45, spin: 1, force: true });
+      FX.burst(wx, wy, { n: 60, colors: FX.GOLD, speed: [160, 520], size: [1.5, 3], g: 160, life: [0.7, 1.3] });
+      FX.burst(wx, wy, { n: 12, type: 'glyph', glyphs: ['♛', '★'], colors: FX.GOLD, speed: [120, 300], g: 120, life: [1, 1.5], size: [16, 26] });
+      FX.shake(6, 0.35);
+      SFX.leaderWin();
+      vibrate(winner === v.you ? [40, 30, 80] : 20);
+      banner(winner === v.you ? 'ТЫ ЛИДЕР!' : 'НОВЫЙ ЛИДЕР', 'gold', false, v.names[winner]);
+      await wait(1300);
     },
 
     // Живой неон: спокойный фиолетовый, золотая дуга бежит к тому, чей ход.
@@ -1099,6 +1206,9 @@
         if (my > 0) SFX.win(); else if (my < 0) SFX.lose();
         await wait(900);
       }
+      const leadKey = leadersOf(v).join(',');
+      if (this.leadKey != null && leadKey !== this.leadKey) await this.leaderChange(v, this.leadKey, fast);
+      this.leadKey = leadKey;
       const order = v.names.map((_, p) => p).sort((a, b) => v.scores[b] - v.scores[a]);
       const anyBonus = v.bluff || bonus.some(b => b);
       showModal(`<h2 class="gold-text">Итоги раунда ${v.roundIdx + 1}</h2>
@@ -1115,6 +1225,9 @@
     },
 
     async showGameOver(v, fast) {
+      const leadKey = leadersOf(v).join(',');
+      if (this.leadKey != null && leadKey !== this.leadKey) await this.leaderChange(v, this.leadKey, fast);
+      this.leadKey = leadKey;
       if (!fast) await wait(700);
       const order = v.names.map((_, p) => p).sort((a, b) => v.scores[b] - v.scores[a]);
       const iWon = v.scores[v.you] === v.scores[order[0]];
@@ -1129,6 +1242,25 @@
       if (iWon) setTimeout(() => FX.confetti(), 900);
     },
   };
+
+  // ---------- лидер по очкам ----------
+  // Лидеры — те, у кого больше всех очков (если не у всех поровну).
+  function leadersOf(v) {
+    const max = Math.max(...v.scores), min = Math.min(...v.scores);
+    if (max === min) return [];
+    return v.scores.map((s, p) => (s === max ? p : -1)).filter(p => p >= 0);
+  }
+  // Значки на аватаре: корона и золотая рамка у лидера, фишка «▶» у того, кто ходит первым в раунде.
+  function markAvatar(ava, v, p) {
+    const lead = leadersOf(v).includes(p) && !Game.crownFlying;
+    ava.classList.toggle('lead', lead);
+    const crown = ava.querySelector('.crown');
+    if (lead && !crown) ava.insertAdjacentHTML('beforeend', crownSvg());
+    if (!lead && crown) crown.remove();
+    const chip = ava.querySelector('.first-chip');
+    if (p === v.leader && !chip) ava.insertAdjacentHTML('beforeend', '<span class="first-chip" title="Ходит первым в этом раунде">▶</span>');
+    if (p !== v.leader && chip) chip.remove();
+  }
 
   // ---------- мелочи ----------
   function initial(name) { return (String(name || '?').replace(/^Бот\s+/, '').trim()[0] || '?').toUpperCase(); }
@@ -1149,9 +1281,9 @@
   function popEl(el, cls = 'bump') { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
   function nope(el) { if (!el) return; el.classList.remove('nope'); void el.offsetWidth; el.classList.add('nope'); vibrate(15); }
   function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch {} }
-  function banner(text, cls, quick) {
+  function banner(text, cls, quick, sub) {
     const b = $('#banner');
-    b.innerHTML = `<div class="t ${cls}">${esc(text)}</div>`;
+    b.innerHTML = `<div class="t ${cls}">${esc(text)}</div>${sub ? `<div class="bsub">${esc(sub)}</div>` : ''}`;
     b.className = 'banner';
     void b.offsetWidth;
     b.classList.add('show'); if (quick) b.classList.add('quick');

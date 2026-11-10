@@ -575,6 +575,28 @@
         boom(t, 0.7, 0.3);
       },
       honest() { if (!ensure()) return; const t = now(); [783.99, 1046.5].forEach((f, i) => tone(t + i * 0.1, f, 0.5, 0.1, 'triangle', { wet: 0.4 })); },
+      // Объявление раунда: гонг с медью и гулом.
+      roundGong(final) {
+        if (!ensure()) return; const t = now();
+        noise(t, 0.12, 'bandpass', 1200, 0.8, 0.25, { to: 300, wet: 0.4 });
+        boom(t + 0.22, final ? 1.6 : 1.1, 0.6);
+        metal(t + 0.22, final ? 110 : 146.83, 2.6, 0.22, 0.7);
+        const chord = final ? [220, 261.63, 329.63, 440] : [196, 246.94, 293.66, 392];
+        chord.forEach((f, i) => tone(t + 0.26 + i * 0.03, f, 1.8, 0.06, 'sawtooth', { lp: 1600, attack: 0.08, wet: 0.6 }));
+      },
+      // Новый лидер: фанфары.
+      leaderWin() {
+        if (!ensure()) return; const t = now();
+        boom(t, 0.8, 0.5);
+        [392, 523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { tone(t + i * 0.09, f, 0.6 + i * 0.1, 0.1, 'sawtooth', { lp: 2400, wet: 0.5 }); tone(t + i * 0.09, f * 2, 0.4, 0.04, 'sine', { wet: 0.5 }); });
+        for (let i = 0; i < 8; i++) tone(t + 0.4 + i * 0.04, rnd(2000, 4000), 0.2, 0.04, 'sine', { wet: 0.5 });
+      },
+      // Потеря лидерства: нисходящий звук и треск.
+      leaderLose() {
+        if (!ensure()) return; const t = now();
+        [392, 349.23, 293.66].forEach((f, i) => tone(t + i * 0.14, f, 0.5, 0.08, 'triangle', { wet: 0.4 }));
+        noise(t, 0.25, 'highpass', 3000, 0.6, 0.12, { wet: 0.3 });
+      },
       msg() { if (!ensure()) return; const t = now(); tone(t, 880, 0.08, 0.06, 'sine'); tone(t + 0.07, 1320, 0.12, 0.05, 'sine', { wet: 0.2 }); },
       like() { if (!ensure()) return; const t = now(); for (let i = 0; i < 6; i++) tone(t + i * 0.06, 700 + i * 160, 0.12, 0.06, 'triangle', { wet: 0.3 }); },
       emote(id) {

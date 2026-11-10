@@ -573,3 +573,55 @@ input, select { font: inherit; }
   .dock-btn.ptt { width: 44px; padding: 0; justify-content: center; }
   .dock-btn.ptt span { display: none; }
 }
+
+/* ================= карты соперников за аватаром, круглые кресла, более круглый стол ================= */
+.seat .ava { z-index: 2; }
+.seat .plate { position: relative; z-index: 2; }
+.seat .xtra { position: relative; z-index: 2; }
+.seat .chair { z-index: 0; }
+.fan, .fan.r, .fan.l { left: 50%; right: auto; top: calc(var(--ava) * -.62); margin-left: calc(var(--cw) * -.2); width: calc(var(--cw) * .4); height: calc(var(--ch) * .4); z-index: 1; }
+.fan i { transform-origin: 50% 110%; }
+.chair { width: calc(var(--ava) * 2.25); height: calc(var(--ava) * 2.25); transform: translate(-50%, -50%) rotate(var(--chair-rot, 0deg)) translateY(-14%); }
+.table-wrap { width: min(70vw, 136vh) !important; height: min(70vh, 60vw) !important; top: 46% !important;
+  transform: translate(-50%, -50%) translate3d(calc(var(--px) * -8px), calc(var(--py) * -5px), 0) rotateX(calc(24deg + var(--py) * 3deg)) rotateY(calc(var(--px) * 4deg)) !important; }
+
+/* первый ход — фишка ▶ */
+.first-chip { position: absolute; left: -7px; bottom: -5px; width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; color: #241a06; background: var(--gold-grad); box-shadow: 0 0 0 2px #0b0910, 0 2px 6px rgba(0, 0, 0, .6); z-index: 3; font-family: var(--font-ui); }
+
+/* лидер по очкам — корона и живая золотая рамка */
+.crown { top: -17px; width: 30px; height: 21px; z-index: 3; filter: drop-shadow(0 0 6px rgba(246, 210, 122, .8)) drop-shadow(0 2px 3px #000); animation: crownBob 2.4s ease-in-out infinite; }
+@keyframes crownBob { 50% { transform: translateX(-50%) translateY(-2px) rotate(-4deg); } }
+.ava.lead { box-shadow: 0 0 0 2px #0b0910, 0 0 0 4px #f6d27a, 0 0 22px 4px rgba(246, 210, 122, .55); }
+.ava.lead::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 0deg, transparent, #fff3c4, #d4a541, transparent 40%, transparent 60%, #f6d27a, transparent);
+  mask: radial-gradient(circle, transparent 62%, #000 64%, #000 70%, transparent 72%); -webkit-mask: radial-gradient(circle, transparent 62%, #000 64%, #000 70%, transparent 72%);
+  animation: spin 3s linear infinite; }
+.ava.lost { animation: lostFlash 1.2s ease-out; }
+@keyframes lostFlash { 0% { filter: none } 20% { filter: grayscale(1) brightness(.5); transform: scale(.88) } 60% { filter: grayscale(.8) brightness(.7); transform: scale(.95) } 100% { filter: none; transform: none } }
+.crown-fly { position: fixed; left: 0; top: 0; z-index: 78; width: 34px; height: 24px; pointer-events: none; filter: drop-shadow(0 0 14px rgba(246, 210, 122, .9)); }
+.crown-fly .crown { position: static; transform: none; width: 100%; height: 100%; animation: none; }
+
+/* баннер с подписью */
+.bsub { margin-top: 4px; font-family: var(--font-title); font-weight: 700; font-size: clamp(22px, 7vh, 40px); color: var(--ink); text-shadow: 0 2px 12px #000; animation: bannerIn 1.8s cubic-bezier(.2, .9, .3, 1) both; animation-delay: .08s; }
+
+/* объявление раунда на весь экран */
+#announce { position: fixed; inset: 0; z-index: 72; display: none; place-items: center; pointer-events: none; }
+#announce.on { display: grid; }
+#announce .an-back { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(40, 28, 10, .55), rgba(0, 0, 0, .82) 70%); animation: fadeIn .3s ease both; }
+#announce .an-box { position: relative; text-align: center; }
+#announce .an-tag { font-size: clamp(12px, 3.4vh, 18px); letter-spacing: .5em; padding-left: .5em; font-weight: 800; color: #ffd0d6; text-transform: uppercase; animation: anTag .6s .1s cubic-bezier(.2, .9, .3, 1) both; }
+#announce .an-title { font-family: var(--font-title); font-weight: 700; line-height: .9; white-space: nowrap; animation: anSlam .55s cubic-bezier(.2, 1.4, .4, 1) both;
+  background: var(--gold-grad); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 24px rgba(246, 210, 122, .6)); }
+#announce .an-title span { font-size: clamp(34px, 12vh, 80px); letter-spacing: .18em; }
+#announce .an-title b { font-size: clamp(64px, 26vh, 170px); }
+#announce .an-sub { font-size: clamp(14px, 4.4vh, 24px); font-weight: 800; color: var(--ink); letter-spacing: .1em; animation: anTag .6s .25s cubic-bezier(.2, .9, .3, 1) both; }
+#announce .an-line { height: 2px; margin: 10px auto 0; width: 60vw; background: linear-gradient(90deg, transparent, #f6d27a, transparent); animation: anLine .7s .2s cubic-bezier(.2, .9, .3, 1) both; }
+#announce.final .an-title { filter: drop-shadow(0 0 28px rgba(255, 77, 94, .7)); }
+#announce.out { animation: anOut .38s ease-in forwards; }
+@keyframes anSlam { 0% { transform: scale(3.2); opacity: 0; letter-spacing: .4em } 60% { opacity: 1 } 100% { transform: scale(1); opacity: 1 } }
+@keyframes anTag { from { opacity: 0; transform: translateY(14px) } }
+@keyframes anLine { from { width: 0 } }
+@keyframes anOut { to { opacity: 0; transform: scale(1.08); filter: blur(4px) } }
+/* корона лидера — на углу аватара, чтобы не уходила за край экрана */
+.seat .ava .crown, .me-panel .ava .crown { top: -12px; left: 74%; transform: translateX(-50%) rotate(18deg); animation: crownBob2 2.4s ease-in-out infinite; }
+@keyframes crownBob2 { 50% { transform: translateX(-50%) translateY(-2px) rotate(12deg); } }
