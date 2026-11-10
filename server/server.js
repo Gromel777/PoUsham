@@ -1,4 +1,4 @@
-// Сервер «По ушам»: комнаты по коду, ходы игроков, боты на пустых местах.
+// Сервер «В Точку»: комнаты по коду, ходы игроков, боты на пустых местах.
 // Без внешних зависимостей: HTTP для действий, Server-Sent Events для обновлений стола.
 'use strict';
 const http = require('http');
@@ -9,9 +9,11 @@ const { Engine, Bots } = require('../engine/engine.js');
 
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, '..');
-const BOT_NAMES = ['Бот Аня', 'Бот Борис', 'Бот Вика'];
+const BOT_NAMES = ['Бот Аня', 'Бот Борис', 'Бот Вика', 'Бот Гоша', 'Бот Даша'];
 const BOT_DELAY = 1000;
 const TRICK_PAUSE = 2100; // время на эффекты последней карты и показ, кто взял
+const TRICK_PAUSE_BLUFF = 5000; // в режиме обмана — время, чтобы успеть проверить
+const DEFAULT_TURN_TIME = 30;
 const ROOM_TTL = 3 * 60 * 60 * 1000; // пустая комната живёт 3 часа
 
 const STATIC = {
@@ -65,11 +67,15 @@ function seatOf(r, token) { return token ? r.seats.findIndex(s => s.token === to
 function requireSeat(r, token) { const s = seatOf(r, token); if (s < 0) fail('Вы не за этим столом'); return s; }
 function isOnline(r, seat) { for (const st of r.streams) if (st.seat === seat) return true; return false; }
 
-function createRoom({ name, players, rounds }) {
+function createRoom({ name, players, rounds, turnTime, bluff }) {
+  const size = clampInt(players, Engine.MIN_PLAYERS, Engine.MAX_PLAYERS, 4);
   const r = {
     code: newCode(),
-    size: clampInt(players, 2, 4, 4),
-    rounds: clampInt(rounds, 1, 40, 17),
+    size,
+    rounds: clampInt(rounds, 1, 60, 2 * Engine.maxCards(size) - 1),
+    turnTime: clampInt(turnTime, 0, 600, DEFAULT_TURN_TIME), // секунд на ход, 0 — без таймера
+    bluff: !!bluff,
+    turnTimer: null, turnKey: null, deadline: 0, checkTimers: [],
     seats: [],
     game: null,
     streams: new Set(),
@@ -160,16 +166,17 @@ function checkVote(r) {
 function startGame(r) {
   let b = 0;
   while (r.seats.length < r.size) r.seats.push({ name: BOT_NAMES[b++], token: null, bot: true });
-  r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name) });
+  r.seenPlays = new Set();
+  r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff });
 }
 
 // Что видит конкретный игрок: только свои карты, у остальных — количество.
 function viewFor(r, seat) {
   const hostSeat = r.hostSeat;
-  const base = { code: r.code, you: seat, isHost: seat === hostSeat, size: r.size, rounds: r.rounds };
+  const base = { code: r.code, you: seat, isHost: seat === hostSeat, size: r.size, rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff };
   if (!r.game) {
     return {
-      ...base, stage: 'lobby', plan: Engine.roundPlan(r.rounds),
+      ...base, stage: 'lobby', plan: Engine.roundPlan(r.rounds, Engine.maxCards(r.size)),
       seats: r.seats.map((s, i) => ({ name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === hostSeat })),
     };
   }
@@ -183,9 +190,13 @@ function viewFor(r, seat) {
     bids: g.bids, took: g.took, scores: g.scores,
     handCounts: g.hands.map(h => h.length),
     hand: g.hands[seat],
-    trick: g.trick, lastTrick: g.lastTrick, trickWinner: g.trickWinner,
-    history: g.history, log: g.log.slice(-40),
+    trick: publicTrick(g.trick), lastTrick: publicTrick(g.lastTrick), trickWinner: g.trickWinner,
+    history: g.history, log: g.log.slice(-60),
     legal: myTurn && g.phase === 'play' ? Engine.legalPlays(g, seat).map(c => c.id) : [],
+    honest: myTurn && g.phase === 'play' ? Engine.strictLegal(g, seat).map(c => c.id) : [],
+    fix: g.fix ? { p: g.fix.p } : null,
+    lastCheck: g.lastCheck,
+    timer: r.deadline && r.turnKey ? { left: Math.max(0, r.deadline - Date.now()), total: r.turnTime * 1000 } : null,
     specialModes: myTurn ? Engine.specialModes(g, seat) : [],
     paused: !!r.vote,
     vote: r.vote ? {
@@ -194,6 +205,12 @@ function viewFor(r, seat) {
       voters: voters(r),
     } : null,
   };
+}
+
+// Карты на столе без скрытого признака «честно/нечестно».
+function publicTrick(t) {
+  if (!t) return null;
+  return { ...t, plays: t.plays.map(pl => ({ p: pl.p, card: pl.card, mode: pl.mode, absolute: pl.absolute, checked: pl.checked })) };
 }
 
 function broadcast(r) {
@@ -208,7 +225,7 @@ function schedule(r) {
   const g = r.game;
   if (!g || r.vote) return; // голосование — пауза
   if (g.phase === 'trickDone') {
-    r.timer = setTimeout(() => { Engine.nextTrick(g); update(r); }, TRICK_PAUSE);
+    r.timer = setTimeout(() => { Engine.nextTrick(g); update(r); }, g.bluff ? TRICK_PAUSE_BLUFF : TRICK_PAUSE);
   } else if ((g.phase === 'bid' || g.phase === 'play') && r.seats[g.turn].bot) {
     r.timer = setTimeout(() => {
       const p = g.turn;
@@ -220,7 +237,68 @@ function schedule(r) {
     }, BOT_DELAY);
   }
 }
-function update(r) { r.touched = Date.now(); broadcast(r); schedule(r); }
+// Таймер хода для живых игроков: по истечении — автоматическая заявка или случайная честная карта.
+function turnKeyOf(r) {
+  const g = r.game;
+  if (!g || r.vote || !r.turnTime || r.seats[g.turn].bot) return null;
+  if (g.phase !== 'bid' && g.phase !== 'play') return null;
+  return `${g.roundIdx}:${g.phase}:${g.turn}:${g.trick ? g.trick.plays.length : 0}:${g.fix ? 'f' : ''}:${g.took.join('')}`;
+}
+function scheduleTurnTimer(r) {
+  const key = turnKeyOf(r);
+  if (key === r.turnKey) return;
+  clearTimeout(r.turnTimer);
+  r.turnKey = key;
+  r.deadline = key ? Date.now() + r.turnTime * 1000 : 0;
+  if (!key) return;
+  r.turnTimer = setTimeout(() => {
+    const g = r.game;
+    if (!g || turnKeyOf(r) !== key) return;
+    const p = g.turn;
+    try {
+      if (g.phase === 'bid') {
+        Engine.placeBid(g, p, Bots.bid(g, p));
+      } else {
+        const honest = Engine.strictLegal(g, p);
+        const c = honest[Math.floor(Math.random() * honest.length)];
+        Engine.playCard(g, p, c.id, 'normal');
+      }
+      gameLog(r, `${r.seats[p].name}: время вышло — ход сделан автоматически`);
+    } catch (e) { console.error('timeout move error', e); }
+    update(r);
+  }, r.turnTime * 1000 + 300);
+}
+
+// Боты в режиме обмана иногда проверяют подозрительные карты.
+function scheduleBotChecks(r) {
+  const g = r.game;
+  if (!g || !g.bluff || g.fix || r.vote || !g.trick) return;
+  if (g.phase !== 'play' && g.phase !== 'trickDone') return;
+  r.seenPlays = r.seenPlays || new Set();
+  for (const pl of g.trick.plays) {
+    const key = `${g.roundIdx}:${pl.card.id}`;
+    if (r.seenPlays.has(key)) continue;
+    r.seenPlays.add(key);
+    for (let b = 0; b < g.n; b++) {
+      if (!r.seats[b].bot || b === pl.p) continue;
+      if (Math.random() >= Bots.suspicion(g, b, pl)) continue;
+      const t = setTimeout(() => {
+        if (r.game !== g || r.vote || Engine.canCheck(g, b, pl.card.id)) return;
+        try { Engine.check(g, b, pl.card.id); update(r); } catch {}
+      }, 900 + Math.random() * 1600);
+      r.checkTimers.push(t);
+      break;
+    }
+  }
+}
+
+function update(r) {
+  r.touched = Date.now();
+  scheduleTurnTimer(r);
+  broadcast(r);
+  schedule(r);
+  scheduleBotChecks(r);
+}
 
 function doAction(r, seat, body) {
   const g = r.game;
@@ -234,7 +312,8 @@ function doAction(r, seat, body) {
   if (type === 'restart') {
     if (seat !== r.hostSeat) fail('Новую партию начинает хост');
     if (!g || g.phase !== 'gameOver') fail('Партия ещё не закончена');
-    r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name) });
+    r.seenPlays = new Set();
+    r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff });
     return;
   }
   if (type === 'kick') {
@@ -268,6 +347,7 @@ function doAction(r, seat, body) {
     if (type === 'bid') Engine.placeBid(g, seat, Number(body.value));
     else if (type === 'play') Engine.playCard(g, seat, String(body.cardId), body.mode || 'normal');
     else if (type === 'nextRound') Engine.nextRound(g);
+    else if (type === 'check') Engine.check(g, seat, String(body.cardId));
     else fail('Неизвестное действие');
   } catch (e) {
     if (e instanceof GameError) throw e;
@@ -347,5 +427,5 @@ setInterval(() => {
   for (const [code, r] of rooms) if (r.streams.size === 0 && now - r.touched > ROOM_TTL) { clearTimeout(r.timer); rooms.delete(code); }
 }, 10 * 60 * 1000);
 
-server.listen(PORT, () => console.log(`По ушам: сервер запущен на порту ${PORT}`));
+server.listen(PORT, () => console.log(`В Точку: сервер запущен на порту ${PORT}`));
 module.exports = { server, rooms };
