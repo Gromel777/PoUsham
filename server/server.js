@@ -23,10 +23,23 @@ const STATIC = {
   '/style.css': 'client/style.css',
   '/qrcode.js': 'client/qrcode.js',
   '/cards.js': 'client/cards.js',
+  '/cards-light.js': 'client/cards-light.js',
+  '/brand.js': 'client/brand.js',
+  '/voice.js': 'client/voice.js',
+  '/sw.js': 'client/sw.js',
+  '/manifest.webmanifest': 'client/manifest.webmanifest',
+  '/icons/icon-180.png': 'client/icons/icon-180.png',
+  '/icons/icon-192.png': 'client/icons/icon-192.png',
+  '/icons/icon-512.png': 'client/icons/icon-512.png',
+  '/icons/maskable-512.png': 'client/icons/maskable-512.png',
   '/fx.js': 'client/fx.js',
   '/engine.js': 'engine/engine.js',
 };
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webmanifest': 'application/manifest+json; charset=utf-8' };
+const EMOTES = ['😂', '😱', '🖕', '😎', '😡', '🤔', '👏', '💀'];
+const PHRASES = ['Блефуешь!', 'Проверю!', 'Ну ты даёшь', 'Везёт же', 'Давай быстрее', 'Красиво!', 'Не верю', 'GG'];
+const LIKE_COOLDOWN = 60 * 1000;
+const CHAT_GAP = 1200, EMOTE_GAP = 1500;
 
 /** @type {Map<string, any>} */
 const rooms = new Map();
@@ -39,6 +52,7 @@ function newCode() {
   return c;
 }
 const newToken = () => crypto.randomBytes(16).toString('hex');
+const newPid = () => crypto.randomBytes(6).toString('hex');
 const clampInt = (v, lo, hi, def) => { const n = parseInt(v, 10); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def; };
 const cleanName = s => String(s || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 20) || 'Игрок';
 
@@ -76,6 +90,7 @@ function createRoom({ name, players, rounds, turnTime, bluff }) {
     turnTime: clampInt(turnTime, 0, 600, DEFAULT_TURN_TIME), // секунд на ход, 0 — без таймера
     bluff: !!bluff,
     turnTimer: null, turnKey: null, deadline: 0, checkTimers: [],
+    chat: [], social: [], socialSeq: 0,
     seats: [],
     game: null,
     streams: new Set(),
@@ -83,7 +98,7 @@ function createRoom({ name, players, rounds, turnTime, bluff }) {
     touched: Date.now(),
   };
   const token = newToken();
-  r.seats.push({ name: cleanName(name), token, bot: false });
+  r.seats.push({ name: cleanName(name), token, bot: false, pid: newPid() });
   r.hostSeat = 0;
   rooms.set(r.code, r);
   return { r, token };
@@ -108,7 +123,7 @@ function joinRoom(r, name) {
   }
   if (r.seats.length >= r.size) fail('Свободных мест нет');
   const token = newToken();
-  r.seats.push({ name: nm, token, bot: false });
+  r.seats.push({ name: nm, token, bot: false, pid: newPid() });
   return { token, rejoined: false };
 }
 
@@ -165,7 +180,7 @@ function checkVote(r) {
 
 function startGame(r) {
   let b = 0;
-  while (r.seats.length < r.size) r.seats.push({ name: BOT_NAMES[b++], token: null, bot: true });
+  while (r.seats.length < r.size) r.seats.push({ name: BOT_NAMES[b++], token: null, bot: true, pid: newPid() });
   r.seenPlays = new Set();
   r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff });
 }
@@ -173,11 +188,16 @@ function startGame(r) {
 // Что видит конкретный игрок: только свои карты, у остальных — количество.
 function viewFor(r, seat) {
   const hostSeat = r.hostSeat;
-  const base = { code: r.code, you: seat, isHost: seat === hostSeat, size: r.size, rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff };
+  const me = r.seats[seat];
+  const base = {
+    code: r.code, you: seat, youPid: me.pid, isHost: seat === hostSeat, size: r.size, rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff,
+    chat: r.chat.slice(-40), social: r.social.slice(-16), likeReadyIn: Math.max(0, (me.likeAt || 0) + LIKE_COOLDOWN - Date.now()),
+    emotes: EMOTES, phrases: PHRASES,
+  };
   if (!r.game) {
     return {
       ...base, stage: 'lobby', plan: Engine.roundPlan(r.rounds, Engine.maxCards(r.size)),
-      seats: r.seats.map((s, i) => ({ name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === hostSeat })),
+      seats: r.seats.map((s, i) => ({ name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === hostSeat, pid: s.pid })),
     };
   }
   const g = r.game;
@@ -185,7 +205,7 @@ function viewFor(r, seat) {
   return {
     ...base, stage: 'game',
     names: g.names,
-    seats: r.seats.map((s, i) => ({ name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === hostSeat })),
+    seats: r.seats.map((s, i) => ({ name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === hostSeat, pid: s.pid })),
     n: g.n, plan: g.plan, roundIdx: g.roundIdx, phase: g.phase, turn: g.turn, leader: g.leader,
     bids: g.bids, took: g.took, scores: g.scores,
     handCounts: g.hands.map(h => h.length),
@@ -300,6 +320,51 @@ function update(r) {
   scheduleBotChecks(r);
 }
 
+// Общение: чат, эмоции, лайки. Не влияет на игру и не сбрасывает таймеры ботов.
+function socialAction(r, seat, body) {
+  const s = r.seats[seat];
+  const now = Date.now();
+  const push = ev => { ev.seq = ++r.socialSeq; ev.at = now; ev.from = seat; r.social.push(ev); if (r.social.length > 40) r.social.shift(); };
+  if (body.type === 'chat') {
+    const text = String(body.text || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200);
+    if (!text) fail('Пустое сообщение');
+    if (now - (s.chatAt || 0) < CHAT_GAP) fail('Не так быстро');
+    s.chatAt = now;
+    const msg = { seq: ++r.socialSeq, at: now, from: seat, name: s.name, text };
+    r.chat.push(msg); if (r.chat.length > 60) r.chat.shift();
+    r.social.push({ ...msg, kind: 'chat' }); if (r.social.length > 40) r.social.shift();
+    return;
+  }
+  if (body.type === 'emote') {
+    const id = String(body.id || '');
+    const phrase = PHRASES.includes(id);
+    if (!EMOTES.includes(id) && !phrase) fail('Нет такой эмоции');
+    if (now - (s.emoteAt || 0) < EMOTE_GAP) fail('Не так быстро');
+    s.emoteAt = now;
+    push({ kind: phrase ? 'phrase' : 'emote', id });
+    return;
+  }
+  if (body.type === 'like') {
+    const to = Number(body.to);
+    if (!r.seats[to] || to === seat) fail('Некого лайкнуть');
+    const left = (s.likeAt || 0) + LIKE_COOLDOWN - now;
+    if (left > 0) fail(`Лайк можно через ${Math.ceil(left / 1000)} с`);
+    s.likeAt = now;
+    push({ kind: 'like', to });
+    return;
+  }
+  fail('Неизвестное действие');
+}
+
+// Голос: пересылка сигналов WebRTC (предложение/ответ/кандидаты) нужному игроку по его pid.
+function relayRtc(r, seat, body) {
+  const to = r.seats.findIndex(s => s.pid === body.to);
+  if (to < 0) fail('Игрок не найден');
+  const msg = JSON.stringify({ from: r.seats[seat].pid, data: body.data });
+  if (msg.length > 20000) fail('Слишком большое сообщение');
+  for (const st of r.streams) if (st.seat === to) { try { st.res.write(`event: rtc\ndata: ${msg}\n\n`); } catch {} }
+}
+
 function doAction(r, seat, body) {
   const g = r.game;
   const type = body.type;
@@ -391,6 +456,8 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/action') {
     const r = getRoom(body.room);
     const seat = requireSeat(r, body.token);
+    if (body.type === 'rtc') { relayRtc(r, seat, body); return sendJson(res, 200, { ok: true }); }
+    if (['chat', 'emote', 'like'].includes(body.type)) { socialAction(r, seat, body); r.touched = Date.now(); broadcast(r); return sendJson(res, 200, { ok: true }); }
     doAction(r, seat, body);
     update(r);
     return sendJson(res, 200, { ok: true });
@@ -403,7 +470,8 @@ function serveStatic(req, res, url) {
   if (!rel) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Не найдено'); }
   fs.readFile(path.join(ROOT, rel), (err, data) => {
     if (err) { res.writeHead(500); return res.end('Ошибка сервера'); }
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(rel)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    const ext = path.extname(rel);
+    res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': ext === '.png' ? 'public, max-age=86400' : 'no-cache' });
     res.end(data);
   });
 }

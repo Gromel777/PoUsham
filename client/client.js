@@ -17,7 +17,8 @@
   // ---------- настройки и сессия ----------
   function load(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } }
   function save(key, patch) { try { localStorage.setItem(key, JSON.stringify({ ...load(key), ...patch })); } catch {} }
-  const prefs = { sound: true, fx: 'high', log: true, ...load(PREF_KEY) };
+  const prefs = { sound: true, fx: 'high', log: true, cards: 'dark', mutes: {}, ...load(PREF_KEY) };
+  const savePrefs = () => save(PREF_KEY, prefs);
   function applyPrefs() { SFX.setMuted(!prefs.sound); FX.setQuality(prefs.fx === 'high' ? 1 : 0.4); }
 
   // ---------- сеть ----------
@@ -34,6 +35,7 @@
     if (S.es) S.es.close();
     const es = new EventSource(`/api/events?room=${encodeURIComponent(room)}&token=${encodeURIComponent(token)}`);
     es.onmessage = e => { S.connecting = false; const v = JSON.parse(e.data); v._at = Date.now(); enqueue(v); };
+    es.addEventListener('rtc', e => { try { const m = JSON.parse(e.data); Voice.onSignal(m.from, m.data); } catch {} });
     es.addEventListener('kicked', e => {
       let reason = 'Вас убрали со стола.';
       try { reason = JSON.parse(e.data).reason || reason; } catch {}
@@ -59,6 +61,10 @@
     history.replaceState(null, '', '/');
     closeModal();
     if (Game.el) Game.destroy();
+    Voice.stopAll();
+    Social.lastSeq = null; Social.toggleChat(false); Social.closeAvatarMenu();
+    $('#emo-pick').classList.remove('on');
+    $('#dock').classList.remove('on');
     S.err = msg || '';
     showHome();
   }
@@ -85,6 +91,7 @@
   }
   async function apply(v, fast) {
     S.view = v;
+    try { Social.update(v); } catch (e) { console.error(e); }
     if (v.stage === 'lobby') { if (Game.el) Game.destroy(); showLobby(v); return; }
     if (!Game.el) showGameScreen();
     await Game.update(v, fast);
@@ -104,7 +111,7 @@
     S.screen = name;
     return el;
   }
-  const logoHtml = (size = '') => `<h1 class="logo gold-text" ${size}>В Точку<svg class="logo-mark" viewBox="0 0 40 40"><circle cx="20" cy="20" r="17" fill="none" stroke="#e8c46a" stroke-width="2.5"/><circle cx="20" cy="20" r="10" fill="none" stroke="#e8c46a" stroke-width="2"/><circle cx="20" cy="20" r="4.5" fill="#ff4d5e"/></svg></h1>`;
+  const logoHtml = (size = '') => `<div class="logo-row"><span class="logo-hood">${Brand.hood({ id: 'logo' })}</span><h1 class="logo gold-text" ${size}>В Точку</h1></div>`;
 
   function showConnecting() {
     setScreen('connecting', `<div class="connecting"><div style="text-align:center"><div class="loader"></div>${logoHtml('style="font-size:34px"')}
@@ -135,7 +142,7 @@
             <div class="row"><span class="opt-label">Игроков</span><div class="seg" id="seg-players">${[2, 3, 4, 5, 6].map(n => `<button data-act="players" data-n="${n}">${n}</button>`).join('')}</div></div>
             <div class="row"><span class="opt-label">Раундов</span><div class="stepper"><button data-act="rounds" data-d="-1">−</button><b id="rounds-val"></b><button data-act="rounds" data-d="1">+</button></div>
               <span class="opt-label" style="min-width:0;margin-left:6px">Таймер</span>
-              <div class="stepper"><button data-act="timer" data-d="-5">−</button><input class="num-input" id="timer-val" inputmode="numeric" maxlength="3"><button data-act="timer" data-d="5">+</button></div><span class="hint">сек</span></div>
+              <div class="stepper"><button data-act="timer" data-d="-5">−</button><input class="num-input" id="timer-val" inputmode="numeric" maxlength="3"><button data-act="timer" data-d="5">+</button></div></div>
             <div class="row"><label class="switch" data-act="bluff" id="bluff-sw"><i></i><span>Режим обмана</span></label><span class="hint" id="timer-hint"></span></div>
             <button class="btn-gold" data-act="create">Создать стол</button>
           </div>
@@ -145,7 +152,8 @@
             <span class="hint">Вылетели из игры? Введите код и то же имя — вернётесь на своё место.</span>
           </div>
           <div class="err" id="err">${esc(S.err)}</div>
-          <div class="home-foot"><button class="btn-ghost" data-act="rules">Правила</button><button class="btn-ghost" data-act="fullscreen">Во весь экран</button></div>
+          <div class="home-foot"><div class="seg seg-sm" id="seg-theme"><button data-act="theme" data-t="dark">Чёрные</button><button data-act="theme" data-t="light">Светлые</button></div>
+            <button class="btn-ghost" data-act="rules">Правила</button><button class="btn-ghost" data-act="install">Установить</button></div>
         </div>
       </div>`);
     if (!document.getElementById('fanKF')) {
@@ -166,7 +174,9 @@
     const rv = $('#rounds-val', el); if (rv) rv.textContent = S.rounds;
     const tv = $('#timer-val', el); if (tv && document.activeElement !== tv) tv.value = S.turnTime;
     const th = $('#timer-hint', el); if (th) th.textContent = S.turnTime ? `до ${MAX_CARDS(S.players)} карт · ${S.turnTime} с на ход` : `до ${MAX_CARDS(S.players)} карт · без таймера`;
+    const tv2 = $('#timer-val', el); if (tv2) tv2.title = 'секунд на ход (0 — без таймера)';
     const sw = $('#bluff-sw', el); if (sw) sw.classList.toggle('on', S.bluff);
+    el.querySelectorAll('#seg-theme button').forEach(b => b.classList.toggle('on', b.dataset.t === prefs.cards));
   }
 
   function joinLink(code) { return `${location.origin}/?room=${code}`; }
@@ -194,7 +204,7 @@
     $('#lobby-seats', el).innerHTML = Array.from({ length: v.size }, (_, i) => {
       const s = v.seats[i];
       if (!s) return `<div class="lseat empty"><div class="ava bot">?</div><div><div class="nm">Свободно</div><div class="sub">займёт бот</div></div></div>`;
-      return `<div class="lseat ${i === v.you ? 'me' : ''}">
+      return `<div class="lseat ${i === v.you ? 'me' : ''}" data-i="${i}">
         <div class="ava ${s.online ? '' : 'off'}">${esc(initial(s.name))}${s.host ? crownSvg() : ''}</div>
         <div style="min-width:0"><div class="nm">${esc(s.name)}${i === v.you ? ' <span class="hint">(вы)</span>' : ''}</div><div class="sub">${s.host ? 'хост' : s.online ? 'в сети' : 'не в сети'}</div></div>
         ${v.isHost && !s.host ? `<button class="btn-ghost kick" data-act="kick" data-seat="${i}">Убрать</button>` : ''}
@@ -209,7 +219,7 @@
   function showGameScreen() {
     const el = setScreen('game', `
       <div class="game">
-        <div class="scene"><div class="table-wrap">${tableSvg()}<div class="table-light"></div></div></div>
+        <div class="scene"><div class="table-wrap" id="table-wrap"></div></div>
         <div class="seats" id="seats"></div>
         <div class="cards" id="cards"></div>
         <div class="checks" id="checks"></div>
@@ -222,7 +232,6 @@
           <div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> козырь</span><span id="hud-mode"></span></div></div>
         </div>
         <div class="me-panel" id="me-panel"></div>
-        <div class="status" id="status"></div>
         <div class="action" id="action"></div>
         <div id="vote"></div>
       </div>`);
@@ -230,14 +239,15 @@
   }
 
   // ---------- стол по образцу: кожаный борт с заклёпками, лакированная дорожка, подстаканники, сукно ----------
-  function tableSvg() {
+  function tableSvg(angles) {
     const cx = 500, cy = 300;
     const ell = (rx, ry, a) => [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry];
     let studs = '';
     for (let i = 0; i < 132; i++) { const [x, y] = ell(487, 289, (i / 132) * Math.PI * 2); studs += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" fill="url(#chrome)"/>`; }
+    // Подстаканники — по одному перед каждым игроком.
     let cups = '';
-    for (let i = 0; i < 8; i++) {
-      const [x, y] = ell(408, 226, (i / 8) * Math.PI * 2 + Math.PI / 8);
+    for (const deg of angles) {
+      const [x, y] = ell(408, 226, deg * Math.PI / 180);
       cups += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><ellipse rx="27" ry="19" fill="url(#chrome)" stroke="#0a0a0c" stroke-width="1.5"/><ellipse rx="20" ry="13" fill="url(#cupIn)"/><ellipse rx="20" ry="13" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1"/></g>`;
     }
     return `<svg class="tbl" viewBox="0 0 1000 600" preserveAspectRatio="none">
@@ -249,14 +259,21 @@
         <radialGradient id="cupIn" cx=".5" cy=".35" r=".7"><stop offset="0" stop-color="#3b3f45"/><stop offset="1" stop-color="#08090b"/></radialGradient>
         <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9a6f22"/><stop offset=".4" stop-color="#f4dc94"/><stop offset="1" stop-color="#a87d2a"/></linearGradient>
         <filter id="noise" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0.5  0 0 0 0 0.55  0 0 0 0 0.7  0 0 0 .22 0"/><feComposite in2="SourceGraphic" operator="in"/></filter>
+        <filter id="neonBlur" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="9"/></filter>
         <clipPath id="feltClip"><ellipse cx="${cx}" cy="${cy}" rx="372" ry="198"/></clipPath>
       </defs>
       <ellipse cx="${cx}" cy="${cy + 26}" rx="478" ry="282" fill="#000" opacity=".55"/>
+      <g class="neon">
+        <ellipse class="neon-glow" cx="${cx}" cy="${cy}" rx="500" ry="300" fill="none" stroke-width="22" filter="url(#neonBlur)"/>
+        <ellipse class="neon-line" cx="${cx}" cy="${cy}" rx="500" ry="300" fill="none" stroke-width="3"/>
+      </g>
       <ellipse cx="${cx}" cy="${cy}" rx="496" ry="296" fill="url(#leather)"/>
       <ellipse cx="${cx}" cy="${cy - 6}" rx="478" ry="276" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="10"/>
       <path d="M ${cx - 440} ${cy - 120} Q ${cx} ${cy - 330} ${cx + 440} ${cy - 120}" fill="none" stroke="#fff" stroke-opacity=".10" stroke-width="16" stroke-linecap="round"/>
       <ellipse cx="${cx}" cy="${cy}" rx="466" ry="268" fill="none" stroke="#000" stroke-opacity=".55" stroke-width="1.5" stroke-dasharray="5 4"/>
       ${studs}
+      <path class="neon-arc" d="" fill="none" stroke-width="7" stroke-linecap="round" filter="url(#neonBlur)"/>
+      <path class="neon-arc-core" d="" fill="none" stroke-width="3" stroke-linecap="round"/>
       <ellipse cx="${cx}" cy="${cy}" rx="444" ry="252" fill="url(#track)" stroke="#000" stroke-width="3"/>
       <ellipse cx="${cx}" cy="${cy - 4}" rx="428" ry="240" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="3"/>
       ${cups}
@@ -265,12 +282,16 @@
       <rect x="128" y="102" width="744" height="396" fill="#fff" filter="url(#noise)" clip-path="url(#feltClip)" opacity=".7"/>
       <ellipse cx="${cx}" cy="${cy}" rx="372" ry="198" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="18"/>
       <ellipse cx="${cx}" cy="${cy}" rx="330" ry="170" fill="none" stroke="url(#gold)" stroke-opacity=".35" stroke-width="1.5"/>
-      <g opacity=".22" transform="translate(${cx} ${cy}) scale(1 .62)">
-        <circle r="92" fill="none" stroke="#e8c46a" stroke-width="5"/><circle r="64" fill="none" stroke="#e8c46a" stroke-width="4"/><circle r="36" fill="none" stroke="#e8c46a" stroke-width="3"/>
-        <circle r="14" fill="#ff4d5e"/><path d="M0 -125 V-100 M0 100 V125 M-125 0 H-100 M100 0 H125" stroke="#e8c46a" stroke-width="5"/>
-      </g>
-      <text x="${cx}" y="${cy + 112}" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="30" letter-spacing="12" fill="#e8c46a" opacity=".22">В ТОЧКУ</text>
-    </svg>`;
+      <g opacity=".2" transform="translate(${cx - 70} ${cy - 112}) scale(1.4 1)">${Brand.hood({ id: 'tbl' }).replace(/<svg[^>]*>|<\/svg>/g, '')}</g>
+      <text x="${cx}" y="${cy + 128}" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="30" letter-spacing="12" fill="#e8c46a" opacity=".22">В ТОЧКУ</text>
+    </svg><div class="table-light"></div>`;
+  }
+  // Дуга неона по краю стола: центр — угол игрока (в градусах), ширина — 50°.
+  function neonArcPath(deg, span = 50) {
+    const cx = 500, cy = 300, rx = 492, ry = 292;
+    const a0 = (deg - span / 2) * Math.PI / 180, a1 = (deg + span / 2) * Math.PI / 180;
+    const p = a => `${(cx + Math.cos(a) * rx).toFixed(1)} ${(cy + Math.sin(a) * ry).toFixed(1)}`;
+    return `M ${p(a0)} A ${rx} ${ry} 0 0 1 ${p(a1)}`;
   }
 
   // Кресло: высокая кожаная спинка с каретной стяжкой и золотыми заклёпками.
@@ -329,7 +350,8 @@
       <button class="btn-ghost" data-act="sound">Звук: ${prefs.sound ? 'включён' : 'выключен'}</button>
       <button class="btn-ghost" data-act="quality">Эффекты: ${prefs.fx === 'high' ? 'максимум' : 'экономно'}</button>
       <button class="btn-ghost" data-act="log">Журнал: ${prefs.log ? 'показан' : 'скрыт'}</button>
-      <button class="btn-ghost" data-act="fullscreen">Во весь экран</button>
+      <div class="seg" id="seg-theme"><button data-act="theme" data-t="dark" class="${prefs.cards === 'dark' ? 'on' : ''}">Чёрные карты</button><button data-act="theme" data-t="light" class="${prefs.cards === 'light' ? 'on' : ''}">Светлые карты</button></div>
+      <button class="btn-ghost" data-act="install">Установить как приложение</button>
       <button class="btn-ghost" data-act="rules">Правила</button>
       <button class="btn-ghost btn-crimson" data-act="leave-ask">Выйти из-за стола</button>
     </div><div class="actions"><button class="btn-gold" data-act="close">Назад</button></div>`);
@@ -394,7 +416,7 @@
     const W = innerWidth, H = innerHeight;
     const ch = Math.round(Math.max(76, Math.min(H * 0.3, W * 0.145, 210)));
     const cw = Math.round(ch * 0.714);
-    return { W, H, ch, cw, cx: W / 2, cy: H * 0.51 };
+    return { W, H, ch, cw, cx: W / 2, cy: H * 0.45 };
   }
   const rel = (v, p) => (p - v.you + v.n) % v.n;
   const SPOTS = { 2: ['me', 'top'], 3: ['me', 'tl', 'tr'], 4: ['me', 'left', 'top', 'right'], 5: ['me', 'left', 'tl', 'tr', 'right'], 6: ['me', 'left', 'tl', 'top', 'tr', 'right'] };
@@ -403,19 +425,21 @@
   const CHAIR_ROT = { left: -90, right: 90, top: 0, tl: -28, tr: 28 };
   function slotXY(spot, d, n) {
     const a = SPOT_ANGLE[spot] * Math.PI / 180;
-    const rx = d.cw * (n >= 5 ? 1.6 : 1.15), ry = d.ch * (n >= 5 ? 0.3 : 0.33);
+    const rx = d.cw * (n >= 5 ? 1.6 : 1.15), ry = d.ch * (n >= 5 ? 0.28 : 0.3);
     return [d.cx + Math.cos(a) * rx, d.cy + Math.sin(a) * ry];
   }
   function handXY(i, m, d, sel) {
     const c = (m - 1) / 2, off = i - c;
-    const avail = Math.min(d.W * 0.5, d.cw * 0.8 * m + d.cw);
+    const avail = Math.min(d.W * 0.6, d.cw * 0.8 * m + d.cw);
     const step = m > 1 ? Math.min(d.cw * 0.74, (avail - d.cw) / (m - 1)) : 0;
     const rot = off * Math.min(5, 34 / Math.max(m, 1));
-    let y = d.H - d.ch * 0.36 + off * off * Math.min(3.2, 20 / Math.max(m, 1));
+    // Рука по центру, над плашкой игрока (плашка внизу по центру).
+    let y = d.H - ME_PANEL_H - d.ch * 0.3 + off * off * Math.min(3.2, 20 / Math.max(m, 1));
     if (sel) y -= d.ch * 0.3;
-    return { x: d.W * 0.58 + off * step, y, rot, s: sel ? 1.08 : 1 };
+    return { x: d.cx + off * step, y, rot, s: sel ? 1.08 : 1 };
   }
   let TABLE_SCALE = 0.78;
+  const ME_PANEL_H = 68;
 
   // Тема и уровень эффекта по масти и старшинству.
   const SUIT_KIND = { '♠': 'spade', '♣': 'club', '♦': 'diamond', '♥': 'heart' };
@@ -515,6 +539,7 @@
       this.updateAction(v);
       this.updateVote(v);
       this.maybeBoom(v, prev, fast);
+      this.updateNeon(v);
       if (v.phase === 'roundDone' && this.resultsShownFor !== v.roundIdx) { this.resultsShownFor = v.roundIdx; await this.showResults(v, fast); }
       if (v.phase === 'gameOver' && !this.overShown) { this.overShown = true; await this.showGameOver(v, fast); }
       this.prev = v;
@@ -538,6 +563,9 @@
     },
 
     buildSeats(v) {
+      const tw = $('#table-wrap', this.el);
+      tw.innerHTML = tableSvg(Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
+      this.neonDeg = null;
       this.seatsLayer.innerHTML = '';
       this.seatsLayer.className = `seats n${v.n}`;
       this.seatEls = [];
@@ -601,9 +629,9 @@
       box.classList.toggle('turn', playing && v.turn === me);
       if (!box.firstChild) {
         box.innerHTML = `<div class="ava"><div class="ring"></div><span class="ini"></span></div>
-          <div><div class="nm"></div><div class="sc">0</div>
+          <div class="me-id"><div class="nm"></div><div class="sc">0</div></div>
           <div class="me-counters"><div><b class="b1">—</b><span>заявка</span></div><div><b class="b2">0</b><span>взял</span></div></div>
-          <div class="pips"></div></div>`;
+          <div class="me-right"><div class="status" id="status"></div><div class="pips"></div></div>`;
       }
       box.querySelector('.ini').textContent = initial(v.names[me]);
       box.querySelector('.nm').textContent = v.names[me];
@@ -704,7 +732,7 @@
         FX.stamp(p.x, p.y, lc.caught);
       }
       if (lc.caught) {
-        SFX.caught(); banner('ВРЁШЬ!', 'crimson'); vibrate([50, 40, 80]);
+        SFX.caught(); banner('ВРЁШЬ!', 'crimson'); vibrate([50, 40, 80]); this.neonFlash('neon-red', 1400);
         floater(tx, ty - 30, -lc.delta); floater(bx, by - 30, lc.delta);
         if (o) {
           this.table.delete(lc.cardId);
@@ -819,7 +847,8 @@
     impact(el, x, y, info, mode) {
       FX.cardImpact(x, y, info);
       SFX.impact(info);
-      if (info.kind === 'legend') { banner(mode === 'command' ? 'СТАРШИЕ НА СТОЛ!' : 'САМАЯ СТАРШАЯ!', 'violet'); vibrate([40, 30, 120]); }
+      if (info.kind === 'legend') { banner(mode === 'command' ? 'СТАРШИЕ НА СТОЛ!' : 'САМАЯ СТАРШАЯ!', 'violet'); vibrate([40, 30, 120]); this.neonFlash('neon-legend', 2200); }
+      else if (info.kind === 'heart' && info.level >= 6) this.neonFlash('neon-red', 900);
       else if (info.kind === 'heart' && info.level >= 8) { banner('ТУЗ КОЗЫРЕЙ!', 'crimson'); vibrate(70); }
       else if (info.level >= 8) vibrate(30);
       const p = el._p;
@@ -860,6 +889,48 @@
       for (const o of this.table.values()) { const [x, y] = slotXY(o.spot, d, v.n); place(o.el, { ...o.el._p, x, y }); }
       this.syncHand(v);
       this.updateChecks(v);
+    },
+
+    // Живой неон: спокойный фиолетовый, золотая дуга бежит к тому, чей ход.
+    updateNeon(v) {
+      const tw = $('#table-wrap', this.el);
+      if (!tw) return;
+      const arc = tw.querySelector('.neon-arc'), core = tw.querySelector('.neon-arc-core');
+      const active = (v.phase === 'bid' || v.phase === 'play') && !v.paused;
+      const target = active ? SPOT_ANGLE[spotOf(v, v.turn)] : v.phase === 'trickDone' && v.trickWinner != null ? SPOT_ANGLE[spotOf(v, v.trickWinner)] : null;
+      tw.classList.toggle('neon-mine', active && v.turn === v.you);
+      tw.classList.toggle('neon-bluff', !!v.fix);
+      if (target == null) { arc.setAttribute('d', ''); core.setAttribute('d', ''); this.neonDeg = null; return; }
+      let from = this.neonDeg == null ? target : this.neonDeg;
+      let to = target;
+      while (to - from > 180) to -= 360;
+      while (from - to > 180) to += 360;
+      cancelAnimationFrame(this.neonRaf);
+      const t0 = performance.now(), dur = 520;
+      const step = now => {
+        const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+        const deg = from + (to - from) * e;
+        const d = neonArcPath(deg, 46 + Math.sin(k * Math.PI) * 30);
+        arc.setAttribute('d', d); core.setAttribute('d', d);
+        this.neonDeg = deg;
+        if (k < 1) this.neonRaf = requestAnimationFrame(step);
+      };
+      this.neonRaf = requestAnimationFrame(step);
+    },
+    neonFlash(cls, ms) {
+      const tw = $('#table-wrap', this.el);
+      if (!tw) return;
+      tw.classList.remove(cls); void tw.offsetWidth; tw.classList.add(cls);
+      clearTimeout(this['nf' + cls]); this['nf' + cls] = setTimeout(() => tw.classList.remove(cls), ms);
+    },
+    // Перерисовать карты после смены темы колоды.
+    refreshFaces() {
+      if (!this.el) return;
+      this.el.querySelectorAll('.card').forEach(el => {
+        if (el.dataset.id) el.querySelector('.front').style.backgroundImage = Cards.url(Cards.parse(el.dataset.id));
+        const b = el.querySelector('.back'); if (b) b.style.backgroundImage = Cards.backUrl();
+      });
+      this.seatEls.forEach((s, p) => { if (s) { const f = s.querySelector('.fan'); const n = +f.dataset.n; f.dataset.n = -1; this.renderFan(p, n); } });
     },
 
     // «БУМ — твой ход»: баннер, карты подпрыгивают, звук.
@@ -962,6 +1033,7 @@
 
     updateStatus(v) {
       const st = $('#status', this.el);
+      if (!st) return;
       const nm = p => esc(v.names[p]);
       let t = '', mine = false, warn = false;
       if (v.paused) t = 'Пауза — голосование';
@@ -979,12 +1051,12 @@
           t += need > 0 ? ` · добрать ${need}` : need === 0 ? ' · заявка выполнена' : ' · перебор';
           if (this.sel) t = (v.honest && v.honest.length && !v.honest.includes(this.sel)) ? 'Это обман! Нажмите ещё раз, чтобы рискнуть' : 'Нажмите карту ещё раз, чтобы сыграть';
         } else t = `Ходит ${nm(v.turn)}…`;
-      } else if (v.phase === 'trickDone') t = v.bluff ? `Взятку берёт ${nm(v.trickWinner)} · жми «?», чтобы проверить` : `Взятку берёт ${nm(v.trickWinner)}`;
+      } else if (v.phase === 'trickDone') t = v.bluff ? `Берёт ${nm(v.trickWinner)} · «?» — проверить` : `Взятку берёт ${nm(v.trickWinner)}`;
       else if (v.phase === 'roundDone') t = 'Раунд окончен';
       const showTimer = v.timer && mine && (v.phase === 'bid' || v.phase === 'play') && !v.paused;
       st.innerHTML = t + (showTimer ? '<span class="tm"></span>' : '');
       st.classList.toggle('mine', mine && !warn); st.classList.toggle('warn', warn);
-      st.classList.toggle('up', !!this.sel);
+      if (!st.innerHTML) st.innerHTML = '<span class="hint">Ждём…</span>';
       this.tickTimer();
     },
 
@@ -1103,6 +1175,270 @@
     requestAnimationFrame(step);
   }
 
+  // ---------- общение: чат, эмоции, лайки, голос ----------
+  const EMO_FX = {
+    '😂': { cls: 'emo-laugh', fx: (x, y) => FX.burst(x, y + 10, { n: 14, type: 'glow', colors: ['#8fd3ff', '#cdeeff'], speed: [60, 160], angle: Math.PI / 2, spread: 2.2, g: 300, life: [0.6, 1], size: [6, 10] }) },
+    '😱': { cls: 'emo-shock', fx: (x, y) => { FX.ring(x, y, { r1: 90, color: '#8fb0ff', width: 3 }); FX.ring(x, y, { r1: 60, color: '#cfe0ff', width: 2, delay: 0.12 }); } },
+    '🖕': { cls: 'emo-rude', fx: (x, y) => { FX.burst(x, y, { n: 24, colors: ['#ff4d5e', '#ff9a4d', '#ffd0a0'], speed: [140, 320], size: [1.5, 3] }); FX.shake(4, 0.25); } },
+    '😎': { cls: 'emo-cool', fx: (x, y) => { FX.raysAt(x, y, { count: 8, len: 110, color: 'rgba(246,210,122,1)', life: 0.8, a: 0.4, force: true }); FX.burst(x, y, { n: 12, type: 'glyph', glyphs: ['✦'], colors: FX.GOLD, speed: [40, 120], g: 0, life: [0.6, 1], size: [10, 16] }); } },
+    '😡': { cls: 'emo-angry', fx: (x, y) => FX.burst(x, y - 20, { n: 16, type: 'dust', colors: ['#ff6a5a'], speed: [30, 90], angle: -Math.PI / 2, spread: 1.4, g: -80, life: [0.7, 1.2], size: [16, 28], size2: 1.8 }) },
+    '🤔': { cls: 'emo-think', fx: (x, y) => FX.burst(x + 24, y - 24, { n: 3, type: 'glyph', glyphs: ['•'], colors: ['#f3ecdc'], speed: [20, 40], angle: -Math.PI / 4, spread: 0.6, g: -30, life: [1, 1.4], size: [14, 20] }) },
+    '👏': { cls: 'emo-clap', fx: (x, y) => FX.burst(x, y, { n: 30, type: 'conf', colors: ['#f6d27a', '#ff4d5e', '#9ae8ff', '#46e08a', '#c9a2ff'], speed: [120, 300], g: 260, life: [0.9, 1.4], size: [6, 10] }) },
+    '💀': { cls: 'emo-dead', fx: (x, y) => FX.burst(x, y, { n: 18, type: 'dust', colors: ['#9a9aa2'], speed: [30, 110], g: 40, life: [0.8, 1.3], size: [14, 24], size2: 1.6 }) },
+  };
+  const mutesOf = name => prefs.mutes[name] || {};
+  const isMuted = (name, what) => !!mutesOf(name)[what];
+
+  const Social = {
+    lastSeq: null, unread: 0, open: false, likeReadyAt: 0,
+
+    avatarCenter(seat) {
+      if (Game.el) return Game.seatCenter(seat);
+      const a = document.querySelector(`.lseat[data-i="${seat}"] .ava`);
+      if (a) { const r = a.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }
+      return [innerWidth / 2, innerHeight / 2];
+    },
+    avatarEl(seat) {
+      const v = S.view;
+      if (Game.el) return seat === v.you ? $('#me-panel .ava', Game.el) : Game.seatEls[seat] && Game.seatEls[seat].querySelector('.ava');
+      return document.querySelector(`.lseat[data-i="${seat}"] .ava`);
+    },
+
+    update(v) {
+      $('#dock').classList.add('on');
+      this.likeReadyAt = Date.now() + (v.likeReadyIn || 0);
+      const maxSeq = Math.max(0, ...v.social.map(e => e.seq), ...v.chat.map(m => m.seq));
+      const first = this.lastSeq == null;
+      if (!first) {
+        for (const e of v.social) if (e.seq > this.lastSeq) this.play(v, e);
+      }
+      this.lastSeq = maxSeq;
+      this.renderChat(v);
+      this.syncVoice(v);
+      this.decorateAvatars(v);
+    },
+
+    play(v, e) {
+      const name = v.seats[e.from] && v.seats[e.from].name;
+      if (e.kind === 'chat') {
+        if (isMuted(name, 'chat')) return;
+        this.bubble(e.from, e.text, 'chat');
+        if (!this.open && e.from !== v.you) { this.unread++; this.badge(); }
+        if (e.from !== v.you) SFX.msg();
+      } else if (e.kind === 'phrase') {
+        if (isMuted(name, 'emote')) return;
+        this.bubble(e.from, e.id, 'phrase');
+        SFX.msg();
+      } else if (e.kind === 'emote') {
+        if (isMuted(name, 'emote')) return;
+        this.emote(e.from, e.id);
+      } else if (e.kind === 'like') {
+        if (isMuted(name, 'emote')) return;
+        this.like(e.from, e.to);
+      }
+    },
+
+    bubble(seat, text, kind) {
+      const [x, y] = this.avatarCenter(seat);
+      const b = document.createElement('div');
+      b.className = `bubble ${kind}`;
+      b.textContent = text;
+      const up = y > innerHeight * 0.5;
+      b.style.left = Math.min(innerWidth - 120, Math.max(120, x)) + 'px';
+      b.style.top = (up ? y - 44 : y + 44) + 'px';
+      b.classList.add(up ? 'up' : 'down');
+      $('#app').appendChild(b);
+      setTimeout(() => b.classList.add('out'), kind === 'chat' ? 4200 : 2600);
+      setTimeout(() => b.remove(), kind === 'chat' ? 4700 : 3100);
+    },
+
+    emote(seat, id) {
+      const [x, y] = this.avatarCenter(seat);
+      const conf = EMO_FX[id] || {};
+      const el = document.createElement('div');
+      el.className = `emo ${conf.cls || ''}`;
+      el.textContent = id;
+      el.style.left = x + 'px'; el.style.top = (y - 10) + 'px';
+      $('#app').appendChild(el);
+      setTimeout(() => conf.fx && conf.fx(x, y - 30), 180);
+      SFX.emote(id);
+      setTimeout(() => el.remove(), 2400);
+    },
+
+    like(from, to) {
+      const [x1, y1] = this.avatarCenter(from), [x2, y2] = this.avatarCenter(to);
+      const n = 9;
+      for (let i = 0; i < n; i++) {
+        const el = document.createElement('div');
+        el.className = 'like-fly';
+        el.textContent = i % 3 === 2 ? '❤️' : '👍';
+        $('#app').appendChild(el);
+        const mx = (x1 + x2) / 2 + rnd(-90, 90), my = Math.min(y1, y2) - rnd(40, 120);
+        const a = el.animate([
+          { transform: `translate(${x1}px, ${y1}px) translate(-50%,-50%) scale(.4)`, opacity: 0 },
+          { transform: `translate(${mx}px, ${my}px) translate(-50%,-50%) scale(1.3) rotate(${rnd(-30, 30)}deg)`, opacity: 1, offset: 0.5 },
+          { transform: `translate(${x2}px, ${y2}px) translate(-50%,-50%) scale(.8)`, opacity: 1 },
+        ], { duration: 750 + i * 45, delay: i * 55, easing: 'cubic-bezier(.3,.6,.4,1)', fill: 'forwards' });
+        a.finished.then(() => el.remove()).catch(() => el.remove());
+      }
+      SFX.like();
+      setTimeout(() => {
+        FX.burst(x2, y2, { n: 22, type: 'glyph', glyphs: ['❤', '✦'], colors: ['#ff4d5e', '#f6d27a', '#ffb3bd'], speed: [80, 220], g: 60, life: [0.7, 1.1], size: [10, 18] });
+        FX.ring(x2, y2, { r1: 70, color: '#ff8a96', width: 3 });
+        const av = this.avatarEl(to);
+        if (av) av.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 450, easing: 'cubic-bezier(.3,1.6,.5,1)' });
+        SFX.chip();
+      }, 800 + n * 55);
+    },
+
+    renderChat(v) {
+      const list = $('#chat-list');
+      if (!list) return;
+      const msgs = v.chat.filter(m => !isMuted(m.name, 'chat'));
+      const key = msgs.map(m => m.seq).join(',');
+      if (list.dataset.key === key) return;
+      list.dataset.key = key;
+      list.innerHTML = msgs.map(m => `<div class="${m.from === v.you ? 'mine' : ''}"><b>${esc(m.name)}:</b> ${esc(m.text)}</div>`).join('') || '<div class="hint">Сообщений пока нет</div>';
+      list.scrollTop = list.scrollHeight;
+    },
+    badge() { const b = $('#chat-badge'); b.textContent = this.unread; b.classList.toggle('on', this.unread > 0); },
+    toggleChat(force) {
+      this.open = force == null ? !this.open : force;
+      $('#chat-panel').classList.toggle('on', this.open);
+      if (this.open) { this.unread = 0; this.badge(); const l = $('#chat-list'); l.scrollTop = l.scrollHeight; }
+    },
+
+    syncVoice(v) {
+      if (!Voice.supported) return;
+      const others = v.seats.filter(s => s && !s.bot && s.online && s.pid !== v.youPid);
+      for (const s of v.seats) if (s && !s.bot) Voice.setMuted(s.pid, isMuted(s.name, 'voice'));
+      Voice.sync(v.youPid, others.map(s => s.pid));
+    },
+    // Индикатор речи: зелёное свечение аватара, держится 600 мс после последнего звука.
+    talkAt: {},
+    onLevel(pid, level) {
+      const v = S.view;
+      if (!v) return;
+      const now = performance.now();
+      if (level > 0.035) this.talkAt[pid] = now;
+      const on = now - (this.talkAt[pid] || 0) < 600;
+      const seat = v.seats.findIndex(s => s && s.pid === pid);
+      const av = seat >= 0 && this.avatarEl(seat);
+      if (av && av.classList.contains('talking') !== on) av.classList.toggle('talking', on);
+    },
+
+    // Значки блокировок на аватарах.
+    decorateAvatars(v) {
+      v.seats.forEach((s, i) => {
+        if (!s || i === v.you) return;
+        const av = this.avatarEl(i);
+        if (!av) return;
+        const m = mutesOf(s.name);
+        const icons = (m.voice ? '🔇' : '') + (m.chat ? '💬' : '') + (m.emote ? '🚫' : '');
+        let tag = av.querySelector('.mute-tag');
+        if (!icons) { if (tag) tag.remove(); return; }
+        if (!tag) { tag = document.createElement('span'); tag.className = 'mute-tag'; av.appendChild(tag); }
+        tag.textContent = icons;
+      });
+    },
+
+    // Меню аватара соперника: лайк и три блокировки.
+    openAvatarMenu(seat) {
+      const v = S.view;
+      if (!v || seat === v.you || !v.seats[seat]) return;
+      const s = v.seats[seat];
+      const m = mutesOf(s.name);
+      const [x, y] = this.avatarCenter(seat);
+      const left = Math.ceil(Math.max(0, this.likeReadyAt - Date.now()) / 1000);
+      const pop = $('#ava-menu');
+      pop.innerHTML = `<div class="am-title">${esc(s.name)}${s.bot ? ' <span class="hint">бот</span>' : ''}</div>
+        <button class="btn-gold am-like" data-act="like" data-seat="${seat}" ${left ? 'disabled' : ''}>👍 Лайк${left ? ` · ${left} с` : ''}</button>
+        <div class="am-row">
+          <button class="am-tg ${m.voice ? 'on' : ''}" data-act="mute" data-what="voice" data-seat="${seat}" ${s.bot ? 'disabled' : ''}><span>🎙</span>${m.voice ? 'Голос выкл' : 'Голос'}</button>
+          <button class="am-tg ${m.chat ? 'on' : ''}" data-act="mute" data-what="chat" data-seat="${seat}"><span>💬</span>${m.chat ? 'Чат выкл' : 'Чат'}</button>
+          <button class="am-tg ${m.emote ? 'on' : ''}" data-act="mute" data-what="emote" data-seat="${seat}"><span>😀</span>${m.emote ? 'Эмоции выкл' : 'Эмоции'}</button>
+        </div>`;
+      pop.style.left = Math.min(innerWidth - 150, Math.max(150, x)) + 'px';
+      pop.style.top = (y > innerHeight / 2 ? y - 70 : y + 70) + 'px';
+      pop.classList.toggle('above', y > innerHeight / 2);
+      pop.classList.add('on');
+      pop.dataset.seat = seat;
+      clearInterval(this.amT);
+      if (left) this.amT = setInterval(() => { if (!pop.classList.contains('on')) return clearInterval(this.amT); this.openAvatarMenu(seat); }, 1000);
+    },
+    closeAvatarMenu() { $('#ava-menu').classList.remove('on'); clearInterval(this.amT); },
+
+    openEmotes() {
+      const v = S.view;
+      const pick = $('#emo-pick');
+      if (pick.classList.contains('on')) { pick.classList.remove('on'); return; }
+      const emotes = v.emotes || [];
+      pick.innerHTML = `<div class="wheel">${emotes.map((e, i) => {
+        const a = (i / emotes.length) * Math.PI * 2 - Math.PI / 2;
+        return `<button class="wheel-item" style="--x:${(Math.cos(a) * 74).toFixed(1)}px;--y:${(Math.sin(a) * 74).toFixed(1)}px;animation-delay:${i * 25}ms" data-act="emote" data-id="${e}">${e}</button>`;
+      }).join('')}<div class="wheel-hub">😀</div></div>
+        <div class="phrases">${(v.phrases || []).map(p => `<button class="phrase" data-act="emote" data-id="${esc(p)}">${esc(p)}</button>`).join('')}</div>`;
+      pick.classList.add('on');
+    },
+  };
+
+  function rtcSend(to, data) {
+    if (!S.room) return;
+    fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: S.room, token: S.token, type: 'rtc', to, data }) }).catch(() => {});
+  }
+  async function social(body) {
+    try { await api('/api/action', { room: S.room, token: S.token, ...body }); }
+    catch (e) { toast(e.message); }
+  }
+
+  function buildDock() {
+    const dock = document.createElement('div');
+    dock.id = 'dock';
+    dock.innerHTML = `
+      <div class="chat-panel glass" id="chat-panel">
+        <div class="chat-head"><span>Чат стола</span><button data-act="chat-close">✕</button></div>
+        <div class="chat-list" id="chat-list"></div>
+        <form class="chat-form" id="chat-form"><input id="chat-input" maxlength="200" placeholder="Сообщение…" autocomplete="off"><button class="btn-gold" type="submit">➤</button></form>
+      </div>
+      <div class="dock-btns">
+        <button class="dock-btn" data-act="chat" title="Чат">💬<i id="chat-badge"></i></button>
+        <button class="dock-btn" data-act="emotes" title="Эмоции">😀</button>
+        <button class="dock-btn ptt" id="ptt" title="Нажми и говори">🎙<span>говорить</span></button>
+      </div>
+      <div class="emo-pick glass" id="emo-pick"></div>`;
+    $('#app').appendChild(dock);
+    const menu = document.createElement('div');
+    menu.id = 'ava-menu'; menu.className = 'ava-menu glass';
+    $('#app').appendChild(menu);
+    $('#chat-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const inp = $('#chat-input');
+      const text = inp.value.trim();
+      if (!text) return;
+      inp.value = '';
+      social({ type: 'chat', text });
+    });
+    // «Нажми и говори»: держите кнопку — вас слышат; отпустили — микрофон выключен.
+    const ptt = $('#ptt');
+    const down = async e => {
+      e.preventDefault();
+      ptt.setPointerCapture && ptt.setPointerCapture(e.pointerId);
+      if (!Voice.supported) { toast('Этот браузер не поддерживает голосовой чат'); return; }
+      ptt.classList.add('active');
+      const r = await Voice.startTalk();
+      if (r === 'denied') { ptt.classList.remove('active'); toast('Нет доступа к микрофону — разрешите его в настройках браузера'); }
+      else if (!ptt.classList.contains('active')) Voice.stopTalk();
+      else SFX.click();
+    };
+    const up = () => { if (!ptt.classList.contains('active')) return; ptt.classList.remove('active'); Voice.stopTalk(); };
+    ptt.addEventListener('pointerdown', down);
+    ptt.addEventListener('pointerup', up);
+    ptt.addEventListener('pointercancel', up);
+    ptt.addEventListener('lostpointercapture', up);
+    ptt.addEventListener('contextmenu', e => e.preventDefault());
+    Voice.init({ send: rtcSend, onLevel: (pid, l) => Social.onLevel(pid, l) });
+  }
+
   // ---------- действия по кнопкам ----------
   let armedCheck = null, armedT = 0;
   const actions = {
@@ -1149,6 +1485,23 @@
       act({ type: 'check', cardId: b.dataset.card });
     },
     nextRound: () => { closeModal(); act({ type: 'nextRound' }); },
+    chat: () => { $('#emo-pick').classList.remove('on'); Social.toggleChat(); if (Social.open) setTimeout(() => $('#chat-input').focus(), 50); },
+    'chat-close': () => Social.toggleChat(false),
+    emotes: () => { Social.toggleChat(false); Social.openEmotes(); },
+    emote: b => { $('#emo-pick').classList.remove('on'); social({ type: 'emote', id: b.dataset.id }); },
+    like: b => { Social.closeAvatarMenu(); social({ type: 'like', to: +b.dataset.seat }); },
+    mute: b => {
+      const v = S.view, s = v && v.seats[+b.dataset.seat];
+      if (!s) return;
+      const m = { ...mutesOf(s.name) };
+      m[b.dataset.what] = !m[b.dataset.what];
+      prefs.mutes[s.name] = m; savePrefs();
+      toast(`${s.name}: ${{ voice: 'голос', chat: 'чат', emote: 'эмоции и лайки' }[b.dataset.what]} ${m[b.dataset.what] ? 'заблокированы' : 'снова видны'}`);
+      Social.syncVoice(v); Social.renderChat(v); Social.decorateAvatars(v);
+      Social.openAvatarMenu(+b.dataset.seat);
+    },
+    theme: b => { prefs.cards = b.dataset.t; savePrefs(); Cards.setTheme(prefs.cards); syncHome(); if (S.screen === 'home') { showHomeFanRefresh(); } Game.refreshFaces(); if ($('#overlay').classList.contains('on') && $('#overlay .menu-list')) showMenu(); },
+    install: () => installApp(),
     voteKick: b => act({ type: 'voteKick', seat: +b.dataset.seat }),
     vote: b => act({ type: 'vote', value: b.dataset.yes === '1' }),
     scores: () => showScores(),
@@ -1168,7 +1521,16 @@
     leave: () => leave(),
   };
   document.addEventListener('click', e => {
-    SFX.unlock(); Parallax.enableGyro();
+    SFX.unlock(); Parallax.enableGyro(); Voice.unlock();
+    if (!e.target.closest('#ava-menu') && !e.target.closest('.seat .ava, .lseat .ava')) Social.closeAvatarMenu();
+    if (!e.target.closest('#emo-pick') && !e.target.closest('[data-act="emotes"]')) $('#emo-pick').classList.remove('on');
+    const av = e.target.closest('.seat .ava, .lseat .ava');
+    if (av && S.view) {
+      let seat = -1;
+      if (av.closest('.lseat')) seat = +av.closest('.lseat').dataset.i;
+      else seat = Game.seatEls.indexOf(av.closest('.seat'));
+      if (seat >= 0) { Social.openAvatarMenu(seat); return; }
+    }
     const b = e.target.closest('[data-act]');
     if (!b) { if (e.target.id === 'overlay' && !['results', 'over'].includes($('#overlay').dataset.kind)) closeModal(); return; }
     const fn = actions[b.dataset.act];
@@ -1185,7 +1547,30 @@
       `<i class="mote" style="left:${rnd(0, 100)}%;top:${rnd(30, 100)}%;animation-duration:${rnd(7, 15)}s;animation-delay:${rnd(-15, 0)}s;transform:scale(${rnd(0.5, 1.2)})"></i>`).join('');
   }
 
+  // ---------- установка как приложение (PWA) ----------
+  let installEvt = null;
+  addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
+  async function installApp() {
+    if (installEvt) { installEvt.prompt(); try { await installEvt.userChoice; } catch {} installEvt = null; return; }
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const standalone = matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone;
+    showModal(`<h2 class="gold-text">Установить «В Точку»</h2>
+      ${standalone ? '<p>Игра уже установлена и открыта как приложение.</p>' : ios
+        ? '<p>На iPhone: нажмите <b>«Поделиться»</b> (квадрат со стрелкой) внизу Safari → <b>«На экран „Домой“»</b> → «Добавить».</p><p class="hint">После этого игра запускается во весь экран, как приложение.</p>'
+        : '<p>Откройте меню браузера (⋮) → <b>«Установить приложение»</b> или <b>«Добавить на главный экран»</b>.</p><p class="hint">После этого игра запускается во весь экран, как приложение.</p>'}
+      <div class="actions"><button class="btn-gold" data-act="close">Понятно</button></div>`);
+  }
+  function showHomeFanRefresh() {
+    document.querySelectorAll('.home-fan .card').forEach((el, i) => {
+      const id = ['Т♠', 'К♥', '7♠', 'Д♦', 'Т♥'][i];
+      el.querySelector('.front').style.backgroundImage = Cards.url(Cards.parse(id));
+    });
+  }
+
   function init() {
+    Cards.setTheme(prefs.cards);
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+    buildDock();
     applyPrefs();
     FX.init($('#fx'), $('#shake'));
     motes();
@@ -1194,6 +1579,6 @@
     if (sess.room && sess.token && (!roomParam || roomParam === sess.room)) connect(sess.room, sess.token);
     else showHome();
   }
-  window.VT = { S, Game, tierOf, enqueue };
+  window.VT = { S, Game, Social, tierOf, enqueue };
   init();
 })();

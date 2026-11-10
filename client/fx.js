@@ -575,6 +575,22 @@
         boom(t, 0.7, 0.3);
       },
       honest() { if (!ensure()) return; const t = now(); [783.99, 1046.5].forEach((f, i) => tone(t + i * 0.1, f, 0.5, 0.1, 'triangle', { wet: 0.4 })); },
+      msg() { if (!ensure()) return; const t = now(); tone(t, 880, 0.08, 0.06, 'sine'); tone(t + 0.07, 1320, 0.12, 0.05, 'sine', { wet: 0.2 }); },
+      like() { if (!ensure()) return; const t = now(); for (let i = 0; i < 6; i++) tone(t + i * 0.06, 700 + i * 160, 0.12, 0.06, 'triangle', { wet: 0.3 }); },
+      emote(id) {
+        if (!ensure()) return; const t = now();
+        const kinds = {
+          '😂': () => { for (let i = 0; i < 5; i++) tone(t + i * 0.09, 520 + (i % 2) * 140, 0.08, 0.08, 'triangle'); },
+          '😱': () => { tone(t, 900, 0.5, 0.08, 'sine', { to: 1500 }); noise(t, 0.4, 'bandpass', 1500, 3, 0.08, { to: 3000 }); },
+          '🖕': () => { tone(t, 160, 0.3, 0.25, 'sawtooth', { lp: 700, to: 90 }); noise(t, 0.15, 'lowpass', 600, 0.7, 0.3); },
+          '😎': () => { [659.25, 830.61, 987.77].forEach((f, i) => tone(t + i * 0.07, f, 0.4, 0.07, 'triangle', { wet: 0.4 })); },
+          '😡': () => { noise(t, 0.6, 'bandpass', 900, 1.2, 0.18, { to: 3000, attack: 0.1 }); tone(t, 110, 0.4, 0.15, 'sawtooth', { lp: 500 }); },
+          '🤔': () => { [440, 494, 440].forEach((f, i) => tone(t + i * 0.18, f, 0.12, 0.06, 'sine')); },
+          '👏': () => { for (let i = 0; i < 6; i++) noise(t + i * 0.07 + rnd(0, 0.02), 0.04, 'bandpass', 2000, 1.5, 0.3); },
+          '💀': () => { tone(t, 300, 0.6, 0.1, 'triangle', { to: 80 }); noise(t + 0.05, 0.3, 'highpass', 2500, 0.6, 0.12); },
+        };
+        (kinds[id] || kinds['😎'])();
+      },
       win() { if (!ensure()) return; const t = now(); [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(t + i * 0.12, f, 0.7, 0.14, 'triangle', { wet: 0.4 })); },
       lose() { if (!ensure()) return; const t = now(); [392, 349.23].forEach((f, i) => tone(t + i * 0.15, f, 0.5, 0.1, 'triangle', { wet: 0.3 })); },
     };

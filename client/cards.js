@@ -160,10 +160,9 @@
       <rect x="2" y="2" width="246" height="346" rx="16" fill="#08080a" stroke="url(#gold)" stroke-width="3"/>
       <rect x="13" y="13" width="224" height="324" rx="10" fill="url(#lace)" stroke="url(#goldLine)" stroke-width="1.5"/>
       <rect x="20" y="20" width="210" height="310" rx="7" fill="none" stroke="#3a3a44" stroke-width="1"/>
-      <circle cx="125" cy="175" r="60" fill="#08080a"/>
-      ${ring(60, 3)}${ring(46, 1.5, .8)}${ring(30, 1.5, .8)}
-      <circle cx="125" cy="175" r="10" fill="url(#ruby)" stroke="url(#goldLine)" stroke-width="2"/>
-      <path d="M125 105 V135 M125 215 V245 M55 175 H85 M165 175 H195" stroke="url(#gold)" stroke-width="2.5"/>
+      <circle cx="125" cy="175" r="62" fill="#08080a"/>
+      ${ring(62, 3)}${ring(52, 1.2, .7)}
+      <g transform="translate(79 129) scale(.92)">${root.Brand ? root.Brand.hood({ id: 'bk' }).replace(/<svg[^>]*>|<\/svg>/g, '') : ''}</g>
       ${[0, 90, 180, 270].map(a => `<g transform="rotate(${a} 125 175)"><path d="M125 40 L132 50 L125 60 L118 50 Z" fill="url(#gold)"/></g>`).join('')}
       <rect x="2" y="2" width="246" height="346" rx="16" fill="url(#sheen)"/>
     </svg>`;
@@ -180,6 +179,20 @@
     backUrl() { return cache.back || (cache.back = toUrl(backSvg())); },
     parse(id) { const s = id.slice(-1); return { id, suit: s, rank: RANKS.indexOf(id.slice(0, -1)) }; },
   };
-  if (typeof module === 'object' && module.exports) module.exports = Cards;
-  else root.Cards = Cards;
+  // Выбор темы: 'dark' — чёрные с золотом, 'light' — классические светлые. Личная настройка игрока.
+  const Dark = Cards;
+  let theme = 'dark';
+  try { theme = (JSON.parse(localStorage.getItem('vtochku-prefs')) || {}).cards || 'dark'; } catch {}
+  const pickDeck = () => (theme === 'light' && root.CardsLight ? root.CardsLight : Dark);
+  const Facade = {
+    RANKS,
+    get theme() { return theme; },
+    setTheme(t) { theme = t === 'light' ? 'light' : 'dark'; },
+    svg: c => pickDeck().svg(c),
+    url: c => pickDeck().url(c),
+    backUrl: () => pickDeck().backUrl(),
+    parse: Dark.parse,
+  };
+  if (typeof module === 'object' && module.exports) module.exports = Facade;
+  else root.Cards = Facade;
 })(typeof self !== 'undefined' ? self : this);

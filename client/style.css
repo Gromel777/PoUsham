@@ -410,3 +410,166 @@ input, select { font: inherit; }
   .log-body { max-height: 24vh; }
 }
 @media (prefers-reduced-motion: reduce) { .mote, .btn-gold::after, .logo { animation: none !important; } }
+
+/* ================= обновления: логотип, плашка снизу, неон, общение ================= */
+.logo-row { display: flex; align-items: center; gap: 10px; }
+.logo-hood { width: clamp(44px, 12vh, 72px); height: clamp(44px, 12vh, 72px); flex: none; filter: drop-shadow(0 0 12px rgba(246, 210, 122, .35)); animation: hoodFloat 4s ease-in-out infinite; }
+.logo-hood svg { width: 100%; height: 100%; }
+@keyframes hoodFloat { 50% { transform: translateY(-3px); filter: drop-shadow(0 0 18px rgba(246, 210, 122, .55)); } }
+
+/* соперники на 15% меньше, веер карт — в стороне от имени и заявки */
+:root { --ava: 48px; }
+.seat .plate { min-width: 92px; padding: 2px 9px 3px; }
+.seat .nm { font-size: 13px; max-width: 100px; }
+.seat .sc { font-size: 12px; }
+.bidtag { font-size: 11px; }
+.pip { width: 9px; height: 9px; }
+.fan { top: calc(var(--ava) * -.05); width: calc(var(--cw) * .34); height: calc(var(--ch) * .34); }
+.fan.r { left: calc(50% + var(--ava) / 2 + 14px); }
+.fan.l { right: calc(50% + var(--ava) / 2 + 14px); }
+.spot-left, .spot-right { top: 47%; }
+.spot-top, .spot-tl, .spot-tr { top: 13%; }
+.table-wrap { top: 45% !important; height: min(60vh, 52vw) !important; }
+
+/* плашка игрока — внизу по центру, под рукой; статус хода — её часть */
+.me-panel { left: 50%; bottom: 6px; transform: translateX(-50%); height: 62px; padding: 5px 14px 5px 6px; gap: 12px; border-radius: 16px; max-width: 96vw; }
+.me-panel .ava { --ava: 50px; }
+.me-panel .me-id { min-width: 0; }
+.me-panel .nm { font-size: 15px; max-width: 120px; }
+.me-counters { margin-top: 0; gap: 10px; }
+.me-counters b { font-size: 26px; }
+.me-counters span { font-size: 9px; }
+.me-right { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; max-width: 38vw; }
+.me-panel .pips { margin-top: 0; max-width: none; }
+.me-panel .status { position: static; transform: none; bottom: auto; left: auto; padding: 0; border: 0; background: none; box-shadow: none; font-size: 14px; max-width: 38vw; z-index: auto; }
+.me-panel .status.mine { color: var(--gold-2); box-shadow: none; }
+.me-panel .status.warn { color: #ff9aa5; box-shadow: none; }
+.me-panel.turn { animation: meTurn 1.6s ease-in-out infinite; }
+@keyframes meTurn { 50% { box-shadow: 0 0 0 1px var(--gold), 0 0 42px rgba(232, 196, 106, .7); } }
+
+/* «БУМ — твой ход» на 25% сильнее */
+@keyframes boomCard { 0% { transform: none } 35% { transform: translateY(-26%) scale(1.45) } 100% { transform: none } }
+
+/* живой неон по краю стола */
+.table-wrap .neon-glow, .table-wrap .neon-line { stroke: #8c5bff; transition: stroke .6s, opacity .6s; }
+.table-wrap .neon-glow { opacity: .55; animation: neonBreath 3.2s ease-in-out infinite; }
+.table-wrap .neon-line { opacity: .9; }
+.table-wrap .neon-arc { stroke: #f6d27a; opacity: .95; }
+.table-wrap .neon-arc-core { stroke: #fff3c4; opacity: .9; }
+.table-wrap.neon-mine .neon-arc { stroke: #ffe08a; stroke-width: 10; }
+.table-wrap.neon-bluff .neon-glow, .table-wrap.neon-bluff .neon-line { stroke: #ff4d5e; }
+.table-wrap.neon-red .neon-glow, .table-wrap.neon-red .neon-line { stroke: #ff2d55; animation: neonFlash .25s ease-in-out 4 alternate; }
+.table-wrap.neon-legend .neon-glow, .table-wrap.neon-legend .neon-line { animation: neonLegend .5s linear 4; }
+@keyframes neonBreath { 50% { opacity: .3; } }
+@keyframes neonFlash { to { opacity: .2; } }
+@keyframes neonLegend { 0% { stroke: #8c5bff; opacity: 1 } 50% { stroke: #f6d27a; opacity: 1 } 100% { stroke: #8c5bff; opacity: .9 } }
+
+/* говорящий игрок */
+.ava.talking { box-shadow: 0 0 0 2px #0b0910, 0 0 0 3.5px #9be3a6, 0 0 18px 4px rgba(120, 255, 170, .6) !important; }
+.ava .mute-tag { position: absolute; right: -8px; bottom: -6px; font-size: 11px; padding: 0 3px; border-radius: 8px; background: rgba(10, 8, 14, .9); border: 1px solid var(--line); line-height: 16px; }
+.seat .ava, .lseat .ava { cursor: pointer; }
+
+/* док: чат, эмоции, «нажми и говори» — слева снизу */
+#dock { position: fixed; left: 10px; bottom: 8px; z-index: 50; display: none; }
+#dock.on { display: block; }
+.dock-btns { display: flex; gap: 6px; }
+.dock-btn { position: relative; width: 48px; height: 48px; border-radius: 14px; border: 1px solid var(--line); background: rgba(15, 12, 20, .85); font-size: 22px; display: grid; place-items: center; box-shadow: 0 6px 16px rgba(0, 0, 0, .5); }
+.dock-btn:active { transform: scale(.94); }
+.dock-btn i { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--crimson); color: #fff; font-size: 11px; font-style: normal; font-weight: 800; display: none; place-items: center; padding: 0 4px; }
+.dock-btn i.on { display: grid; }
+.dock-btn.ptt { width: auto; padding: 0 12px; gap: 6px; display: flex; align-items: center; font-size: 20px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.dock-btn.ptt span { font-size: 12px; font-weight: 800; color: var(--gold-2); }
+.dock-btn.ptt.active { background: linear-gradient(135deg, #1b5e34, #2e9d5a); border-color: #9be3a6; box-shadow: 0 0 22px rgba(120, 255, 170, .6); animation: ptt 1s ease-in-out infinite; }
+.dock-btn.ptt.active span { color: #eaffef; }
+@keyframes ptt { 50% { box-shadow: 0 0 32px rgba(120, 255, 170, .9); } }
+.chat-panel { position: absolute; left: 0; bottom: 56px; width: min(300px, 40vw); height: min(260px, 62vh); display: none; flex-direction: column; padding: 8px; border-radius: 14px; }
+.chat-panel.on { display: flex; animation: panelIn .3s cubic-bezier(.2, .9, .3, 1.2) both; }
+.chat-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--gold-2); padding: 0 2px 6px; }
+.chat-list { flex: 1; overflow: auto; font-size: 13px; line-height: 1.35; display: flex; flex-direction: column; gap: 3px; padding-right: 2px; user-select: text; -webkit-user-select: text; }
+.chat-list b { color: var(--gold-2); }
+.chat-list .mine b { color: #9be3a6; }
+.chat-form { display: flex; gap: 6px; margin-top: 6px; }
+.chat-form input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0, 0, 0, .4); color: var(--ink); outline: none; font-size: 15px; }
+.chat-form .btn-gold { padding: 6px 12px; }
+
+/* колесо эмоций и быстрые фразы */
+.emo-pick { position: absolute; left: 0; bottom: 56px; display: none; gap: 10px; padding: 10px; border-radius: 16px; align-items: center; }
+.emo-pick.on { display: flex; animation: panelIn .3s cubic-bezier(.2, .9, .3, 1.2) both; }
+.wheel { position: relative; width: 196px; height: 196px; flex: none; }
+.wheel-hub { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; transform: translate(-50%, -50%); border-radius: 50%; display: grid; place-items: center; font-size: 26px; background: rgba(232, 196, 106, .12); border: 1px solid var(--line); }
+.wheel-item { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; font-size: 28px; background: rgba(20, 16, 28, .9); border: 1px solid var(--line);
+  transform: translate(var(--x), var(--y)); animation: wheelIn .35s cubic-bezier(.3, 1.6, .5, 1) both; transition: transform .15s; }
+.wheel-item:hover, .wheel-item:active { transform: translate(var(--x), var(--y)) scale(1.25); background: rgba(232, 196, 106, .2); }
+@keyframes wheelIn { from { transform: translate(0, 0) scale(.2); opacity: 0 } }
+.phrases { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-width: 250px; }
+.phrase { padding: 7px 8px; border-radius: 10px; border: 1px solid var(--line); background: rgba(232, 196, 106, .08); color: var(--gold-2); font-size: 12px; font-weight: 800; }
+.phrase:active { background: rgba(232, 196, 106, .25); }
+
+/* эмоция над аватаром */
+.emo { position: fixed; z-index: 75; font-size: 64px; line-height: 1; pointer-events: none; transform: translate(-50%, -100%); filter: drop-shadow(0 8px 16px rgba(0, 0, 0, .7)); animation: emoPop 2.3s cubic-bezier(.2, .9, .3, 1) forwards; }
+@keyframes emoPop { 0% { transform: translate(-50%, -60%) scale(.2) rotate(-25deg); opacity: 0 } 14% { transform: translate(-50%, -110%) scale(1.5) rotate(8deg); opacity: 1 } 24% { transform: translate(-50%, -100%) scale(1.15) rotate(-4deg) } 80% { transform: translate(-50%, -112%) scale(1.15); opacity: 1 } 100% { transform: translate(-50%, -150%) scale(.8); opacity: 0 } }
+.emo-laugh { animation-name: emoPop, emoBounce; animation-duration: 2.3s, .28s; animation-iteration-count: 1, 6; animation-delay: 0s, .35s; }
+.emo-shock, .emo-angry { animation-name: emoPop, emoShake; animation-duration: 2.3s, .08s; animation-iteration-count: 1, 14; animation-delay: 0s, .35s; }
+.emo-rude { animation-name: emoPop, emoThrust; animation-duration: 2.3s, .3s; animation-iteration-count: 1, 3; animation-delay: 0s, .3s; }
+.emo-cool { filter: drop-shadow(0 0 16px rgba(246, 210, 122, .8)); }
+.emo-clap { animation-name: emoPop, emoBounce; animation-duration: 2.3s, .18s; animation-iteration-count: 1, 8; animation-delay: 0s, .3s; }
+.emo-dead { animation-name: emoPop, emoTilt; animation-duration: 2.3s, 1.2s; animation-delay: 0s, .3s; }
+@keyframes emoBounce { 50% { margin-top: -10px; } }
+@keyframes emoShake { 25% { margin-left: -5px } 75% { margin-left: 5px } }
+@keyframes emoThrust { 50% { font-size: 80px; } }
+@keyframes emoTilt { to { rotate: 28deg; } }
+
+/* пузыри сообщений у аватаров */
+.bubble { position: fixed; z-index: 74; max-width: 220px; padding: 7px 12px; border-radius: 14px; font-size: 14px; font-weight: 700; line-height: 1.3; pointer-events: none;
+  background: rgba(250, 246, 236, .96); color: #1d1a14; box-shadow: 0 8px 22px rgba(0, 0, 0, .6); transform: translate(-50%, -50%); animation: bubbleIn .35s cubic-bezier(.3, 1.6, .5, 1) both; word-wrap: break-word; }
+.bubble.phrase { background: var(--gold-grad); color: #241a06; font-weight: 800; font-size: 15px; }
+.bubble::after { content: ''; position: absolute; left: 50%; width: 12px; height: 12px; margin-left: -6px; background: inherit; transform: rotate(45deg); }
+.bubble.up::after { bottom: -5px; }
+.bubble.down::after { top: -5px; }
+.bubble.out { animation: bubbleOut .45s ease-in forwards; }
+@keyframes bubbleIn { from { transform: translate(-50%, -50%) scale(.3); opacity: 0 } }
+@keyframes bubbleOut { to { transform: translate(-50%, -80%) scale(.9); opacity: 0 } }
+
+/* лайки летят в аватар */
+.like-fly { position: fixed; left: 0; top: 0; z-index: 76; font-size: 30px; pointer-events: none; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .6)); }
+
+/* меню аватара: лайк и три блокировки */
+.ava-menu { position: fixed; z-index: 85; display: none; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 16px; transform: translate(-50%, 0); min-width: 260px; }
+.ava-menu.above { transform: translate(-50%, -100%); }
+.ava-menu.on { display: flex; animation: panelIn .25s cubic-bezier(.2, .9, .3, 1.2) both; }
+.am-title { font-weight: 800; text-align: center; }
+.am-like { padding: 9px; }
+.am-like:disabled { filter: grayscale(.8) brightness(.7); cursor: default; }
+.am-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.am-tg { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 4px; border-radius: 11px; border: 1px solid var(--line); font-size: 11px; font-weight: 800; color: var(--gold-2); background: rgba(255, 255, 255, .03); }
+.am-tg span { font-size: 20px; }
+.am-tg.on { border-color: var(--crimson); background: rgba(90, 10, 25, .6); color: #ffb3bd; }
+.am-tg.on span { filter: grayscale(1); }
+.am-tg:disabled { opacity: .35; }
+
+@media (max-height: 460px) {
+  :root { --ava: 41px; }
+  .me-panel { height: 58px; }
+  .me-panel .ava { --ava: 44px; }
+  .me-counters b { font-size: 23px; }
+  .dock-btn { width: 44px; height: 44px; font-size: 20px; }
+  .wheel { width: 176px; height: 176px; }
+  .wheel-item { width: 42px; height: 42px; margin: -21px 0 0 -21px; font-size: 24px; }
+  .emo { font-size: 54px; }
+}
+.home-foot { align-items: center; }
+.seg-sm button { padding: 5px 9px; font-size: 12px; }
+.home-foot .btn-ghost { padding: 5px 10px; font-size: 12px; }
+.num-input { width: 56px; }
+@media (max-height: 460px) {
+  .home-panel { gap: 5px; padding: 9px 14px; }
+  .logo-row .logo { font-size: 32px; }
+  .logo-hood { width: 40px; height: 40px; }
+  .opt-label { min-width: 54px; font-size: 12px; }
+  .switch span { font-size: 13px; }
+}
+.me-right, .me-panel .status { max-width: 27vw; }
+@media (max-height: 460px) {
+  .dock-btn.ptt { width: 44px; padding: 0; justify-content: center; }
+  .dock-btn.ptt span { display: none; }
+}
