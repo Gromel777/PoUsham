@@ -19,6 +19,7 @@ const STATIC = {
   '/index.html': 'client/index.html',
   '/client.js': 'client/client.js',
   '/style.css': 'client/style.css',
+  '/qrcode.js': 'client/qrcode.js',
   '/engine.js': 'engine/engine.js',
 };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };

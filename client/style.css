@@ -44,3 +44,6 @@
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2e7d4f; margin-right: 4px; }
 .dot.off { background: #c0c6c2; }
 .me { outline: 2px dashed #2e7d4f; outline-offset: 2px; }
+.lobby-join { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+.qr { background: #fff; padding: 6px; border: 1px solid #d3dbd5; border-radius: 10px; line-height: 0; }
+.qr svg { width: 220px; height: 220px; }

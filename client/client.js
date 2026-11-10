@@ -81,7 +81,7 @@ window.onJoin = async () => {
   catch (e) { S.err = e.message; render(); }
 };
 window.onCopy = async () => {
-  const link = `${location.origin}/?room=${S.view.code}`;
+  const link = joinLink(S.view.code);
   try { await navigator.clipboard.writeText(link); S.err = 'Ссылка скопирована'; } catch { S.err = 'Скопируйте ссылку: ' + link; }
   render();
 };
@@ -151,6 +151,11 @@ function renderHome() {
     ${rulesHtml()}`;
 }
 
+function joinLink(code) { return `${location.origin}/?room=${code}`; }
+function qrHtml(code) {
+  try { return `<div class="qr">${window.qrSvg(joinLink(code), { px: 220 })}</div>`; } catch { return ''; }
+}
+
 function renderLobby(v) {
   const seats = Array.from({ length: v.size }, (_, i) => {
     const s = v.seats[i];
@@ -162,8 +167,15 @@ function renderLobby(v) {
     <div class="bar"><h1>По ушам</h1><button class="btn alt" onclick="onLeave()">Выйти</button></div>
     <div class="panel">
       <h3>Код комнаты</h3>
-      <div class="row"><span class="code-big">${esc(v.code)}</span><button class="btn alt" onclick="onCopy()">Скопировать ссылку</button></div>
-      <p class="hint">Друзья открывают ссылку или вводят код на главной странице. Раундов: ${v.rounds} (${v.plan.join(', ')}).</p>
+      <div class="lobby-join">
+        ${qrHtml(v.code)}
+        <div class="col">
+          <span class="code-big">${esc(v.code)}</span>
+          <div><button class="btn alt" onclick="onCopy()">Скопировать ссылку</button></div>
+          <span class="hint">Наведите камеру телефона на QR-код, откройте ссылку или введите код на главной странице.</span>
+        </div>
+      </div>
+      <p class="hint">Раундов: ${v.rounds} (${v.plan.join(', ')}).</p>
     </div>
     <div class="seats" style="margin-bottom:12px">${seats}</div>
     <div class="panel">${v.isHost
