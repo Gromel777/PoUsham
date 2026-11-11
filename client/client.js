@@ -371,6 +371,7 @@
         </div>
         <div class="h-right" id="h-right" data-open="">
           <button class="h-player glass" id="h-player" data-act="profile"></button>
+          <div class="h-searchbar" id="h-searchbar"></div>
           <div class="h-stack">
             <section class="h-sec" data-sec="ranked">${head('ranked', 'Рейтинговая игра')}<div class="h-body glass" id="sec-ranked"></div></section>
             <section class="h-sec" data-sec="casual">${head('casual', 'Обычная игра')}<div class="h-body glass">
@@ -443,7 +444,7 @@
       R.dataset.open = next; S.homeSec = next;
       heads.forEach(sec => sec.classList.toggle('open', sec.dataset.sec === next));
       if (next === 'settings') renderSettingsSec();
-      if (next) renderGo();
+      renderGo();
       // FLIP: заголовок открытого/закрываемого раздела едет из старого места в новое.
       const mover = R.querySelector(`.h-sec[data-sec="${next || prev}"]`);
       const ease = 'cubic-bezier(.25,.9,.3,1.05)';
@@ -481,6 +482,9 @@
 
   // Большая кнопка раздела: «Поиск игры» / «Калибровка N/5» / «Войдите в аккаунт», а во время поиска — статус и «Отменить».
   function renderGo() {
+    const R = cur('#h-right');
+    if (R) R.classList.toggle('search-on', !!MMS.ticket);
+    renderSearchBar();
     document.querySelectorAll('.h-go').forEach(box => {
       const mode = box.dataset.go;
       if (MMS.ticket && MMS.mode === mode) {
@@ -495,6 +499,28 @@
       else if (mode === 'ranked' && me.games < 5) box.innerHTML = `<button class="btn-gold h-big" data-act="search" data-mode="ranked">${T('Калибровка {a}/5', { a: me.games })}</button>`;
       else box.innerHTML = `<button class="btn-gold h-big" data-act="search" data-mode="${mode}">${T('Поиск игры')}</button>`;
     });
+  }
+
+  // Поиск идёт, а его раздел свёрнут (или открыт другой) — полоска со статусом под плашкой игрока.
+  function renderSearchBar() {
+    const bar = cur('#h-searchbar'), R = cur('#h-right');
+    if (!bar || !R) return;
+    const show = !!MMS.ticket && R.dataset.open !== MMS.mode;
+    bar.classList.toggle('on', show);
+    if (!show) { bar.innerHTML = ''; return; }
+    if (bar.dataset.mode === MMS.mode && bar.innerHTML) return;
+    bar.dataset.mode = MMS.mode;
+    bar.innerHTML = `<button class="hsb-main" data-act="sec" data-sec="${MMS.mode}"><span class="hsb-dot"></span><span class="hsb-t">${T(MMS.mode === 'ranked' ? 'Поиск рейтинговой игры' : 'Поиск обычной игры')}</span><b id="mm-time2">${mmClock()}</b></button>
+      <button class="btn-ghost hsb-x" data-act="cancelSearch" title="${T('Отменить')}">✕</button>`;
+  }
+  const mmClock = () => { const s = Math.floor((Date.now() - MMS.started) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  // Пока идёт поиск — ни второго поиска, ни входа в лобби вручную.
+  function searchLock() {
+    if (!MMS.ticket) return false;
+    toast(T('Идёт поиск игры — сначала отмените его'));
+    const bar = cur('#h-searchbar.on') || cur('.h-search');
+    if (bar) nope(bar);
+    return true;
   }
 
   // Раздел «Настройки»: звук, музыка, язык, установка, персонализация (новые настройки — сюда же).
@@ -597,8 +623,9 @@
   async function pollSearch() {
     clearTimeout(MMS.timer);
     if (!MMS.ticket) return;
-    const t = $('#mm-time');
-    if (t) { const s = Math.floor((Date.now() - MMS.started) / 1000); t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    const t = $('#mm-time'), t2 = $('#mm-time2');
+    if (t) t.textContent = mmClock();
+    if (t2) t2.textContent = mmClock();
     let st;
     try { st = await api('/api/mm/status', { ticket: MMS.ticket }); } catch { MMS.timer = setTimeout(pollSearch, 2000); return; }
     if (!MMS.ticket) return; // отменили, пока ждали ответ
@@ -3084,9 +3111,10 @@
     roomsList: () => showRoomsList(),
     casualSize: b => { S.casualSize = +b.dataset.n; syncHome(); },
     listed: () => { S.listed = !S.listed; syncHome(); },
-    search: b => startSearch(b.dataset.mode),
+    search: b => { if (searchLock()) return; startSearch(b.dataset.mode); },
     cancelSearch: () => cancelSearch(),
     botsNow: async () => {
+      if (searchLock()) return;
       // Не ждать: свой стол с ботами, старт сразу.
       const name = needName();
       if (!name) return;
@@ -3099,6 +3127,7 @@
       } catch (e) { toast(e.message); }
     },
     joinRoom: async b => {
+      if (searchLock()) return;
       const name = needName();
       if (!name) return;
       save(STORE_KEY, { name });
@@ -3131,6 +3160,7 @@
       act({ type: 'skill', skill: 'reshuffle' });
     },
     create: async () => {
+      if (searchLock()) return;
       const name = needName();
       if (!name) return;
       const tv = $('#timer-val'); if (tv) S.turnTime = clampTimer(parseInt(tv.value, 10));
@@ -3139,6 +3169,7 @@
       catch (e) { toast(e.message); }
     },
     join: async () => {
+      if (searchLock()) return;
       const room = ($('#code') ? $('#code').value : '').trim().toUpperCase();
       if (room.length !== 4) { toast(T('Код комнаты — 4 символа')); const c = $('#code'); if (c) { c.focus(); nope(c); } return; }
       const name = needName();
@@ -3227,7 +3258,7 @@
     vote: b => act({ type: 'vote', value: b.dataset.yes === '1' }),
     scores: () => showScores(),
     menu: () => showMenu(),
-    tutorial: () => startTutorial(),
+    tutorial: () => { if (searchLock()) return; startTutorial(); },
     welcomeSkip: () => closeWelcome(),
     tutDone: () => finishTutorial(),
     tutGo: b => { closeModal(); if (b.dataset.tab && S.screen === 'home' && cur('#h-right').dataset.open !== b.dataset.tab) openSec(b.dataset.tab); },

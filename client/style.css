@@ -1323,3 +1323,17 @@ body.tutorial .next-timer, body.tutorial .next-ready { display: none !important;
 .h-body .seg-full button:last-child { flex: 1.6; font-size: 13px; }
 .h-sec.open[data-sec="settings"] { flex: 0 1 auto; }
 .h-sec.open[data-sec="settings"] .h-body { flex: 0 1 auto; }
+
+/* ================= идёт поиск: полоска под плашкой игрока и блокировка остального ================= */
+.h-searchbar { display: none; flex: none; gap: 6px; align-items: stretch; margin-top: calc(var(--VH) * -0.6); }
+.h-searchbar.on { display: flex; animation: paneIn .35s ease both; }
+.hsb-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; padding: 7px 12px; border-radius: 12px; text-align: left;
+  background: linear-gradient(90deg, rgba(60, 44, 12, .92), rgba(26, 20, 10, .92)); border: 1px solid var(--gold); color: var(--gold-2); font-weight: 800; font-size: 13px;
+  box-shadow: 0 0 16px rgba(232, 196, 106, .25); animation: armed 1.4s ease-in-out infinite alternate; }
+.hsb-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hsb-main b { font-family: var(--font-title); font-size: 15px; font-variant-numeric: tabular-nums; }
+.hsb-dot { width: 12px; height: 12px; flex: none; border-radius: 50%; border: 2px solid rgba(246, 210, 122, .3); border-top-color: var(--gold-2); animation: spin .9s linear infinite; }
+.hsb-x { flex: none; padding: 0 12px !important; font-size: 14px; }
+.h-right.search-on [data-act="create"], .h-right.search-on [data-act="join"], .h-right.search-on [data-act="botsNow"],
+.h-right.search-on .h-go [data-act="search"], .rooms-modal [data-act="joinRoom"] { opacity: .42; filter: saturate(.3); cursor: not-allowed; }
+body:not(:has(.h-right.search-on)) .rooms-modal [data-act="joinRoom"] { opacity: 1; filter: none; cursor: pointer; }
