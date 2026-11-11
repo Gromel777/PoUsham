@@ -774,6 +774,9 @@ const MM = {
   ANY: [2, 3, 4],             // «любой стол»
   STEP_SMALLER: 10000,        // «любой»: стол на одного меньше — после каждых 10 с ожидания
   CASUAL_BOTS_AFTER: 45000,   // обычная игра: через 45 с можно вдвоём-втроём, остальные — боты
+  RANKED_SIZE: 4,             // рейтинговая игра — только стол на 4
+  RANKED_BOTS_AFTER: 60000,   // рейтинг: за минуту четверо не набрались — садим троих, четвёртое место — бот
+  RANKED_MIN: 3,
   RANKED_WINDOW: (waitMs) => Math.min(600, 100 + Math.floor(waitMs / 1000) * 5), // разброс рейтинга растёт с ожиданием
   STALE: 20000,
   AUTOSTART: 15000,           // стол подбора стартует сам: когда все подключились или через 15 с
@@ -783,7 +786,7 @@ function mmJoin(body, acc) {
   const mode = body.mode === 'ranked' ? 'ranked' : 'casual';
   if (mode === 'ranked' && !acc) fail('Рейтинговая игра — только после входа через Google');
   let sizes = Array.isArray(body.sizes) ? body.sizes.map(Number).filter(n => n >= Engine.MIN_PLAYERS && n <= Engine.MAX_PLAYERS) : [];
-  if (mode === 'ranked') sizes = sizes.filter(n => n <= 4);
+  if (mode === 'ranked') sizes = [MM.RANKED_SIZE]; // рейтинг — только стол на 4
   if (!sizes.length) sizes = MM.ANY;
   sizes = [...new Set(sizes)].sort((a, b) => a - b);
   // Один человек — одна заявка: повторный поиск заменяет старый.
@@ -807,7 +810,7 @@ function mmStatus(ticket) {
   return {
     state: 'waiting', waited, inQueue: same, sizes: e.sizes,
     window: e.mode === 'ranked' ? MM.RANKED_WINDOW(waited) : null,
-    botsIn: e.mode === 'casual' ? Math.max(0, MM.CASUAL_BOTS_AFTER - waited) : null,
+    botsIn: Math.max(0, (e.mode === 'casual' ? MM.CASUAL_BOTS_AFTER : MM.RANKED_BOTS_AFTER) - waited),
   };
 }
 
@@ -834,6 +837,11 @@ function mmMatch() {
             const g = pool.slice(i, i + size);
             const spread = g[g.length - 1].rating - g[0].rating;
             if (g.every(e => spread <= MM.RANKED_WINDOW(now - e.since))) group = g;
+          }
+          // Четверо не набрались за минуту — садим троих (самых долго ждущих), место займёт бот.
+          if (!group && pool.length >= MM.RANKED_MIN && pool.length < size) {
+            const byWait = pool.slice().sort((a, b) => a.since - b.since);
+            if (now - byWait[0].since >= MM.RANKED_BOTS_AFTER) group = byWait.slice(0, size);
           }
         } else {
           pool.sort((a, b) => a.since - b.since);
@@ -863,14 +871,6 @@ function mmMakeRoom(group, size, mode) {
     e.result = { room: r.code, token: t, kind: mode };
   }
   console.log(`подбор: ${mode} стол ${r.code} на ${size}, игроков ${group.length}`);
-}
-
-// Калибровка: первые партии новичка — рейтинговая игра с ботами.
-function calibRoom(body, acc) {
-  if (!acc) fail('Рейтинговая игра — только после входа через Google');
-  if (acc.games >= Rating.BOARD_MIN_GAMES) fail('Калибровка пройдена — ищите соперников в рейтинговой игре');
-  return createRoom({ name: body.name || acc.nick, players: clampInt(body.players, 2, 4, 4), turnTime: DEFAULT_TURN_TIME, lang: body.lang, ...RANKED_RULES }, acc,
-    { kind: 'ranked', calib: true, autoStartAt: Date.now() + 3000 });
 }
 
 // Автостарт столов подбора. Кто так и не подключился — его место занимает бот (в рейтинге — последнее место).
@@ -979,12 +979,6 @@ async function handleApi(req, res, url) {
     const e = MM.queue.get(String(body.ticket || ''));
     if (e && !e.result) MM.queue.delete(e.ticket);
     return sendJson(res, 200, { ok: true });
-  }
-  if (url.pathname === '/api/calib') {
-    const acc = await accountOf(body.session, body.name);
-    if (!DB.ready()) fail('Рейтинг сейчас недоступен (нет связи с базой).');
-    const { r, token } = calibRoom(body, acc);
-    return sendJson(res, 200, { room: r.code, token });
   }
   if (url.pathname === '/api/join') {
     const r = getRoom(body.room);

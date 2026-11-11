@@ -23,7 +23,7 @@ Online trick-taking card game for 2–6 players, 36-card deck (6…A), **hearts 
 ```
 engine/engine.js     Rules + bots. Pure logic, no DOM/network. UMD: require() in Node, window.Engine/Bots in browser. ~420 lines.
 server/server.js     Everything server-side except DB: static files, rooms, seats, timers, bots scheduling, pause/vote,
-                     social (chat/emotes/likes/mud), WebRTC relay, matchmaking, calibration, rating trigger, HTTP API. ~1050 lines.
+                     social (chat/emotes/likes/mud), WebRTC relay, matchmaking, rating trigger, HTTP API. ~1050 lines.
 server/db.js         Store: memoryStore() and pgStore(); SCHEMA (auto-created on start); players, sessions, matches, leaderboard.
 server/rating.js     Pairwise multiplayer Elo: START 1000, K 32, MIN_RATED 2, BOARD_MIN_GAMES 5; left/kicked = last place.
 server/google.js     Google ID-token (JWT RS256) verification with built-in crypto, no libs.
@@ -80,19 +80,19 @@ README.md            Human README in Russian (structure, run, deploy, env).
 - `Bots`: `bid`, `play` (sometimes cheats in bluff), `suspicion` (chance to check), `wantsReshuffle`.
 
 ## Server (server/server.js) — key concepts
-- Room object `r`: `code` (4 chars), `kind`: `private` (code only) | `public` (listed in lobby) | `casual` (matchmade, unrated) | `ranked` (matchmade or `calib`), `seats[]` `{name, token, bot, pid, uid, rating, pic, left, everOnline}`, `hostSeat`, `game` (engine state), `streams` (SSE), timers.
-- Ranked & calibration: always `RANKED_RULES = { bluff: true, rounds: 17 }`, sizes ≤4, no skills/test, no restart, no lobby kick.
+- Room object `r`: `code` (4 chars), `kind`: `private` (code only) | `public` (listed in lobby) | `casual` (matchmade, unrated) | `ranked` (matchmade only; `r.calib` is legacy, always false), `seats[]` `{name, token, bot, pid, uid, rating, pic, left, everOnline}`, `hostSeat`, `game` (engine state), `streams` (SSE), timers.
+- Ranked: always `RANKED_RULES = { bluff: true, rounds: 17 }`, **table of 4 only** (`MM.RANKED_SIZE`), no skills/test, no restart, no lobby kick.
 - `update(r)` is the central tick after any change: rate if gameOver → next-round readiness → pre window → turn timer → `broadcast` → bot moves → bot checks.
 - Timers: `TRICK_PAUSE` 2.1s (5s in bluff, time to check), `DEFAULT_TURN_TIME` 30s (timeout → auto bid / random honest card), `PRE_WINDOW` 3s, `NEXT_WAIT` 15s, `BOT_DELAY` 1s.
 - Pause: 3 per player per game, unpause countdown 5s, max 5 min. Vote-kick only for an offline player; game halts until all online voters vote; kicked seat → bot, `left=true` (last place in rating).
 - Rejoin: same Google account or same name of an offline seat gets the seat back with a new token.
-- Matchmaking `MM`: queue by ticket, client polls `/api/mm/status`. Ranked groups by rating window that widens with wait; casual fills with bots after 45s. Matched rooms auto-start (15s or when all connected); no-shows become bots.
-- Calibration: first `BOARD_MIN_GAMES`(5) ranked games can be vs bots (bots count as rating 1000, don't change).
+- Matchmaking `MM`: queue by ticket, client polls `/api/mm/status`. Ranked: 4 people by rating window that widens with wait; after `MM.RANKED_BOTS_AFTER` (60s) without four — 3 people + 1 bot (`MM.RANKED_MIN`). Casual fills with bots after 45s. Matched rooms auto-start (15s or when all connected); no-shows become bots.
+- Calibration = the first `BOARD_MIN_GAMES`(5) ranked games (normal matchmaking, UI shows «Калибровка N/5»); then the player enters the leaderboard. The old «calibration vs bots» mode and `/api/calib` were removed.
 - `rateGame()`: only `kind==='ranked'`, needs ≥2 accounts (unless calib) and DB ready → `DB.recordMatch` → `g.rating {status, changes}`.
 
 ### HTTP API
 GET: `/health`, `/api/events` (SSE; events: default state, `kicked`, `rtc`), `/api/rooms` (open public tables), `/api/config` (googleClientId, ratings).
-POST: `/api/auth/google`, `/api/me`, `/api/logout`, `/api/tutorial` (mark tutorial done for the session's account), `/api/leaderboard`, `/api/create`, `/api/join`, `/api/mm/join|status|cancel`, `/api/calib`, `/api/action`.
+POST: `/api/auth/google`, `/api/me`, `/api/logout`, `/api/tutorial` (mark tutorial done for the session's account), `/api/leaderboard`, `/api/create`, `/api/join`, `/api/mm/join|status|cancel`, `/api/action`.
 `/api/action` types: game — `start, restart, kick, voteKick, vote, pause, unpause, bid, play, nextRound, check, skill`; social — `chat, emote, phrase, like, dislike, mud` (mud only for score leader); `rtc` relay.
 Errors: throw via `fail('русский текст')` (GameError → 400 with `{error}`).
 CORS `*` on `/health` and `/api/*` (client may be served from the static site); `OPTIONS` → 204.
@@ -102,7 +102,7 @@ Search by the `// ----------` headers (line numbers drift):
 `настройки и сессия` (state `S`, `prefs` in localStorage `vtochku-prefs`, session `vtochku-session`, rooms classic/cozy) ·
 `музыка` · `сеть` (`API` base: same origin on pousham.onrender.com/localhost, else `https://pousham.onrender.com`; override `?api=`; `Server.wake()` polls /health, `Server.ready` promise — `api()` and `Auth.init` wait for it) · `аккаунт Google и рейтинг` (sign-in, avatar photo, `#00042` player tag = DB id, leaderboard) ·
 `connect/leave/act` + animation queue `enqueue/pump/apply` (state snapshots are animated sequentially) ·
-`экраны` (`showHome` tabs ranked/casual/lobby/private, `showLobby`, `showGameScreen`) · `поиск игроков` ·
+`экраны` (`showHome` — layout from owner's sketch: left logo + «Spot On» (always English) + card fan; right column: player plate `#h-player` (→ `showProfile`: guest name / Google), sections `.h-sec` ranked/casual/create/settings opened by `openSec()` (FLIP animation, one at a time, click on empty space closes), bottom row Настройки/Правила/Полный экран; `renderGo()` = big button or in-panel search status; `showRoomsList` modal; `myName()/needName()`; `showLobby`, `showGameScreen`) · `поиск игроков` ·
 `стол` (`classicTableSvg`, chairs, icons) · `модальные окна, тосты`, `rulesHtml`, `showMenu` ·
 `персонализация` (`showCustomize`: Колоды / Комнаты / Эффекты, emote wheel) · `параллакс` · `геометрия` (seat/hand positions) ·
 `карты в DOM` (`makeCard`, `fly`) · `игровой экран` (largest block: score, trick, deal, bluff checks, reshuffle, round banner, leader crown, first-move ball, neon, pause, round results) ·

@@ -59,19 +59,23 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   hostReq.destroy();
 
   // ---------- рейтинговый подбор ----------
-  const A = await login('a', 'Аня'), B = await login('b', 'Боря'), C = await login('c', 'Вова');
+  const A = await login('a', 'Аня'), B = await login('b', 'Боря'), C = await login('c', 'Вова'), D = await login('d', 'Гена');
   ok(!(await post('/api/mm/join', { mode: 'ranked', name: 'Гость' })).ok, 'рейтинг без входа нельзя');
   const ta = (await post('/api/mm/join', { mode: 'ranked', sizes: [2], session: A.session, name: 'Аня' })).j.ticket;
   let st = (await post('/api/mm/status', { ticket: ta })).j;
   ok(st.state === 'waiting' && st.window === 100, 'ждём соперника: ' + JSON.stringify(st));
   const tb = (await post('/api/mm/join', { mode: 'ranked', sizes: [2], session: B.session, name: 'Боря' })).j.ticket;
+  ok((await post('/api/mm/status', { ticket: ta })).j.state === 'waiting', 'рейтинг вдвоём не садим — нужен стол на 4');
+  const tc = (await post('/api/mm/join', { mode: 'ranked', session: C.session, name: 'Вова' })).j.ticket;
+  const td = (await post('/api/mm/join', { mode: 'ranked', session: D.session, name: 'Гена' })).j.ticket;
   const ma = (await post('/api/mm/status', { ticket: ta })).j, mb = (await post('/api/mm/status', { ticket: tb })).j;
-  ok(ma.state === 'matched' && mb.state === 'matched' && ma.room === mb.room && ma.kind === 'ranked', 'нашли друг друга');
+  const mc = (await post('/api/mm/status', { ticket: tc })).j, md = (await post('/api/mm/status', { ticket: td })).j;
+  ok([mb, mc, md].every(m => m.state === 'matched' && m.room === ma.room) && ma.kind === 'ranked', 'четверо нашли друг друга');
   ok(!(await post('/api/join', { room: ma.room, name: 'Чужой' })).ok, 'за стол подбора по коду не сесть');
   let lastA = null;
   const doneRanked = new Promise(resolve => {
     play(ma.room, ma.token, v => { lastA = v; if (v.stage === 'game' && v.phase === 'gameOver' && v.rating && v.rating.status === 'done') resolve(v); });
-    play(mb.room, mb.token);
+    play(mb.room, mb.token); play(mc.room, mc.token); play(md.room, md.token);
   });
   await sleep(400);
   ok(lastA.stage === 'game', 'стол подбора стартовал сам, когда все подключились');
@@ -80,21 +84,24 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // Чтобы не ждать 17 раундов — сокращаем партию.
   const room = rooms.get(ma.room); room.game.plan = room.game.plan.slice(0, 1);
   const v = await Promise.race([doneRanked, sleep(60000).then(() => null)]);
-  ok(v && Object.keys(v.rating.changes).length === 2, 'рейтинговая партия засчитана');
+  ok(v && Object.keys(v.rating.changes).length === 4, 'рейтинговая партия засчитана');
   ok(!(await post('/api/action', { room: ma.room, token: ma.token, type: 'restart' })).ok, 'рейтинговую не переиграть');
 
-  // ---------- калибровка с ботами ----------
-  const cal = (await post('/api/calib', { session: C.session, name: 'Вова', players: 3 })).j;
-  ok(cal.room && cal.token, 'калибровка создана');
-  ok(rooms.get(cal.room).bluff === true && rooms.get(cal.room).rounds === 17, 'калибровка: режим обмана и 17 раундов');
-  const doneCal = new Promise(resolve => play(cal.room, cal.token, v => {
-    if (v.stage === 'game' && v.phase === 'bid' && rooms.get(cal.room).game.plan.length > 1) rooms.get(cal.room).game.plan = rooms.get(cal.room).game.plan.slice(0, 1);
-    if (v.stage === 'game' && v.phase === 'gameOver' && v.rating && v.rating.status === 'done') resolve(v);
-  }));
-  const vc = await Promise.race([doneCal, sleep(60000).then(() => null)]);
-  ok(vc && vc.calib && Object.keys(vc.rating.changes).join() === '0' && vc.seats.filter(s => s.bot).length === 2, 'калибровка: рейтинг меняется только у игрока, боты за столом');
-  const meC = (await post('/api/me', { session: C.session })).j.me;
-  ok(meC.games === 1, 'калибровочная партия посчитана');
+  // ---------- рейтинг: только на 4; за минуту не набрались — трое + бот ----------
+  MM.RANKED_BOTS_AFTER = 1500;
+  const r1 = (await post('/api/mm/join', { mode: 'ranked', sizes: [2], session: A.session, name: 'Аня' })).j.ticket;
+  const r2 = (await post('/api/mm/join', { mode: 'ranked', session: B.session, name: 'Боря' })).j.ticket;
+  await sleep(300);
+  ok((await post('/api/mm/status', { ticket: r1 })).j.sizes.join() === '4', 'рейтинговый поиск — всегда стол на 4');
+  await sleep(1800);
+  ok((await post('/api/mm/status', { ticket: r1 })).j.state === 'waiting', 'рейтинг вдвоём не садим даже после ожидания');
+  const r3 = (await post('/api/mm/join', { mode: 'ranked', session: C.session, name: 'Вова' })).j.ticket;
+  await sleep(1200);
+  const s1 = (await post('/api/mm/status', { ticket: r1 })).j, s3 = (await post('/api/mm/status', { ticket: r3 })).j;
+  ok(s1.state === 'matched' && s1.room === s3.room && s1.kind === 'ranked', 'втроём после ожидания — за рейтинговый стол');
+  const rr = rooms.get(s1.room);
+  ok(rr.size === 4 && rr.seats.length === 3, 'стол на 4, трое людей — четвёртое место займёт бот');
+  await post('/api/mm/status', { ticket: r2 });
 
   // ---------- обычный подбор с ботами после ожидания ----------
   const g1 = (await post('/api/mm/join', { mode: 'casual', sizes: [4], name: 'Гость1' })).j.ticket;

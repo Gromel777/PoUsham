@@ -148,7 +148,7 @@
       });
     },
     async onCredential(resp) {
-      const nameEl = cur('#name');
+      const nameEl = $('#pf-name');
       try {
         const j = await api('/api/auth/google', { credential: resp.credential, nick: nameEl ? nameEl.value.trim() : '' });
         this.session = j.session; this.me = j.me;
@@ -186,20 +186,9 @@
   // Плашка аккаунта на главном экране: кнопка Google или «аватар · имя · рейтинг».
   function renderAcct() {
     renderWelcomeAcct();
-    const box = cur('#acct');
-    if (!box) return;
-    const me = Auth.me;
-    const nameEl = cur('#name');
-    if (me && nameEl && !nameEl.value.trim() && document.activeElement !== nameEl) nameEl.value = me.nick;
-    if (me) {
-      const pic = `<div class="ava acct-ava"><span class="ini">${esc(initial(me.nick))}</span>${avaPicHtml(me.picture)}</div>`;
-      box.innerHTML = `${pic}<div class="acct-who"><b>${esc(me.nick)}</b>${rtTag(me.rating)}<span class="hint">${gamesWord(me.games)}</span></div>
-        <button class="btn-ghost acct-btn" data-act="board">${T('Лидеры')}</button><button class="btn-ghost acct-btn" data-act="logout" title="${T('Выйти из аккаунта')}">${T('Выход')}</button>`;
-    } else {
-      box.innerHTML = `<div class="gbtn" id="gbtn"></div><span class="hint acct-hint">${T('Войдите, чтобы играть на рейтинг')}</span><button class="btn-ghost acct-btn" data-act="board">${T('Лидеры')}</button>`;
-      Auth.renderButton($('#gbtn', box));
-    }
+    renderPlayerPlate();
     renderRankedPane();
+    if ($('#overlay').dataset.kind === 'profile' && Auth.me) closeModal();
   }
   function gamesWord(n) {
     return I18N.lang === 'en' ? `${n} game${n === 1 ? '' : 's'}` : `${n} ${plural(n, 'партия', 'партии', 'партий')}`;
@@ -364,48 +353,53 @@
       <div class="ci"><div class="face front" style="background-image:${Cards.url(c)}"></div></div></div>`;
   }
 
+  // Главный экран (по макету): слева логотип, «Spot On» и веер карт; справа — плашка игрока сверху,
+  // три раздела (Рейтинговая / Обычная / Создание лобби) и ряд «Настройки · Правила · Полный экран».
+  // Раздел раскрывается: его кнопка уезжает наверх, ниже открывается содержимое; повторный клик или клик по пустому месту — закрыть.
+  const brandHtml = () => `<div class="h-brand"><span class="logo-hood big"><img src="/img/logo.webp?v=1" alt="" draggable="false"><i class="eye l"></i><i class="eye r"></i></span><h1 class="brand-name gold-text">Spot On</h1></div>`;
+  const SECS = [['ranked', 'Рейтинговая игра'], ['casual', 'Обычная игра'], ['create', 'Создание лобби'], ['settings', 'Настройки']];
   function showHome() {
-    const sess = load(STORE_KEY);
     const roomParam = (new URLSearchParams(location.search).get('room') || S.prefillCode || '').toUpperCase();
-    if (roomParam) S.tab = 'join';
+    if (roomParam) { S.prefillCode = roomParam; S.homeSec = 'casual'; }
     const fan = ['Т♠', 'К♥', '7♠', 'Д♦', 'Т♥'];
+    const head = (k, n) => `<button class="h-btn" data-act="sec" data-sec="${k}"><span>${k === 'settings' ? '⚙ ' : ''}${T(n)}</span><i class="h-chev">›</i></button>`;
     const el = setScreen('home', `
-      <div class="home">
-        <div class="acct glass" id="acct"></div>
-        <div class="home-fan"><div class="home-fan-inner">${fan.map((id, i) => miniCard(id, i, fan.length)).join('')}</div></div>
-        <div class="home-panel glass">
-          <div class="home-head"><div>${logoHtml()}<div class="logo-sub">${T('заяви и попади')}</div></div>${langSeg()}</div>
-          <label class="field">${T('Ваше имя')}<input id="name" maxlength="20" autocomplete="nickname" value="${esc(sess.name || (Auth.me && Auth.me.nick) || '')}" placeholder="${T('Как вас зовут?')}"></label>
-          <div class="tabs tabs4">${[['ranked', 'Рейтинг'], ['casual', 'Обычная'], ['create', 'Свой стол'], ['join', 'Лобби']].map(([k, n]) => `<button data-act="tab" data-tab="${k}">${T(n)}</button>`).join('')}</div>
-          <div class="panes">
-          <div class="pane" data-pane="ranked" id="pane-ranked"></div>
-          <div class="pane" data-pane="casual">
-            <div class="row"><span class="opt-label">${T('Стол')}</span><div class="seg" id="seg-casual">${[2, 3, 4, 5, 6, 0].map(n => `<button data-act="casualSize" data-n="${n}">${n || T('Любой')}</button>`).join('')}</div></div>
-            <button class="btn-gold" data-act="search" data-mode="casual">${T('Быстрая игра')}</button>
-            <span class="hint">${T('Подберём игроков без рейтинга. Не набралось за 45 с — свободные места займут боты.')}</span>
-          </div>
-          <div class="pane" data-pane="create">
-            <div class="row"><span class="opt-label">${T('Игроков')}</span><div class="seg" id="seg-players">${[2, 3, 4, 5, 6].map(n => `<button data-act="players" data-n="${n}">${n}</button>`).join('')}</div></div>
-            <div class="row"><span class="opt-label">${T('Раундов')}</span><div class="stepper"><button data-act="rounds" data-d="-1">−</button><b id="rounds-val"></b><button data-act="rounds" data-d="1">+</button></div>
-              <span class="opt-label" style="min-width:0;margin-left:6px">${T('Таймер')}</span>
-              <div class="stepper"><button data-act="timer" data-d="-5">−</button><input class="num-input" id="timer-val" inputmode="numeric" maxlength="3"><button data-act="timer" data-d="5">+</button></div></div>
-            <div class="row"><label class="switch" data-act="bluff" id="bluff-sw"><i></i><span>${T('Режим обмана')}</span></label><span class="hint" id="timer-hint"></span></div>
-            <div class="row"><label class="switch" data-act="skills" id="skills-sw" title="${T('«Пересдача» — раз за партию')}"><i></i><span>${T('Умения')}</span></label>
-              <label class="switch" data-act="test" id="test-sw" title="${T('17 раундов: 10-й — «Бескозырка», 15-й — «Тёмная»')}"><i></i><span>${T('Тестовый режим')}</span></label></div>
-            <div class="row"><label class="switch" data-act="listed" id="listed-sw"><i></i><span>${T('Приватная игра')}</span></label><span class="hint">${T('только по коду, в лобби не видна')}</span></div>
-            <button class="btn-gold" data-act="create">${T('Создать стол')}</button>
-          </div>
-          <div class="pane" data-pane="join">
-            <div class="rooms-head"><span>${T('Открытые столы')}</span><span class="hint" id="rooms-count"></span></div>
-            <div class="room-list" id="room-list"><div class="hint">${T('Загружаем…')}</div></div>
-            <div class="code-row"><input id="code" maxlength="4" value="${esc(roomParam)}" placeholder="${T('Код')}" autocapitalize="characters" title="${T('Код комнаты')}">
-              <button class="btn-gold" data-act="join">${T('Войти по коду')}</button></div>
-            <span class="hint">${T('Приватный стол или вылетели из игры? Введите код и то же имя.')}</span>
-          </div>
+      <div class="home2">
+        <div class="h-left">
+          ${brandHtml()}
+          <div class="home-fan"><div class="home-fan-inner">${fan.map((id, i) => miniCard(id, i, fan.length)).join('')}</div></div>
+        </div>
+        <div class="h-right" id="h-right" data-open="">
+          <button class="h-player glass" id="h-player" data-act="profile"></button>
+          <div class="h-stack">
+            <section class="h-sec" data-sec="ranked">${head('ranked', 'Рейтинговая игра')}<div class="h-body glass" id="sec-ranked"></div></section>
+            <section class="h-sec" data-sec="casual">${head('casual', 'Обычная игра')}<div class="h-body glass">
+              <div class="row"><span class="opt-label">${T('Количество игроков')}</span></div>
+              <div class="seg seg-full" id="seg-casual">${[2, 3, 4, 5, 6, 0].map(n => `<button data-act="casualSize" data-n="${n}">${n || T('Любое')}</button>`).join('')}</div>
+              <div class="h-row2"><button class="btn-ghost" data-act="roomsList">☰ ${T('Список лобби')}</button>
+                <div class="code-row"><input id="code" maxlength="4" value="${esc(roomParam)}" placeholder="${T('Код')}" autocapitalize="characters" title="${T('Код комнаты')}"><button class="btn-ghost" data-act="join">${T('Войти')}</button></div></div>
+              <div class="h-desc">${T('Без рейтинга. Подберём живых игроков на стол выбранного размера; если за 45 с не набрались — свободные места займут боты. Правила стола — классические.')}</div>
+              <div class="h-go" data-go="casual"></div>
+              <button class="btn-ghost h-bots" data-act="botsNow">🤖 ${T('Играть с ботами')}</button>
+            </div></section>
+            <section class="h-sec" data-sec="create">${head('create', 'Создание лобби')}<div class="h-body glass">
+              <div class="row"><span class="opt-label">${T('Игроков')}</span><div class="seg" id="seg-players">${[2, 3, 4, 5, 6].map(n => `<button data-act="players" data-n="${n}">${n}</button>`).join('')}</div></div>
+              <div class="row"><span class="opt-label">${T('Раундов')}</span><div class="stepper"><button data-act="rounds" data-d="-1">−</button><b id="rounds-val"></b><button data-act="rounds" data-d="1">+</button></div></div>
+              <div class="row"><span class="opt-label">${T('Таймер')}</span><div class="stepper"><button data-act="timer" data-d="-5">−</button><input class="num-input" id="timer-val" inputmode="numeric" maxlength="3"><button data-act="timer" data-d="5">+</button></div><span class="hint" id="timer-hint"></span></div>
+              <label class="switch" data-act="bluff" id="bluff-sw"><i></i><span>${T('Режим обмана')}</span></label>
+              <label class="switch" data-act="skills" id="skills-sw" title="${T('«Пересдача» — раз за партию')}"><i></i><span>${T('Умения')}</span></label>
+              <label class="switch" data-act="test" id="test-sw" title="${T('17 раундов: 10-й — «Бескозырка», 15-й — «Тёмная»')}"><i></i><span>${T('Тестовый режим')}</span></label>
+              <label class="switch" data-act="listed" id="listed-sw" title="${T('только по коду, в лобби не видна')}"><i></i><span>${T('Приватная')}</span></label>
+              <button class="btn-gold h-big" data-act="create">${T('Создать')}</button>
+            </div></section>
+            <section class="h-sec" data-sec="settings">${head('settings', 'Настройки')}<div class="h-body glass" id="sec-settings"></div></section>
           </div>
           <div class="err" id="err">${esc(S.err)}</div>
-          <div class="home-foot"><button class="btn-ghost cust-btn" data-act="customize">✦ ${T('Персонализация')}</button>
-            <button class="btn-ghost" data-act="rules">${T('Правила')}</button><button class="btn-ghost fs-btn" data-act="soundcfg" title="${T('Звук')}">♪</button><button class="btn-ghost fs-btn" data-act="fullscreen" title="${T('Во весь экран')}">⛶</button><button class="btn-ghost" data-act="install">${T('Установить')}</button></div>
+          <div class="h-foot">
+            <button class="btn-ghost" data-act="sec" data-sec="settings" data-from-foot="1">⚙ ${T('Настройки')}</button>
+            <button class="btn-ghost" data-act="rules">${T('Правила')}</button>
+            <button class="btn-ghost" data-act="fullscreen" id="fs-btn"></button>
+          </div>
         </div>
       </div>`);
     if (!document.getElementById('fanKF')) {
@@ -415,71 +409,189 @@
     }
     const tv = $('#timer-val', el);
     if (tv) tv.addEventListener('change', () => { S.turnTime = clampTimer(parseInt(tv.value, 10)); syncHome(); });
+    const R = $('#h-right', el);
+    if (S.homeSec) { R.dataset.open = S.homeSec; R.querySelector(`.h-sec[data-sec="${S.homeSec}"]`).classList.add('open'); }
     syncHome(el);
     renderAcct();
-    loadRooms();
+    renderSettingsSec();
+    renderGo();
+    syncFsBtn();
+    if (roomParam) setTimeout(() => toast(T('Код стола подставлен — нажмите «Войти»')), 400);
   }
 
-  // Вкладка «Рейтинг»: без входа — приглашение войти; с входом — поиск соперников и калибровка.
+  // Раскрыть/свернуть раздел с анимацией: заголовок плавно переезжает (FLIP), остальное гаснет/появляется.
+  function openSec(name) {
+    const R = cur('#h-right');
+    if (!R || R.dataset.busy) return;
+    const prev = R.dataset.open || '';
+    const next = prev === name ? '' : name;
+    if (prev === next) return;
+    R.dataset.busy = '1';
+    const fromFoot = R.querySelector(`.h-foot [data-sec="settings"]`);
+    const heads = [...R.querySelectorAll('.h-sec')];
+    const before = new Map(heads.map(sec => [sec, VIEW.rect(sec.querySelector('.h-btn'))]));
+    // «Настройки» в списке скрыты — стартуем от кнопки в нижнем ряду.
+    if (fromFoot) before.set(R.querySelector('.h-sec[data-sec="settings"]'), VIEW.rect(fromFoot));
+    const vis = sec => sec.offsetParent !== null;
+    const wasVisible = new Set(heads.filter(vis));
+    const outs = [...R.querySelectorAll('.h-sec, .h-foot')].filter(x => vis(x) && !(x.classList.contains('h-sec') && x.dataset.sec === next));
+    const fadeOut = outs.map(x => x.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(18px)' }], { duration: 150, easing: 'ease-in', fill: 'forwards' }));
+    const openBody = prev && R.querySelector(`.h-sec[data-sec="${prev}"] .h-body`);
+    if (openBody) fadeOut.push(openBody.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-10px)' }], { duration: 150, fill: 'forwards' }));
+    Promise.all(fadeOut.map(a => a.finished.catch(() => {}))).then(() => {
+      fadeOut.forEach(a => a.cancel());
+      R.dataset.open = next; S.homeSec = next;
+      heads.forEach(sec => sec.classList.toggle('open', sec.dataset.sec === next));
+      if (next === 'settings') renderSettingsSec();
+      if (next) renderGo();
+      // FLIP: заголовок открытого/закрываемого раздела едет из старого места в новое.
+      const mover = R.querySelector(`.h-sec[data-sec="${next || prev}"]`);
+      const ease = 'cubic-bezier(.25,.9,.3,1.05)';
+      heads.filter(vis).forEach((sec, i) => {
+        const btn = sec.querySelector('.h-btn'), b0 = before.get(sec), b1 = VIEW.rect(btn);
+        if (sec === mover && b0 && b0.width) {
+          btn.animate([{ transform: `translate(${b0.left - b1.left}px, ${b0.top - b1.top}px)` }, { transform: 'none' }], { duration: 380, easing: ease });
+        } else if (!wasVisible.has(sec) || !next) {
+          sec.animate([{ opacity: 0, transform: 'translateX(18px)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 60 + i * 50, easing: 'ease-out', fill: 'backwards' });
+        }
+      });
+      if (next) {
+        const body = mover.querySelector('.h-body');
+        body.animate([{ opacity: 0, transform: 'translateY(-14px) scaleY(.92)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: 140, easing: ease, fill: 'backwards' });
+      } else {
+        const foot = R.querySelector('.h-foot');
+        foot.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 200, easing: 'ease-out', fill: 'backwards' });
+      }
+      setTimeout(() => { delete R.dataset.busy; }, 400);
+    });
+  }
+
+  // Раздел «Рейтинговая игра»: лидеры, текущий рейтинг, описание и большая кнопка.
   function renderRankedPane() {
-    const box = cur('#pane-ranked');
+    const box = cur('#sec-ranked');
     if (!box) return;
     const me = Auth.me;
-    if (!me) {
-      box.innerHTML = `<p class="pane-note">${T('Рейтинговые партии — только с аккаунтом Google: так рейтинг сохраняется и его нельзя подделать.')}</p>
-        <div class="gbtn" id="gbtn2"></div>
-        <button class="btn-ghost" data-act="board">${T('Таблица лидеров')}</button>`;
-      Auth.renderButton($('#gbtn2', box));
-      return;
-    }
-    const left = Math.max(0, 5 - me.games);
-    box.innerHTML = `<div class="rank-me">${rtTag(me.rating)}<span class="hint">${left ? T('калибровка {a}/5', { a: me.games }) : gamesWord(me.games)}</span>
-        <span style="flex:1"></span><button class="btn-ghost acct-btn" data-act="board">${T('Лидеры')}</button></div>
-      <div class="row"><span class="opt-label">${T('Стол')}</span><div class="seg" id="seg-ranked">${[2, 3, 4, 0].map(n => `<button data-act="rankedSize" data-n="${n}">${n || T('Любой')}</button>`).join('')}</div></div>
-      <button class="btn-gold" data-act="search" data-mode="ranked">${T('Найти соперников')}</button>
-      ${left ? `<button class="btn-ghost" data-act="calib">${T('Калибровка с ботами — осталось {n}', { n: left })}</button>` : ''}
-      <span class="hint">${left ? T('Первые 5 партий можно сыграть с ботами — после них вы попадёте в таблицу лидеров.') : T('Подбираем соперников близкого рейтинга. Чем дольше ждёте — тем шире разброс.')}</span>`;
-    syncHome();
+    const left = me ? Math.max(0, 5 - me.games) : 0;
+    box.innerHTML = `<button class="btn-ghost" data-act="board">🏆 ${T('Таблица лидеров')}</button>
+      <div class="h-rating"><span class="h-rl">${T('Текущий рейтинг')}</span>${me ? `<b class="h-rv">#${me.rating}</b><span class="hint">${left ? T('калибровка {a}/5', { a: me.games }) : gamesWord(me.games)}</span>` : `<b class="h-rv dim">—</b><span class="hint">${T('нужен вход через Google')}</span>`}</div>
+      <div class="h-desc">${T('Стол на 4 игрока, 17 раундов, режим обмана. Подбираем соперников близкого рейтинга; если за минуту четверо не набрались — садимся втроём, четвёртое место займёт бот. Рейтинг меняется только между людьми.')}${left ? ' ' + T('Первые 5 партий — калибровка: после них вы попадёте в таблицу лидеров.') : ''}</div>
+      <div class="h-go" data-go="ranked"></div>`;
+    renderGo();
   }
 
-  // Список открытых столов (обновляется, пока открыта вкладка «Обычная»).
+  // Большая кнопка раздела: «Поиск игры» / «Калибровка N/5» / «Войдите в аккаунт», а во время поиска — статус и «Отменить».
+  function renderGo() {
+    document.querySelectorAll('.h-go').forEach(box => {
+      const mode = box.dataset.go;
+      if (MMS.ticket && MMS.mode === mode) {
+        if (box.querySelector('.h-search')) return;
+        box.innerHTML = `<div class="h-search"><div class="search-ring"><div class="loader"></div><b id="mm-time">0:00</b></div>
+          <div class="h-search-info"><b>${T(mode === 'ranked' ? 'Ищем соперников…' : 'Ищем игроков…')}</b><div id="mm-line1" class="hint"></div><div id="mm-line2" class="hint"></div></div>
+          <button class="btn-ghost" data-act="cancelSearch">${T('Отменить')}</button></div>`;
+        return;
+      }
+      const me = Auth.me;
+      if (mode === 'ranked' && !me) box.innerHTML = `<button class="btn-gold h-big" data-act="profile">${T('Войдите в аккаунт')}</button>`;
+      else if (mode === 'ranked' && me.games < 5) box.innerHTML = `<button class="btn-gold h-big" data-act="search" data-mode="ranked">${T('Калибровка {a}/5', { a: me.games })}</button>`;
+      else box.innerHTML = `<button class="btn-gold h-big" data-act="search" data-mode="${mode}">${T('Поиск игры')}</button>`;
+    });
+  }
+
+  // Раздел «Настройки»: звук, музыка, язык, установка, персонализация (новые настройки — сюда же).
+  function renderSettingsSec() {
+    const box = cur('#sec-settings');
+    if (!box) return;
+    box.innerHTML = `<label class="switch ${prefs.sound ? 'on' : ''}" data-act="sound"><i></i><span>${T('Звуки игры')}</span></label>
+      ${musicCtlHtml()}
+      <div class="row"><span class="opt-label">${T('Язык')}</span>${langSeg()}</div>
+      <button class="btn-ghost" data-act="install">⤓ ${T('Установить приложение')}</button>
+      <button class="btn-ghost cust-btn" data-act="customize">✦ ${T('Персонализация')}</button>`;
+  }
+  function syncFsBtn() {
+    const b = cur('#fs-btn');
+    if (b) b.innerHTML = document.fullscreenElement ? `⤡ ${T('Окно')}` : `⛶ ${T('Полный экран')}`;
+  }
+  document.addEventListener('fullscreenchange', () => syncFsBtn());
+
+  // Плашка игрока: аватар, имя, #рейтинг; гость — «Гость · войти».
+  function renderPlayerPlate() {
+    const box = cur('#h-player');
+    if (!box) return;
+    const me = Auth.me, nm = load(STORE_KEY).name;
+    box.innerHTML = me
+      ? `<div class="ava acct-ava"><span class="ini">${esc(initial(me.nick))}</span>${avaPicHtml(me.picture)}</div><div class="hp-who"><b>${esc(me.nick)}</b><span class="hp-rt">#${me.rating}</span></div>`
+      : `<div class="ava acct-ava guest"><span class="ini">${esc(nm ? initial(nm) : '?')}</span></div><div class="hp-who">${nm ? `<b>${esc(nm)}</b><span class="hp-in">${T('Гость · войти')}</span>` : `<b class="hp-in big">${T('Гость · войти')}</b>`}</div>`;
+  }
+
+  // Окно игрока: гость вводит имя и может войти через Google; вошедший видит профиль и выход из аккаунта.
+  function showProfile(msg) {
+    const me = Auth.me, nm = load(STORE_KEY).name || '';
+    if (me) {
+      showModal(`<h2 class="gold-text">${T('Игрок')}</h2>
+        <div class="pf-me"><div class="ava acct-ava pf-ava"><span class="ini">${esc(initial(me.nick))}</span>${avaPicHtml(me.picture)}</div>
+          <div class="pf-who"><b>${esc(me.nick)}</b>${pidTag(me.id)}<span>${T('Рейтинг')}: <b class="gold-text">${me.rating}</b> · ${gamesWord(me.games)}</span></div></div>
+        <div class="actions"><button class="btn-ghost" data-act="logout">${T('Выйти из аккаунта')}</button><button class="btn-ghost" data-act="board">${T('Таблица лидеров')}</button><button class="btn-gold" data-act="close">${T('Готово')}</button></div>`, 'profile-modal');
+      return;
+    }
+    showModal(`<h2 class="gold-text">${T('Вход')}</h2>
+      <label class="field">${T('Ваше имя')}<input id="pf-name" maxlength="20" autocomplete="nickname" value="${esc(nm)}" placeholder="${T('Как вас зовут?')}"></label>
+      ${msg ? `<div class="err">${esc(msg)}</div>` : ''}
+      <div class="pf-or"><span>${T('или')}</span></div>
+      <div class="gbtn" id="gbtn-pf"></div>
+      <span class="hint">${T('С аккаунтом Google сохраняются рейтинг и прохождение обучения, и можно играть в рейтинговой игре.')}</span>
+      <div class="actions"><button class="btn-gold" data-act="profileSave">${T('Готово')}</button></div>`, 'profile-modal');
+    $('#overlay').dataset.kind = 'profile';
+    Auth.renderButton($('#gbtn-pf'));
+    const inp = $('#pf-name');
+    if (inp) { setTimeout(() => { if (!nm) inp.focus(); }, 120); inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.stopPropagation(); actions.profileSave(); } }); }
+  }
+  // Имя для игры: аккаунт → сохранённое имя; нет — попросить в окне игрока.
+  function myName() { return (Auth.me && Auth.me.nick) || load(STORE_KEY).name || ''; }
+  function needName() {
+    const n = myName();
+    if (!n) showProfile(T('Введите имя, чтобы играть'));
+    return n;
+  }
+
+  // Список открытых столов — отдельное окно (обновляется, пока открыто).
   let roomsTimer = 0;
+  function showRoomsList() {
+    showModal(`<h2 class="gold-text">${T('Открытые столы')}</h2>
+      <div class="room-list" id="room-list"><div class="hint">${T('Загружаем…')}</div></div>
+      <div class="actions"><span class="hint" id="rooms-count" style="margin-right:auto"></span><button class="btn-gold" data-act="close">${T('Закрыть')}</button></div>`, 'rooms-modal');
+    $('#overlay').dataset.kind = 'rooms';
+    loadRooms();
+  }
   async function loadRooms() {
     clearTimeout(roomsTimer);
-    if (S.screen !== 'home') return;
+    const box = $('#overlay.on #room-list');
+    if (!box || $('#overlay').dataset.kind !== 'rooms') return;
     roomsTimer = setTimeout(loadRooms, 4000);
-    if (S.tab !== 'join') return;
     let list;
     try { list = (await fetch(API + '/api/rooms').then(r => r.json())).rooms || []; } catch { return; }
-    const box = cur('#room-list');
-    if (!box) return;
-    const cnt = cur('#rooms-count'); if (cnt) cnt.textContent = list.length ? String(list.length) : '';
+    if (!box.isConnected) return;
+    const cnt = $('#rooms-count'); if (cnt) cnt.textContent = list.length ? T('столов: {n}', { n: list.length }) : '';
     box.innerHTML = list.length ? list.map(r => `<div class="room-row">
         <div class="rr-main"><b>${esc(r.host)}</b><span class="hint">${T('{n} раундов', { n: r.rounds })} · ${r.turnTime ? T('таймер {s} с', { s: r.turnTime }) : T('без таймера')}${r.bluff ? ' · ' + T('обман') : ''}${r.skills ? ' · ' + T('умения') : ''}${r.test ? ' · ' + T('тестовый') : ''}</span></div>
         <span class="rr-seats">${r.players}/${r.size}</span>
-        <button class="btn-ghost" data-act="joinRoom" data-code="${esc(r.code)}">${T('Сесть')}</button></div>`).join('')
-      : `<div class="hint room-empty">${T('Открытых столов пока нет — создайте свой во вкладке «Свой стол» или попробуйте «Быстрая игра».')}</div>`;
+        <button class="btn-gold" data-act="joinRoom" data-code="${esc(r.code)}">${T('Сесть')}</button></div>`).join('')
+      : `<div class="hint room-empty">${T('Открытых столов пока нет — создайте свой в «Создание лобби» или нажмите «Поиск игры».')}</div>`;
   }
 
   // ---------- поиск игроков ----------
   const MMS = { ticket: null, mode: null, timer: 0, started: 0, sizes: [] };
   async function startSearch(mode) {
-    const name = (cur('#name') ? cur('#name').value.trim() : '') || (Auth.me && Auth.me.nick) || load(STORE_KEY).name || '';
-    if (!name) { const e = cur('#err'); if (e) e.textContent = T('Введите имя'); const n = cur('#name'); if (n) n.focus(); return; }
-    if (mode === 'ranked' && !Auth.me) { S.tab = 'ranked'; syncHome(); toast(T('Войдите через Google, чтобы играть на рейтинг')); return; }
+    const name = needName();
+    if (!name) return;
+    if (mode === 'ranked' && !Auth.me) { showProfile(); return; }
     save(STORE_KEY, { name });
-    const size = mode === 'ranked' ? S.rankedSize : S.casualSize;
+    const size = mode === 'ranked' ? 4 : S.casualSize;
     MMS.sizes = size ? [size] : [];
     try {
       const j = await api('/api/mm/join', { mode, sizes: MMS.sizes, name, session: Auth.session, lang: I18N.lang, prev: MMS.ticket });
       MMS.ticket = j.ticket; MMS.mode = mode; MMS.started = Date.now();
     } catch (e) { toast(e.message); return; }
-    showModal(`<h2 class="gold-text">${T(mode === 'ranked' ? 'Ищем соперников' : 'Ищем игроков')}</h2>
-      <div class="search-box"><div class="search-ring"><div class="loader"></div><b id="mm-time">0:00</b></div>
-        <div class="search-info"><div>${T('Стол')}: <b>${MMS.sizes.length ? T('на {n}', { n: MMS.sizes[0] }) : T('любой (2–4)')}</b></div>
-          <div id="mm-line1" class="hint"></div><div id="mm-line2" class="hint"></div></div></div>
-      <div class="actions">${mode === 'casual' ? `<button class="btn-ghost" data-act="botsNow">${T('Играть с ботами сейчас')}</button>` : ''}<button class="btn-gold" data-act="cancelSearch">${T('Отменить')}</button></div>`, 'search-modal');
-    $('#overlay').dataset.kind = 'search';
+    renderGo();
     pollSearch();
   }
   async function pollSearch() {
@@ -492,15 +604,16 @@
     if (!MMS.ticket) return; // отменили, пока ждали ответ
     if (st.state === 'matched') {
       MMS.ticket = null;
-      closeModal(); SFX.win && SFX.chip();
+      renderGo(); SFX.win && SFX.chip();
       toast(T(st.kind === 'ranked' ? 'Соперники найдены!' : 'Игроки найдены!'));
       connect(st.room, st.token);
       return;
     }
-    if (st.state === 'gone') { MMS.ticket = null; closeModalIf('search'); toast(T('Поиск прервался — попробуйте ещё раз')); return; }
+    if (st.state === 'gone') { MMS.ticket = null; renderGo(); toast(T('Поиск прервался — попробуйте ещё раз')); return; }
     const l1 = $('#mm-line1'), l2 = $('#mm-line2');
     if (l1) l1.textContent = T('Ищут игру: {n}', { n: st.inQueue });
-    if (l2) l2.textContent = st.window != null ? T('Разброс рейтинга: ±{w}', { w: st.window })
+    if (l2) l2.textContent = MMS.mode === 'ranked'
+      ? T('Разброс ±{w}', { w: st.window }) + (st.botsIn > 0 ? ' · ' + T('через {s} с — втроём + бот', { s: Math.ceil(st.botsIn / 1000) }) : ' · ' + T('втроём + бот, как только найдётся третий'))
       : st.botsIn > 0 ? T('Через {s} с сядем с теми, кто есть, + боты', { s: Math.ceil(st.botsIn / 1000) }) : T('Свободные места займут боты');
     MMS.timer = setTimeout(pollSearch, 1500);
   }
@@ -508,17 +621,14 @@
     clearTimeout(MMS.timer);
     if (MMS.ticket) api('/api/mm/cancel', { ticket: MMS.ticket }).catch(() => {});
     MMS.ticket = null;
-    closeModalIf('search');
+    renderGo();
   }
   function clampTimer(t) { return Number.isFinite(t) ? Math.max(0, Math.min(600, t)) : 30; }
   function syncHome(el = screenEl().querySelector('.screen:not(.leave)') || screenEl()) {
     if (!S.roundsTouched) S.rounds = 2 * MAX_CARDS(S.players) - 1;
     if (S.test) S.rounds = 17;
-    el.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
-    el.querySelectorAll('#seg-ranked button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.rankedSize));
     el.querySelectorAll('#seg-casual button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.casualSize));
     const ls = $('#listed-sw', el); if (ls) ls.classList.toggle('on', !S.listed); // переключатель — «приватная»
-    el.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === S.tab));
     el.querySelectorAll('#seg-players button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.players));
     const rv = $('#rounds-val', el); if (rv) rv.textContent = S.rounds;
     const tv = $('#timer-val', el); if (tv && document.activeElement !== tv) tv.value = S.turnTime;
@@ -2964,16 +3074,23 @@
   // ---------- действия по кнопкам ----------
   let armedCheck = null, armedT = 0;
   const actions = {
-    tab: b => { S.tab = b.dataset.tab; syncHome(); if (S.tab === 'join') loadRooms(); },
-    rankedSize: b => { S.rankedSize = +b.dataset.n; syncHome(); },
+    sec: b => { SFX.unlock && SFX.unlock(); openSec(b.dataset.sec); },
+    profile: () => showProfile(),
+    profileSave: () => {
+      const inp = $('#pf-name'), n = inp ? inp.value.trim() : '';
+      if (!n) { if (inp) { inp.focus(); nope(inp); } return; }
+      save(STORE_KEY, { name: n }); closeModal(); renderPlayerPlate();
+    },
+    roomsList: () => showRoomsList(),
     casualSize: b => { S.casualSize = +b.dataset.n; syncHome(); },
     listed: () => { S.listed = !S.listed; syncHome(); },
     search: b => startSearch(b.dataset.mode),
     cancelSearch: () => cancelSearch(),
     botsNow: async () => {
       // Не ждать: свой стол с ботами, старт сразу.
+      const name = needName();
+      if (!name) return;
       cancelSearch();
-      const name = load(STORE_KEY).name || (Auth.me && Auth.me.nick) || T('Игрок');
       const players = S.casualSize || 4;
       try {
         const j = await api('/api/create', { name, players, rounds: 2 * MAX_CARDS(players) - 1, turnTime: 30, lang: I18N.lang, session: Auth.session });
@@ -2981,26 +3098,18 @@
         connect(j.room, j.token);
       } catch (e) { toast(e.message); }
     },
-    calib: async () => {
-      const name = (cur('#name') && cur('#name').value.trim()) || (Auth.me && Auth.me.nick) || '';
-      try {
-        const j = await api('/api/calib', { session: Auth.session, name, players: S.rankedSize || 4, lang: I18N.lang });
-        connect(j.room, j.token);
-      } catch (e) { toast(e.message); }
-    },
     joinRoom: async b => {
-      const name = (cur('#name') && cur('#name').value.trim()) || (Auth.me && Auth.me.nick) || '';
-      if (!name) { const e = cur('#err'); if (e) e.textContent = T('Введите имя'); cur('#name') && cur('#name').focus(); return; }
+      const name = needName();
+      if (!name) return;
       save(STORE_KEY, { name });
-      try { const j = await api('/api/join', { name, room: b.dataset.code, session: Auth.session }); connect(j.room, j.token); }
+      try { const j = await api('/api/join', { name, room: b.dataset.code, session: Auth.session }); closeModal(); connect(j.room, j.token); }
       catch (e) { toast(e.message); loadRooms(); }
     },
     research: () => {
-      const calib = S.view && S.view.calib;
       leave();
-      S.tab = 'ranked'; syncHome(); renderRankedPane();
-      if (calib && Auth.me && Auth.me.games < 5) actions.calib();
-      else startSearch('ranked');
+      S.homeSec = 'ranked';
+      if (S.screen === 'home') { S.screen = null; showHome(); }
+      startSearch('ranked');
     },
     players: b => { S.players = +b.dataset.n; syncHome(); },
     rounds: b => { if (S.test) return; S.roundsTouched = true; S.rounds = Math.max(1, Math.min(60, S.rounds + +b.dataset.d)); syncHome(); },
@@ -3022,21 +3131,21 @@
       act({ type: 'skill', skill: 'reshuffle' });
     },
     create: async () => {
-      const name = $('#name').value.trim();
-      if (!name) { $('#err').textContent = T('Введите имя'); $('#name').focus(); return; }
+      const name = needName();
+      if (!name) return;
       const tv = $('#timer-val'); if (tv) S.turnTime = clampTimer(parseInt(tv.value, 10));
       save(STORE_KEY, { name });
       try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, skills: S.skills, test: S.test, listed: S.listed, lang: I18N.lang, session: Auth.session }); connect(j.room, j.token); }
-      catch (e) { $('#err').textContent = e.message; }
+      catch (e) { toast(e.message); }
     },
     join: async () => {
-      const name = $('#name').value.trim();
-      const room = $('#code').value.trim().toUpperCase();
-      if (!name) { $('#err').textContent = T('Введите имя'); $('#name').focus(); return; }
-      if (room.length !== 4) { $('#err').textContent = T('Код комнаты — 4 символа'); return; }
+      const room = ($('#code') ? $('#code').value : '').trim().toUpperCase();
+      if (room.length !== 4) { toast(T('Код комнаты — 4 символа')); const c = $('#code'); if (c) { c.focus(); nope(c); } return; }
+      const name = needName();
+      if (!name) return;
       save(STORE_KEY, { name });
       try { const j = await api('/api/join', { name, room, session: Auth.session }); connect(j.room, j.token); }
-      catch (e) { $('#err').textContent = e.message; }
+      catch (e) { toast(e.message); }
     },
     copy: async () => {
       const link = joinLink(S.view.code);
@@ -3104,7 +3213,6 @@
     lang: b => {
       const l = b.dataset.l;
       if (l === I18N.lang) return;
-      const nm = $('#name'); if (nm && nm.value.trim()) save(STORE_KEY, { name: nm.value.trim() });
       prefs.lang = l; savePrefs(); I18N.set(l); applyLangStatic(); relabelDock();
       const menuOpen = $('#overlay').classList.contains('on') && $('#overlay .menu-list, #overlay .menu-modal');
       if (S.screen === 'home') { S.screen = null; showHome(); }
@@ -3122,7 +3230,7 @@
     tutorial: () => startTutorial(),
     welcomeSkip: () => closeWelcome(),
     tutDone: () => finishTutorial(),
-    tutGo: b => { closeModal(); if (b.dataset.tab && S.screen === 'home') actions.tab(b); },
+    tutGo: b => { closeModal(); if (b.dataset.tab && S.screen === 'home' && cur('#h-right').dataset.open !== b.dataset.tab) openSec(b.dataset.tab); },
     rules: () => {
       showModal(rulesHtml());
       // Вне стола — рядом с «Понятно» кнопка обучения: пройти его заново можно в любой момент.
@@ -3131,7 +3239,7 @@
     },
     close: () => closeModal(),
     fullscreen: () => goFullscreen(),
-    sound: b => { prefs.sound = !prefs.sound; save(PREF_KEY, prefs); applyPrefs(); if (b.closest('.sound-modal')) showSoundSettings(); else showMenu(); if (prefs.sound) SFX.chip(); },
+    sound: b => { prefs.sound = !prefs.sound; save(PREF_KEY, prefs); applyPrefs(); if (b.closest('.sound-modal')) showSoundSettings(); else if (b.closest('#sec-settings')) renderSettingsSec(); else showMenu(); if (prefs.sound) SFX.chip(); },
     soundcfg: () => showSoundSettings(),
     music: () => {
       prefs.music = !prefs.music;
@@ -3179,6 +3287,15 @@
     const fn = actions[b.dataset.act];
     if (fn) { if (!['bid', 'tab', 'check'].includes(b.dataset.act)) SFX.click(); fn(b); }
   });
+  // Клик по пустому месту главного экрана сворачивает открытый раздел.
+  document.addEventListener('pointerdown', e => {
+    if (S.screen !== 'home') return;
+    const R = cur('#h-right');
+    if (!R || !R.dataset.open || R.dataset.busy) return;
+    if (e.target.closest('.h-sec.open, .h-player, #overlay, .modal, #welcome, #coach, .toast, .h-foot')) return;
+    openSec(R.dataset.open);
+  });
+
   // ---------- отклик на нажатие: волна от пальца, вспышка рамки, искры у золотых кнопок ----------
   const TAP_SEL = 'button, [data-act], .switch, .chip, .wheel-item';
   document.addEventListener('pointerdown', e => {
@@ -3217,7 +3334,7 @@
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && S.screen === 'home' && e.target.id !== 'timer-val') {
-      if (S.tab === 'join') actions.join(); else if (S.tab === 'create') actions.create();
+      if (e.target.id === 'code') actions.join();
     }
     if (e.key === 'Escape') closeModal();
   });
@@ -3295,8 +3412,7 @@
     if (S.room) { toast(T('Сначала выйдите из-за стола')); return; }
     closeWelcome(); closeModal();
     if (MMS.ticket) cancelSearch();
-    const nameEl = cur('#name');
-    const name = (nameEl && nameEl.value.trim()) || (Auth.me && Auth.me.nick) || load(STORE_KEY).name || T('Вы');
+    const name = myName() || T('Вы');
     Q.length = 0; S.view = null; S.err = '';
     S.local = Tutorial.create({
       name, pic: Auth.me && Auth.me.picture, lang: I18N.lang,
