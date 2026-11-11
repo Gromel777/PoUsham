@@ -621,6 +621,8 @@
         <filter id="puckHalo" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="16"/></filter>
         <filter id="ballShadow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="4"/></filter>
         <clipPath id="ballClip"><circle r="25"/></clipPath>
+        <radialGradient id="sunHalo" cx=".5" cy=".5" r=".5"><stop offset=".3" stop-color="#ffe08a" stop-opacity=".75"/><stop offset=".55" stop-color="#ffb43c" stop-opacity=".28"/><stop offset="1" stop-color="#ff8a1e" stop-opacity="0"/></radialGradient>
+        <linearGradient id="sunRay" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#fff4c4" stop-opacity=".95"/><stop offset="1" stop-color="#ffb43c" stop-opacity="0"/></linearGradient>
         <filter id="ballGrain" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="3" seed="7" result="n"/><feColorMatrix in="n" values="0 0 0 0 .5  0 0 0 0 .38  0 0 0 0 .15  0 0 0 1.4 -.55"/><feComposite in2="SourceGraphic" operator="in"/></filter>
         <filter id="ballHammer" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="turbulence" baseFrequency=".32" numOctaves="1" seed="3" result="t"/><feColorMatrix in="t" values="0 0 0 0 1  0 0 0 0 .95  0 0 0 0 .8  0 0 0 .9 -.35"/><feComposite in2="SourceGraphic" operator="in"/></filter>
       </defs>
@@ -629,8 +631,10 @@
         <ellipse class="ball-shadow" cx="7" cy="6" rx="27" ry="17" fill="#000" opacity=".6" filter="url(#ballShadow)"/>
         <ellipse class="ball-contact" cx="2" cy="2" rx="14" ry="7" fill="#000" opacity=".55"/>
         <g class="ball-up">
-          <circle class="puck-halo" r="62" fill="#ffd25e" filter="url(#puckHalo)"/>
-          <circle class="puck-glow" r="36" fill="#f6d27a" opacity=".55" filter="url(#puckGlow)"/>
+          <circle class="puck-halo" r="64" fill="url(#sunHalo)"/>
+          <g class="ball-corona">${Array.from({ length: 16 }, (_, i) => `<path d="M -2.2 -${i % 2 ? 31 : 29} L 0 -${i % 2 ? 44 : 54} L 2.2 -${i % 2 ? 31 : 29} Z" fill="url(#sunRay)" transform="rotate(${i * 22.5})"/>`).join('')}</g>
+          <circle class="puck-glow" r="36" fill="#ffcf5a" opacity=".7" filter="url(#puckGlow)"/>
+          <circle r="28.5" fill="none" stroke="#fff1b8" stroke-width="2" opacity=".55" filter="url(#ballShadow)"/>
           <circle class="ball-body" r="25" fill="url(#ballG)"/>
           <g clip-path="url(#ballClip)">
             <circle r="25" fill="#fff" filter="url(#ballHammer)" opacity=".42" class="ball-tex"/>
@@ -1655,7 +1659,7 @@
       const up = puck.querySelector('.ball-up'), spin = puck.querySelector('.ball-spin');
       const mers = puck.querySelectorAll('.ball-m'), star = puck.querySelector('.ball-star');
       const trail = tw.querySelector('.ball-trail');
-      const R = 25;
+      const R = 25, DS = 0.68; // DS — общий размер шара: маленький, «солнышко»
       const place = deg => {
         if (!isFinite(this.puckIn)) this.puckIn = inTo;
         if (!isFinite(this.puckK)) this.puckK = kTo;
@@ -1665,15 +1669,15 @@
         const x = 500 + Math.cos(a) * 408 + (262 - 500 - Math.cos(a) * 408) * inn;
         const y = 300 + Math.sin(a) * 226 + (412 - 300 - Math.sin(a) * 226) * inn;
         const K = this.puckK;
-        puck.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(K * 1.18).toFixed(3)})`);
-        up.setAttribute('transform', `scale(1 ${kAsp.toFixed(3)}) translate(0 -${(R * 0.72).toFixed(1)})`);
+        puck.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(K * DS).toFixed(3)})`);
+        up.setAttribute('transform', `scale(1 ${kAsp.toFixed(3)}) translate(0 -${(R * 0.72 + (this.ballHop || 0)).toFixed(1)})`);
         // Качение: поворот рисунка шара на пройденный путь, ось — поперёк движения.
         const last = this.ballLast;
         if (last) {
           const dx = x - last.x, dy = (y - last.y) / kAsp, dist = Math.hypot(dx, dy);
-          if (dist > 0.01) { this.ballDir = Math.atan2(dy, dx); this.ballRoll = (this.ballRoll || 0) + dist / (K * R); }
+          if (dist > 0.01) { this.ballDir = Math.atan2(dy, dx); this.ballRoll = (this.ballRoll || 0) + dist / (K * DS * R); }
         }
-        this.ballLast = { x, y };
+        this.ballLast = { x, y }; this.ballPlace = place;
         const ph = this.ballRoll || 0;
         spin.setAttribute('transform', `rotate(${((this.ballDir || 0) * 180 / Math.PI).toFixed(1)})`);
         mers.forEach((m, i) => {
@@ -1690,8 +1694,8 @@
           const tr = this.ballTrail || (this.ballTrail = []);
           if (this.puckAnim) { tr.push({ x, y }); if (tr.length > 9) tr.shift(); } else tr.length = 0;
           trail.innerHTML = tr.slice(0, -1).map((p, i, arr) => {
-            const t = (i + 1) / (arr.length + 1), r = R * K * (0.45 + t * 0.5);
-            return `<ellipse cx="${p.x.toFixed(1)}" cy="${(p.y - R * 0.72 * K * kAsp).toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * kAsp).toFixed(1)}" fill="url(#ballTrailG)" opacity="${(t * 0.55).toFixed(2)}"/>`;
+            const t = (i + 1) / (arr.length + 1), r = R * K * DS * (0.45 + t * 0.5);
+            return `<ellipse cx="${p.x.toFixed(1)}" cy="${(p.y - R * 0.72 * K * DS * kAsp).toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * kAsp).toFixed(1)}" fill="url(#ballTrailG)" opacity="${(t * 0.55).toFixed(2)}"/>`;
           }).join('');
         }
       };
@@ -1706,11 +1710,12 @@
       if (to - from >= 360) to -= 360;
       const kFrom = this.puckK, inFrom = this.puckIn;
       const roll = to - from >= 0.5;
-      // Сначала (если фишка была у меня) съезжает обратно на подстаканник, потом катится, потом (если ко мне) выезжает на сукно.
-      const tOut = inFrom > 0.01 && roll ? 320 : 0;
-      const tRoll = roll ? 700 + (to - from) * 3 : 0;
-      const tIn = inTo > 0.01 && roll ? 420 : Math.abs(inTo - inFrom) > 0.01 ? 420 : 0;
-      const total = tOut + tRoll + tIn;
+      // Одно непрерывное движение: шар катится по кругу и сразу плавно сворачивает к месту остановки
+      // (съезд с сукна и выезд на сукно идут одновременно с качением, без отдельных рывков).
+      const tOut = 0;
+      const tRoll = roll ? 800 + (to - from) * 3 : 0;
+      const tIn = !roll && Math.abs(inTo - inFrom) > 0.01 ? 420 : 0;
+      const total = tRoll + tIn;
       if (!total) { this.puckK = kTo; this.puckIn = inTo; place(target); return; }
       if (roll) SFX.puck();
       const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -1719,17 +1724,15 @@
       const step = now => {
         const el = now - t0;
         let deg = from;
-        if (el < tOut) { this.puckIn = inFrom * (1 - ease(el / tOut)); }
-        else if (el < tOut + tRoll) {
-          this.puckIn = roll && tOut ? 0 : this.puckIn;
-          const e = ease((el - tOut) / tRoll);
+        if (el < tRoll) {
+          const e = ease(el / tRoll);
           deg = from + (to - from) * e;
           this.puckK = kFrom + (kTo - kFrom) * e;
+          this.puckIn = inFrom + (inTo - inFrom) * e;
         } else {
           deg = to;
           this.puckK = kTo;
-          const base = roll ? 0 : inFrom;
-          this.puckIn = tIn ? base + (inTo - base) * ease(Math.min(1, (el - tOut - tRoll) / tIn)) : inTo;
+          this.puckIn = tIn ? inFrom + (inTo - inFrom) * ease(Math.min(1, (el - tRoll) / tIn)) : inTo;
         }
         place(deg);
         this.puckDeg = deg % 360;
@@ -1743,6 +1746,18 @@
         else {
           this.puckAnim = false; this.puckDeg = target; this.puckK = kTo; this.puckIn = inTo; place(target);
           puck.classList.add('landed'); setTimeout(() => puck.classList.remove('landed'), 600);
+          if (roll) {
+            // Мягкий подскок на месте — в той же системе координат, без смещения.
+            const h0 = performance.now();
+            const hop = t => {
+              const k = Math.min(1, (t - h0) / 520);
+              this.ballHop = Math.abs(Math.sin(k * Math.PI * 2)) * 9 * (1 - k);
+              if (this.puckAnim || this.puckTarget !== target) { this.ballHop = 0; return; }
+              place(target);
+              if (k < 1) requestAnimationFrame(hop); else this.ballHop = 0;
+            };
+            requestAnimationFrame(hop);
+          }
           const body = puck.querySelector(".ball-body");
           if (body && roll) {
             const [bx, by] = VIEW.center(body);

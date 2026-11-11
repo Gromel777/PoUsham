@@ -858,8 +858,6 @@ input, select { font: inherit; }
 @keyframes twinkle { 0%, 70%, 100% { opacity: 0; scale: .2; rotate: 0deg; } 80% { opacity: 1; scale: 1; rotate: 45deg; } 90% { opacity: 0; scale: .4; rotate: 90deg; } }
 .table-wrap .puck.moving .ball-twinkle { animation: none; opacity: 0; }
 .table-wrap .puck.moving .ball-contact { opacity: .35; }
-.table-wrap .puck.landed .ball-up { animation: ballBounce .6s cubic-bezier(.3, 1.5, .5, 1); transform-box: fill-box; }
-@keyframes ballBounce { 0% { translate: 0 0 } 30% { translate: 0 -10px } 60% { translate: 0 0 } 80% { translate: 0 -3px } 100% { translate: 0 0 } }
 .table-wrap .ball-trail ellipse { mix-blend-mode: screen; }
 
 /* ---------- меню режимов, список столов, поиск, фото на аватарах ---------- */
@@ -941,3 +939,11 @@ input, select { font: inherit; }
 .vol-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--gold-grad); border: 1px solid #fff1c2; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
 .vol-val { min-width: 42px; text-align: right; color: var(--gold-2); font-variant-numeric: tabular-nums; }
 .sound-modal .menu-list { min-width: 300px; }
+/* ================= шар-«солнышко»: корона и сияние ================= */
+.table-wrap .puck .puck-halo { opacity: .85; animation: sunPulse 2.2s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+.table-wrap .puck.mine .puck-halo { opacity: 1; animation: sunPulse 1.6s ease-in-out infinite alternate; }
+.table-wrap .ball-corona { transform-box: fill-box; transform-origin: center; animation: sunSpin 14s linear infinite, sunFlicker 1.7s ease-in-out infinite alternate; mix-blend-mode: screen; }
+.table-wrap .puck.moving .ball-corona { animation-duration: 3s, 1.7s; }
+@keyframes sunPulse { from { scale: .88; opacity: .7 } to { scale: 1.12; opacity: 1 } }
+@keyframes sunSpin { to { rotate: 360deg } }
+@keyframes sunFlicker { from { opacity: .75 } to { opacity: 1 } }
