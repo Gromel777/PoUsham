@@ -930,7 +930,7 @@ input, select { font: inherit; }
 .music-ctl .switch.on i { background: rgba(232, 196, 106, .3); border-color: var(--gold); }
 .music-ctl .switch.on i::after { background: var(--gold-2); }
 .music-ctl .switch span { font-weight: 700; color: var(--gold-2); }
-.vol-range { flex: 1; min-width: 110px; height: 24px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; --p: 20%; }
+.vol-range { flex: 1; min-width: 110px; height: 24px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; --p: 10%; }
 .vol-range:disabled { opacity: .35; cursor: default; }
 .vol-range::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; border: 1px solid var(--line); background: linear-gradient(90deg, var(--gold-3), var(--gold) var(--p), rgba(255, 255, 255, .08) var(--p)); }
 .vol-range::-moz-range-track { height: 6px; border-radius: 3px; border: 1px solid var(--line); background: rgba(255, 255, 255, .08); }

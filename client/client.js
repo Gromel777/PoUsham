@@ -19,9 +19,11 @@
   // ---------- настройки и сессия ----------
   function load(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } }
   function save(key, patch) { try { localStorage.setItem(key, JSON.stringify({ ...load(key), ...patch })); } catch {} }
-  const prefs = { sound: true, music: true, musicVol: 0.2, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang, ...load(PREF_KEY) };
+  const prefs = { sound: true, music: true, musicVol: 0.1, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang, ...load(PREF_KEY) };
   // Новая колода «Силуэты» становится основной и для тех, у кого была сохранена старая.
   if (!prefs.deckV) { prefs.cards = 'sil'; prefs.deckV = 2; }
+  // Базовая громкость музыки снижена до 10% — и для тех, у кого уже сохранились прежние 20%.
+  if (!prefs.musicV) { if (prefs.musicVol === 0.2) prefs.musicVol = 0.1; prefs.musicV = 1; }
   I18N.set(prefs.lang);
   const savePrefs = () => save(PREF_KEY, prefs);
   function applyPrefs() { SFX.setMuted(!prefs.sound); FX.setQuality(prefs.fx === 'high' ? 1 : 0.4); Music.setVolume(prefs.musicVol); Music.setOn(prefs.music); }
@@ -2655,7 +2657,7 @@
     soundcfg: () => showSoundSettings(),
     music: () => {
       prefs.music = !prefs.music;
-      if (prefs.music && prefs.musicVol === 0) prefs.musicVol = 0.2;
+      if (prefs.music && prefs.musicVol === 0) prefs.musicVol = 0.1;
       save(PREF_KEY, prefs); applyPrefs(); syncMusicCtl();
     },
     quality: () => { prefs.fx = prefs.fx === 'high' ? 'low' : 'high'; save(PREF_KEY, prefs); applyPrefs(); showMenu(); },

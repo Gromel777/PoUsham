@@ -10,7 +10,7 @@
   };
   const FADE_IN = 1.6, FADE_OUT = 1.2;
   let ac = null, master = null, unlocked = false;
-  let vol = 0.2, on = true, want = null, hidden = !!document.hidden;
+  let vol = 0.1, on = true, want = null, hidden = !!document.hidden;
   const ch = {}; // имя трека → { el, g, stopT }
 
   function ensureCtx() {
