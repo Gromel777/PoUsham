@@ -145,6 +145,8 @@
     if (img) img.remove();
     ava.insertAdjacentHTML('beforeend', avaPicHtml(pic));
   }
+  // Номер игрока в игре: #00042.
+  const pidTag = id => (id ? `<span class="pid">#${String(id).padStart(5, '0')}</span>` : '');
   const starSvg = '<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z" fill="currentColor"/></svg>';
   const rtTag = r => `<span class="rt">${starSvg}${r}</span>`;
   // Плашка аккаунта на главном экране: кнопка Google или «аватар · имя · рейтинг».
@@ -184,7 +186,8 @@
     if (!b) return;
     const me = j.me;
     if (me && Auth.me) Object.assign(Auth.me, me);
-    const row = (p, isMe) => `<tr class="${isMe ? 'me' : ''} ${p.rank <= 3 ? 'top' + p.rank : ''}"><td class="rk">${p.rank}</td><td class="pn">${esc(p.nick)}${isMe ? ` <span class="hint">${T('(вы)')}</span>` : ''}</td>
+    const row = (p, isMe) => `<tr class="${isMe ? 'me' : ''} ${p.rank <= 3 ? 'top' + p.rank : ''}"><td class="rk">${p.rank}</td><td class="pn"><div class="pn-in"><div class="ava bd-ava"><span class="ini">${esc(initial(p.nick))}</span>${avaPicHtml(p.picture)}</div>
+        <div class="pn-txt"><b>${esc(p.nick)}${isMe ? ` <span class="hint">${T('(вы)')}</span>` : ''}</b>${pidTag(p.id)}</div></div></td>
       <td class="rv">${rtTag(p.rating)}</td><td>${p.games}</td><td>${p.wins}</td></tr>`;
     const inTop = me && j.top.some(p => p.id === me.id);
     let html = j.top.length
@@ -210,7 +213,7 @@
     if (r.status !== 'done') { box.innerHTML = `<div class="hint">${esc(I18N.trServer(r.reason || ''))}</div>`; return; }
     const mine = r.changes[v.you];
     const others = Object.keys(r.changes).map(Number).filter(p => p !== v.you)
-      .map(p => { const c = r.changes[p]; return `<span class="ro"><b style="color:${nameColor(p)}">${esc(v.names[p])}</b> ${c.after} <i class="${c.delta >= 0 ? 'pos' : 'neg'}">${signed(c.delta)}</i></span>`; }).join('');
+      .map(p => { const c = r.changes[p]; return `<span class="ro"><b style="color:${nameColor(p)}">${esc(v.names[p])}</b>${pidTag(v.seats[p] && v.seats[p].uid)} ${c.after} <i class="${c.delta >= 0 ? 'pos' : 'neg'}">${signed(c.delta)}</i></span>`; }).join('');
     box.innerHTML = (mine
       ? `<div class="rt-me ${mine.delta > 0 ? 'up' : mine.delta < 0 ? 'down' : ''}"><span class="lbl">${T('Ваш рейтинг')}</span>${starSvg}<span class="rt-val" id="rt-val">${mine.before}</span><span class="rt-delta" id="rt-delta">${signed(mine.delta)}</span></div>`
       : `<div class="hint">${T('Вы играли без аккаунта — рейтинг не меняется.')}</div>`) + (others ? `<div class="rt-others">${others}</div>` : '');
@@ -2458,7 +2461,9 @@
       if (!fast) await wait(700);
       const order = v.names.map((_, p) => p).sort((a, b) => v.scores[b] - v.scores[a]);
       const iWon = v.scores[v.you] === v.scores[order[0]];
-      const podium = order.map((p, i) => `<div class="pl p${i + 1}" style="animation-delay:${(order.length - i) * 150}ms"><div>${esc(v.names[p])}</div><div class="bar">${v.scores[p]}</div></div>`);
+      const podium = order.map((p, i) => { const st = v.seats[p] || {};
+        return `<div class="pl p${i + 1}" style="animation-delay:${(order.length - i) * 150}ms"><div class="ava pod-ava"><span class="ini">${esc(initial(v.names[p]))}</span>${avaPicHtml(st.pic)}</div>
+          <div class="pod-name">${esc(v.names[p])}${pidTag(st.uid)}</div><div class="bar">${v.scores[p]}</div></div>`; });
       const arranged = order.length >= 3 ? [podium[1], podium[0], podium[2], ...podium.slice(3)] : podium;
       showModal(`<h2 class="gold-text" style="text-align:center">${T(iWon ? 'Победа!' : 'Игра окончена')}</h2>
         <div class="podium">${arranged.join('')}</div>

@@ -1167,3 +1167,16 @@ body.room-cozy .seat .plate { background: linear-gradient(160deg, rgba(74, 44, 2
 .next-timer.tick { animation: bump .45s; }
 #next-btn.waiting { filter: saturate(.4) brightness(.8); cursor: default; animation: armed 1.1s ease-in-out infinite alternate; }
 .next-timer.held { opacity: .55; } .next-timer.held b { color: var(--ink-dim); }
+
+/* ---------- номер игрока и фото в лидерах / итогах ---------- */
+.pid { font-size: 11px; font-weight: 700; color: var(--ink-dim); letter-spacing: .04em; font-variant-numeric: tabular-nums; margin-left: 5px; }
+.pn-in { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.bd-ava { --ava: 30px; font-size: 13px; flex: none; }
+.pn-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.pn-txt b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pn-txt .pid { margin-left: 0; }
+.board-t td.pn { max-width: 220px; }
+.pod-ava { --ava: 44px; font-size: 18px; }
+.pod-name { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.pod-name .pid { margin-left: 0; }
+.rt-others .pid { margin-left: 3px; }

@@ -305,7 +305,7 @@ function startGame(r) {
 
 function seatView(r, s, i) {
   const acc = s.uid && !s.left;
-  return { name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === r.hostSeat, pid: s.pid, rating: acc ? s.rating : null, pic: acc ? s.pic : null };
+  return { name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === r.hostSeat, pid: s.pid, rating: acc ? s.rating : null, pic: acc ? s.pic : null, uid: acc ? s.uid : null };
 }
 
 // Что видит конкретный игрок: только свои карты, у остальных — количество.
