@@ -37,6 +37,7 @@ const STATIC = {
   '/brand.js': 'client/brand.js',
   '/viewport.js': 'client/viewport.js',
   '/voice.js': 'client/voice.js',
+  '/music.js': 'client/music.js',
   '/sw.js': 'client/sw.js',
   '/manifest.webmanifest': 'client/manifest.webmanifest',
   '/icons/icon-180.png': 'client/icons/icon-180.png',
@@ -45,8 +46,11 @@ const STATIC = {
   '/icons/maskable-512.png': 'client/icons/maskable-512.png',
   '/fx.js': 'client/fx.js',
   '/engine.js': 'engine/engine.js',
+  '/music/menu.mp3': 'client/music/menu.mp3',
+  '/music/ranked.mp3': 'client/music/ranked.mp3',
+  '/music/victory.mp3': 'client/music/victory.mp3',
 };
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webmanifest': 'application/manifest+json; charset=utf-8' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webmanifest': 'application/manifest+json; charset=utf-8', '.mp3': 'audio/mpeg' };
 const EMOTES = ['😂', '😱', '🖕', '😎', '😡', '🤔', '👏', '💀'];
 const PHRASES = ['Блефуешь!', 'Проверю!', 'Ну ты даёшь', 'Везёт же', 'Давай быстрее', 'Красиво!', 'Не верю', 'GG'];
 const LIKE_COOLDOWN = 60 * 1000; // у лайка, дизлайка и грязи — своя минута у каждого
@@ -806,11 +810,31 @@ async function handleApi(req, res, url) {
 function serveStatic(req, res, url) {
   const rel = STATIC[url.pathname];
   if (!rel) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Не найдено'); }
+  const ext = path.extname(rel);
+  if (ext === '.mp3') return serveMedia(req, res, path.join(ROOT, rel));
   fs.readFile(path.join(ROOT, rel), (err, data) => {
     if (err) { res.writeHead(500); return res.end('Ошибка сервера'); }
-    const ext = path.extname(rel);
     res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': ext === '.png' ? 'public, max-age=86400' : 'no-cache' });
     res.end(data);
+  });
+}
+
+// Музыка: отдаём кусками по запросу Range (без этого Safari на iPhone не проигрывает аудио), файл кэшируется на неделю.
+function serveMedia(req, res, file) {
+  fs.stat(file, (err, st) => {
+    if (err) { res.writeHead(404); return res.end(); }
+    const head = { 'Content-Type': 'audio/mpeg', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=604800' };
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (!m || (!m[1] && !m[2])) {
+      res.writeHead(200, { ...head, 'Content-Length': st.size });
+      return req.method === 'HEAD' ? res.end() : fs.createReadStream(file).pipe(res);
+    }
+    let start = m[1] ? +m[1] : Math.max(0, st.size - +m[2]);
+    let end = m[1] && m[2] ? Math.min(+m[2], st.size - 1) : st.size - 1;
+    if (start > end || start >= st.size) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+    res.writeHead(206, { ...head, 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Content-Length': end - start + 1 });
+    if (req.method === 'HEAD') return res.end();
+    fs.createReadStream(file, { start, end }).pipe(res);
   });
 }
 

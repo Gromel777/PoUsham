@@ -19,12 +19,46 @@
   // ---------- настройки и сессия ----------
   function load(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } }
   function save(key, patch) { try { localStorage.setItem(key, JSON.stringify({ ...load(key), ...patch })); } catch {} }
-  const prefs = { sound: true, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang, ...load(PREF_KEY) };
+  const prefs = { sound: true, music: true, musicVol: 0.2, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang, ...load(PREF_KEY) };
   // Новая колода «Силуэты» становится основной и для тех, у кого была сохранена старая.
   if (!prefs.deckV) { prefs.cards = 'sil'; prefs.deckV = 2; }
   I18N.set(prefs.lang);
   const savePrefs = () => save(PREF_KEY, prefs);
-  function applyPrefs() { SFX.setMuted(!prefs.sound); FX.setQuality(prefs.fx === 'high' ? 1 : 0.4); }
+  function applyPrefs() { SFX.setMuted(!prefs.sound); FX.setQuality(prefs.fx === 'high' ? 1 : 0.4); Music.setVolume(prefs.musicVol); Music.setOn(prefs.music); }
+
+  // ---------- музыка: какой трек нужен на текущем экране ----------
+  // Меню — «menu»; поиск рейтинговой игры и рейтинговое лобби — «ranked»; за столом тихо; своя победа — «victory».
+  function musicWanted() {
+    const v = S.view;
+    if (S.screen === 'game') return S.victory && v && v.phase === 'gameOver' ? 'victory' : null;
+    if (MMS.ticket && MMS.mode === 'ranked') return 'ranked';
+    if (S.screen === 'lobby' && v) return v.kind === 'ranked' || v.calib ? 'ranked' : 'menu';
+    if (S.screen === 'home') return 'menu';
+    return Music.current; // «подключаюсь…» — не прерываем то, что играет
+  }
+  setInterval(() => {
+    if (S.victory && !(S.screen === 'game' && S.view && S.view.phase === 'gameOver')) S.victory = false;
+    Music.play(musicWanted());
+  }, 400);
+  // Регулятор музыки: выключатель и громкость (в меню за столом и в окне «Звук» на главном экране и в лобби).
+  function musicCtlHtml() {
+    const pct = Math.round(prefs.musicVol * 100);
+    return `<div class="music-ctl">
+      <label class="switch ${prefs.music ? 'on' : ''}" data-act="music"><i></i><span>${T('Музыка')}</span></label>
+      <input type="range" class="vol-range" id="music-vol" min="0" max="100" step="5" value="${pct}" ${prefs.music ? '' : 'disabled'} aria-label="${T('Громкость музыки')}" style="--p:${pct}%">
+      <b class="vol-val" id="music-vol-val">${prefs.music ? pct + '%' : T('выкл.')}</b>
+    </div>`;
+  }
+  function syncMusicCtl() {
+    const box = $('#overlay .music-ctl');
+    if (box) box.outerHTML = musicCtlHtml();
+  }
+  function showSoundSettings() {
+    showModal(`<h2 class="gold-text">${T('Звук')}</h2><div class="menu-list">
+      ${musicCtlHtml()}
+      <button class="btn-ghost" data-act="sound">${T('Звуки игры: {v}', { v: T(prefs.sound ? 'включены' : 'выключены') })}</button>
+    </div><div class="actions"><button class="btn-gold" data-act="close">${T('Готово')}</button></div>`, 'sound-modal');
+  }
 
   // ---------- сеть ----------
   async function api(path, body) {
@@ -315,7 +349,7 @@
           </div>
           <div class="err" id="err">${esc(S.err)}</div>
           <div class="home-foot"><div class="seg seg-sm" id="seg-theme"><button data-act="theme" data-t="sil">${T('Силуэты')}</button><button data-act="theme" data-t="dark">${T('Чёрные')}</button><button data-act="theme" data-t="light">${T('Классика')}</button></div>
-            <button class="btn-ghost" data-act="rules">${T('Правила')}</button><button class="btn-ghost fs-btn" data-act="fullscreen" title="${T('Во весь экран')}">⛶</button><button class="btn-ghost" data-act="install">${T('Установить')}</button></div>
+            <button class="btn-ghost" data-act="rules">${T('Правила')}</button><button class="btn-ghost fs-btn" data-act="soundcfg" title="${T('Звук')}">♪</button><button class="btn-ghost fs-btn" data-act="fullscreen" title="${T('Во весь экран')}">⛶</button><button class="btn-ghost" data-act="install">${T('Установить')}</button></div>
         </div>
       </div>`);
     if (!document.getElementById('fanKF')) {
@@ -484,7 +518,7 @@
       : v.isHost
       ? `<button class="btn-gold" data-act="start">${T('Начать игру')}</button><span class="hint">${T('Пустые места займут боты')}</span>`
       : `<div class="loader" style="width:22px;height:22px;margin:0;border-width:2px"></div><span class="hint">${T('Ждём, когда хост начнёт игру…')}</span>`) +
-      `<span style="flex:1"></span><button class="btn-ghost" data-act="rules">${T('Правила')}</button><button class="btn-ghost" data-act="leave">${T('Выйти')}</button>`;
+      `<span style="flex:1"></span><button class="btn-ghost fs-btn" data-act="soundcfg" title="${T('Звук')}">♪</button><button class="btn-ghost" data-act="rules">${T('Правила')}</button><button class="btn-ghost" data-act="leave">${T('Выйти')}</button>`;
   }
 
   function showGameScreen() {
@@ -712,6 +746,7 @@
   applyLangStatic();
   function showMenu() {
     showModal(`<h2 class="gold-text">${T('Меню')}</h2><div class="menu-list">
+      ${musicCtlHtml()}
       <button class="btn-ghost" data-act="sound">${T('Звук: {v}', { v: T(prefs.sound ? 'включён' : 'выключен') })}</button>
       <button class="btn-ghost" data-act="quality">${T('Эффекты: {v}', { v: T(prefs.fx === 'high' ? 'максимум' : 'экономно') })}</button>
       <button class="btn-ghost" data-act="log">${T('Журнал: {v}', { v: T(prefs.log ? 'показан' : 'скрыт') })}</button>
@@ -2030,7 +2065,7 @@
       $('#overlay').dataset.kind = 'over';
       renderOverRating(v);
       FX.confetti(); SFX.win();
-      if (iWon) setTimeout(() => FX.confetti(), 900);
+      if (iWon) { setTimeout(() => FX.confetti(), 900); S.victory = true; Music.play('victory', true); }
     },
   };
 
@@ -2600,7 +2635,13 @@
     rules: () => showModal(rulesHtml()),
     close: () => closeModal(),
     fullscreen: () => goFullscreen(),
-    sound: () => { prefs.sound = !prefs.sound; save(PREF_KEY, prefs); applyPrefs(); showMenu(); if (prefs.sound) SFX.chip(); },
+    sound: b => { prefs.sound = !prefs.sound; save(PREF_KEY, prefs); applyPrefs(); if (b.closest('.sound-modal')) showSoundSettings(); else showMenu(); if (prefs.sound) SFX.chip(); },
+    soundcfg: () => showSoundSettings(),
+    music: () => {
+      prefs.music = !prefs.music;
+      if (prefs.music && prefs.musicVol === 0) prefs.musicVol = 0.2;
+      save(PREF_KEY, prefs); applyPrefs(); syncMusicCtl();
+    },
     quality: () => { prefs.fx = prefs.fx === 'high' ? 'low' : 'high'; save(PREF_KEY, prefs); applyPrefs(); showMenu(); },
     log: b => {
       prefs.log = !prefs.log; save(PREF_KEY, prefs);
@@ -2614,6 +2655,14 @@
     board: () => showBoard(),
     logout: () => Auth.logout(),
   };
+  document.addEventListener('input', e => {
+    if (e.target.id !== 'music-vol') return;
+    const pct = +e.target.value;
+    prefs.musicVol = pct / 100; Music.setVolume(prefs.musicVol);
+    e.target.style.setProperty('--p', pct + '%');
+    const val = $('#music-vol-val'); if (val) val.textContent = pct + '%';
+  });
+  document.addEventListener('change', e => { if (e.target.id === 'music-vol') save(PREF_KEY, prefs); });
   document.addEventListener('click', e => {
     SFX.unlock(); Parallax.enableGyro(); Voice.unlock();
     if (!e.target.closest('#ava-menu') && !e.target.closest('.seat .ava, .lseat .ava')) Social.closeAvatarMenu();

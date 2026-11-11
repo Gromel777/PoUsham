@@ -926,3 +926,18 @@ input, select { font: inherit; }
 .panes { display: grid; }
 .panes > .pane { grid-area: 1 / 1; display: flex; visibility: hidden; pointer-events: none; }
 .panes > .pane.on { visibility: visible; pointer-events: auto; }
+
+/* Музыка: выключатель + золотой ползунок громкости */
+.music-ctl { display: flex; align-items: center; gap: 12px; padding: 6px 4px; }
+.music-ctl .switch.on i { background: rgba(232, 196, 106, .3); border-color: var(--gold); }
+.music-ctl .switch.on i::after { background: var(--gold-2); }
+.music-ctl .switch span { font-weight: 700; color: var(--gold-2); }
+.vol-range { flex: 1; min-width: 110px; height: 24px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; --p: 20%; }
+.vol-range:disabled { opacity: .35; cursor: default; }
+.vol-range::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; border: 1px solid var(--line); background: linear-gradient(90deg, var(--gold-3), var(--gold) var(--p), rgba(255, 255, 255, .08) var(--p)); }
+.vol-range::-moz-range-track { height: 6px; border-radius: 3px; border: 1px solid var(--line); background: rgba(255, 255, 255, .08); }
+.vol-range::-moz-range-progress { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--gold-3), var(--gold)); }
+.vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -8px; border-radius: 50%; background: var(--gold-grad); border: 1px solid #fff1c2; box-shadow: 0 2px 8px rgba(0, 0, 0, .5), 0 0 10px rgba(232, 196, 106, .45); }
+.vol-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--gold-grad); border: 1px solid #fff1c2; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+.vol-val { min-width: 42px; text-align: right; color: var(--gold-2); font-variant-numeric: tabular-nums; }
+.sound-modal .menu-list { min-width: 300px; }
