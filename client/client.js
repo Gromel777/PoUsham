@@ -539,7 +539,7 @@
             <button class="icon-btn" data-act="menu" title="${T('Меню')}">${iconSvg('menu')}</button>
           </div>
         </div>
-        <div class="round-dock"><div class="skills-bar" id="skills-bar"></div><div class="status" id="status"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> ${T('козырь')}</span><span id="hud-mode"></span></div></div></div>
+        <div class="round-dock"><div class="skills-bar" id="skills-bar"></div><div class="status" id="status"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="bids-meter" id="bids-meter"></div><div class="tags"><span class="trump-box"><span>♥</span> ${T('козырь')}</span><span id="hud-mode"></span></div></div></div>
         <div class="me-panel" id="me-panel"></div>
         <div class="action" id="action"></div>
         <div id="vote"></div>
@@ -699,7 +699,35 @@
     }[name];
     return `<svg viewBox="0 0 24 24">${p}</svg>`;
   }
-  const crownSvg = () => `<svg class="crown" viewBox="0 0 20 14"><path d="M1 13 L2 3 L6.5 8 L10 1 L13.5 8 L18 3 L19 13 Z" fill="#f4dc94" stroke="#8a6420" stroke-width="1"/></svg>`;
+  // Корона лидера: бархатная шапка, золотые зубцы с жемчугом, рубин, сапфиры, изумруды и блики.
+  let crownN = 0;
+  const crownSvg = () => {
+    const u = 'cr' + (++crownN);
+    const gem = (x, y, rx, ry, g) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="url(#${u}${g})" stroke="#3a2306" stroke-width=".5"/><ellipse cx="${x - rx * 0.35}" cy="${y - ry * 0.4}" rx="${rx * 0.35}" ry="${ry * 0.28}" fill="#fff" opacity=".85"/>`;
+    const pearl = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}" fill="url(#${u}pe)" stroke="#8a6420" stroke-width=".35"/>`;
+    return `<svg class="crown" viewBox="0 0 40 30"><defs>
+      <linearGradient id="${u}g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6cf"/><stop offset=".3" stop-color="#f6d27a"/><stop offset=".62" stop-color="#d19a2e"/><stop offset="1" stop-color="#8a5a12"/></linearGradient>
+      <linearGradient id="${u}b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe9a6"/><stop offset=".45" stop-color="#e2b04c"/><stop offset="1" stop-color="#7a4c0e"/></linearGradient>
+      <radialGradient id="${u}v" cx=".5" cy=".3" r=".7"><stop offset="0" stop-color="#e2324f"/><stop offset=".6" stop-color="#8e0f2a"/><stop offset="1" stop-color="#4a0614"/></radialGradient>
+      <radialGradient id="${u}r" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#ffb3c0"/><stop offset=".4" stop-color="#ff2a4a"/><stop offset="1" stop-color="#6e0018"/></radialGradient>
+      <radialGradient id="${u}s" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#c9e4ff"/><stop offset=".45" stop-color="#2f7bff"/><stop offset="1" stop-color="#0b2370"/></radialGradient>
+      <radialGradient id="${u}e" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#c8ffd9"/><stop offset=".45" stop-color="#19c26a"/><stop offset="1" stop-color="#05502a"/></radialGradient>
+      <radialGradient id="${u}pe" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f1e9dc"/><stop offset="1" stop-color="#b8a98f"/></radialGradient>
+    </defs>
+      <ellipse cx="20" cy="15.5" rx="15.5" ry="9.5" fill="url(#${u}v)"/>
+      <path d="M8 13 Q20 7 32 13" fill="none" stroke="#ff6f86" stroke-width=".6" opacity=".5"/>
+      <path d="M3.5 22 L2.4 9 L9.2 15 L12.2 5.6 L16.6 13.6 L20 1.8 L23.4 13.6 L27.8 5.6 L30.8 15 L37.6 9 L36.5 22 Z" fill="url(#${u}g)" stroke="#6b4210" stroke-width=".7" stroke-linejoin="round"/>
+      <path d="M3.9 20.5 L3.1 10.6 M12.4 7.4 L10.6 13.4 M20 3.6 L18 12 M27.6 7.4 L25.8 12.6 M36.9 10.6 L36.2 20.5" stroke="#fff8dc" stroke-width=".7" stroke-linecap="round" opacity=".7"/>
+      ${gem(20, 12.4, 2.2, 3, 'r')}${gem(12.2, 15.6, 1.5, 1.9, 's')}${gem(27.8, 15.6, 1.5, 1.9, 's')}
+      ${pearl(2.4, 8.4, 1.9)}${pearl(12.2, 5, 1.9)}${pearl(20, 1.9, 2.1)}${pearl(27.8, 5, 1.9)}${pearl(37.6, 8.4, 1.9)}
+      <rect x="2.6" y="20.2" width="34.8" height="7.6" rx="2" fill="url(#${u}b)" stroke="#5a360b" stroke-width=".7"/>
+      <path d="M3.6 21.4 H36.4" stroke="#fff3c4" stroke-width=".6" opacity=".75"/>
+      <path d="M3.6 26.8 H36.4" stroke="#3a2306" stroke-width=".6" opacity=".6"/>
+      ${gem(20, 24, 3.2, 2.4, 'r')}${gem(12.5, 24, 2.1, 1.9, 'e')}${gem(27.5, 24, 2.1, 1.9, 'e')}${gem(6.4, 24, 1.4, 1.5, 's')}${gem(33.6, 24, 1.4, 1.5, 's')}
+      ${[9.4, 16, 24, 30.6].map(x => pearl(x, 24, 0.9)).join('')}
+      <g class="crown-glint" transform="translate(20 1.9)"><path d="M0 -4.5 L.7 -.7 L4.5 0 L.7 .7 L0 4.5 L-.7 .7 L-4.5 0 L-.7 -.7 Z" fill="#fff"/></g>
+    </svg>`;
+  };
 
   // ---------- модальные окна, тосты ----------
   function showModal(html, cls = '') {
@@ -1065,6 +1093,28 @@
       $('#hud-round', this.el).textContent = T('Раунд {a}/{b}', { a: v.roundIdx + 1, b: v.plan.length });
       $('#hud-sub', this.el).textContent = poCards(v.plan[v.roundIdx]);
       $('#hud-mode', this.el).innerHTML = v.bluff ? `<span class="mode-box">${T('обман')}</span>` : '';
+      // Заказы против карт: сколько заявлено всего при k картах в руке. Перебор — кто-то точно не доберёт.
+      const bm = $('#bids-meter', this.el);
+      if (bm) {
+        const k = v.plan[v.roundIdx];
+        const made = v.bids.filter(b => b !== null);
+        const sum = made.reduce((a, b) => a + b, 0);
+        const all = made.length === v.n;
+        const cls = sum > k ? 'over' : sum === k ? 'exact' : 'under';
+        const note = !made.length ? T('ждём заявки') : sum > k ? T('перебор +{d}', { d: sum - k }) : sum === k ? T('ровно') : T('недобор −{d}', { d: k - sum });
+        const key = `${sum}/${k}/${made.length}/${cls}`;
+        if (bm.dataset.key !== key) {
+          const grew = bm.dataset.sum != null && +bm.dataset.sum !== sum && bm.dataset.round === String(v.roundIdx);
+          bm.dataset.key = key; bm.dataset.sum = sum; bm.dataset.round = v.roundIdx;
+          bm.className = `bids-meter ${cls}${all ? ' all' : ''}`;
+          const fill = Math.min(1, k ? sum / k : 0), over = k ? Math.min(1, Math.max(0, sum - k) / k) : 0;
+          bm.innerHTML = `<div class="bm-top"><span class="bm-l">${T('Заказы / карты')}</span><span class="bm-v"><b>${sum}</b><i>/</i>${k}</span></div>
+            <div class="bm-bar"><span class="bm-fill" style="width:${(fill * 100).toFixed(1)}%"></span><span class="bm-over" style="width:${(over * 100).toFixed(1)}%"></span></div>
+            <div class="bm-note">${note}${!all && made.length ? ` · ${T('заявили {a} из {b}', { a: made.length, b: v.n })}` : ''}</div>`;
+          if (grew) popEl(bm.querySelector('.bm-v b'));
+          if (grew && cls === 'over') { bm.classList.remove('flash'); void bm.offsetWidth; bm.classList.add('flash'); }
+        }
+      }
     },
 
     updateLog(v) {

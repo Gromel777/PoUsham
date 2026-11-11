@@ -954,3 +954,40 @@ input, select { font: inherit; }
   background: rgba(0, 0, 0, .35); border: 1px solid var(--line); color: var(--ink); }
 .code-row input::placeholder { letter-spacing: .05em; font-weight: 600; font-size: 14px; color: var(--ink-dim); }
 .code-row .btn-gold { flex: 1; }
+
+/* ================= новая корона лидера ================= */
+.crown { width: 32px; height: 24px; overflow: visible; filter: drop-shadow(0 0 5px rgba(255, 214, 120, .75)) drop-shadow(0 2px 2px rgba(0, 0, 0, .8)); }
+.seat .ava .crown, .me-panel .ava .crown { top: -16px; }
+.crown-fly { width: 40px; height: 30px; }
+.crown .crown-glint { transform-box: fill-box; transform-origin: center; animation: crownGlint 3.2s ease-in-out infinite; }
+@keyframes crownGlint { 0%, 72%, 100% { opacity: 0; scale: .2; rotate: 0deg } 82% { opacity: 1; scale: 1.15; rotate: 45deg } 92% { opacity: 0; scale: .3; rotate: 90deg } }
+
+/* ================= счётчик заказов: заявлено / карт ================= */
+.bids-meter { align-self: stretch; min-width: 128px; margin: 2px 0 1px; padding: 4px 7px 5px; border-radius: 10px; background: rgba(0, 0, 0, .35); border: 1px solid rgba(232, 196, 106, .25); text-align: left; transition: border-color .3s, box-shadow .3s, background .3s; }
+.bids-meter:empty { display: none; }
+.bm-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.bm-l { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-dim); font-weight: 800; }
+.bm-v { font-family: var(--font-title); font-weight: 700; font-size: 20px; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.bm-v b { display: inline-block; font-size: 24px; }
+.bm-v i { font-style: normal; margin: 0 2px; color: var(--ink-dim); }
+.bm-bar { position: relative; height: 5px; margin-top: 4px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.bm-fill, .bm-over { position: absolute; top: 0; bottom: 0; border-radius: 3px; transition: width .5s cubic-bezier(.2, .9, .3, 1.2); }
+.bm-fill { left: 0; background: linear-gradient(90deg, #6fb8ff, #9be3a6); }
+.bm-over { right: 0; background: repeating-linear-gradient(-45deg, #ff4d5e 0 4px, #b3122c 4px 8px); box-shadow: 0 0 8px rgba(255, 77, 94, .8); }
+.bm-note { margin-top: 3px; font-size: 11px; font-weight: 700; color: var(--ink-dim); white-space: nowrap; }
+.bids-meter.under .bm-v b { color: #9be3a6; }
+.bids-meter.exact { border-color: rgba(246, 210, 122, .7); box-shadow: 0 0 12px rgba(246, 210, 122, .25); }
+.bids-meter.exact .bm-v b, .bids-meter.exact .bm-note { color: var(--gold-2); }
+.bids-meter.exact .bm-fill { background: var(--gold-grad); }
+.bids-meter.over { border-color: var(--crimson); background: rgba(70, 6, 18, .55); box-shadow: 0 0 14px rgba(255, 45, 85, .35); }
+.bids-meter.over .bm-v b, .bids-meter.over .bm-note { color: #ff8a96; }
+.bids-meter.over .bm-fill { background: linear-gradient(90deg, #f6d27a, #ff8a5a); }
+.bids-meter.flash { animation: bmFlash .9s ease-out; }
+@keyframes bmFlash { 0% { box-shadow: 0 0 0 0 rgba(255, 45, 85, .9) } 40% { box-shadow: 0 0 0 6px rgba(255, 45, 85, .25), 0 0 24px rgba(255, 45, 85, .9) } 100% { box-shadow: 0 0 14px rgba(255, 45, 85, .35) } }
+.bm-v b.bump { animation: bump .6s; }
+.round-box #hud-sub { display: none; }
+.bids-meter { padding: 3px 7px 4px; margin: 1px 0 0; }
+.bm-note { font-size: 10.5px; margin-top: 2px; }
+.bm-l { font-size: 9px; letter-spacing: .08em; }
+.crown { width: 36px; height: 27px; }
+.seat .ava .crown, .me-panel .ava .crown { top: -18px; }
