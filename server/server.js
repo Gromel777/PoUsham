@@ -68,6 +68,7 @@ const STATIC = {
   '/cards-light.js': 'client/cards-light.js',
   '/cards-sil.js': 'client/cards-sil.js',
   '/room-cozy.js': 'client/room-cozy.js',
+  '/room-office.js': 'client/room-office.js',
   '/i18n.js': 'client/i18n.js',
   '/brand.js': 'client/brand.js',
   '/viewport.js': 'client/viewport.js',

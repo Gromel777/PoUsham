@@ -20,18 +20,20 @@
   function load(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } }
   function save(key, patch) { try { localStorage.setItem(key, JSON.stringify({ ...load(key), ...patch })); } catch {} }
   const prefs = { sound: true, music: true, musicVol: 0.1, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang, ...load(PREF_KEY) };
-  // Оформление комнаты (стол, окружение): classic — премиальный стол, cozy — «Пижамная вечеринка».
-  // Выбирается в «Персонализация → Комнаты»; ?room=… в адресе — для быстрого просмотра.
-  const ROOMS = [['classic', 'Классика'], ['cozy', 'Пижамная вечеринка']];
+  // Оформление комнаты (стол, окружение): classic — премиальный стол (в client.js), остальные — модули room-*.js
+  // с одинаковым набором tableBase/chair/deco. Выбирается в «Персонализация → Комнаты»; ?skin=… — для быстрого просмотра (?room= занят кодом стола).
+  const ROOMS = [['classic', 'Классика'], ['cozy', 'Пижамная вечеринка'], ['office', 'Переговорка']];
+  const ROOM_SKINS = { cozy: () => window.RoomCozy, office: () => window.RoomOffice };
   let ROOM = 'classic';
+  const roomSkin = () => (ROOM_SKINS[ROOM] ? ROOM_SKINS[ROOM]() : null);
   function applyRoom(k) {
-    ROOM = k === 'cozy' && window.RoomCozy ? 'cozy' : 'classic';
-    document.body.classList.toggle('room-cozy', ROOM === 'cozy');
-    const bg = document.querySelector('.bg'), deco = bg && bg.querySelector('.cz-deco');
-    if (ROOM === 'cozy' && bg && !deco) bg.insertAdjacentHTML('beforeend', `<div class="cz-deco">${RoomCozy.deco()}</div>`);
-    if (ROOM !== 'cozy' && deco) deco.remove();
+    ROOM = ROOM_SKINS[k] && ROOM_SKINS[k]() ? k : 'classic';
+    for (const [r] of ROOMS) document.body.classList.toggle('room-' + r, r === ROOM && r !== 'classic');
+    const bg = document.querySelector('.bg'), old = bg && bg.querySelector('.room-deco'), skin = roomSkin();
+    if (old && old.dataset.room !== ROOM) old.remove();
+    if (skin && bg && !bg.querySelector('.room-deco')) bg.insertAdjacentHTML('beforeend', `<div class="room-deco" data-room="${ROOM}">${skin.deco()}</div>`);
   }
-  applyRoom(new URLSearchParams(location.search).get('room') || prefs.room);
+  applyRoom(new URLSearchParams(location.search).get('skin') || prefs.room);
   // Новая колода «Силуэты» становится основной и для тех, у кого была сохранена старая.
   if (!prefs.deckV) { prefs.cards = 'sil'; prefs.deckV = 2; }
   // Базовая громкость музыки снижена до 10% — и для тех, у кого уже сохранились прежние 20%.
@@ -774,9 +776,10 @@
   // ---------- стол по образцу: кожаный борт с заклёпками, лакированная дорожка, подстаканники, сукно ----------
   function tableSvg(angles) {
     const svg = classicTableSvg(angles);
-    if (ROOM !== 'cozy' || !window.RoomCozy) return svg;
+    const skin = roomSkin();
+    if (!skin) return svg;
     // Общий шар хода берём из классического стола, всё остальное — из комнаты.
-    return RoomCozy.tableBase(angles, SIDE_SPOTS) + svg.slice(svg.indexOf('<defs>\n        <radialGradient id="ballG"'));
+    return skin.tableBase(angles, SIDE_SPOTS) + svg.slice(svg.indexOf('<defs>\n        <radialGradient id="ballG"'));
   }
   function classicTableSvg(angles) {
     const cx = 500, cy = 300;
@@ -1056,6 +1059,16 @@
   // Мини-превью комнаты: стол сверху и места игроков.
   function roomPreview(k) {
     const seats = [[50, 88], [8, 50], [30, 14], [70, 14], [92, 50]];
+    if (k === 'office') {
+      return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        <rect width="100" height="100" fill="#3b4250"/>${[0, 20, 40, 60, 80].map(x => [0, 20, 40, 60, 80].map(y => `<rect x="${x}" y="${y}" width="20" height="20" fill="${(x + y) % 40 ? '#363c49' : '#3f4656'}"/>`).join('')).join('')}
+        <rect x="18" y="0" width="22" height="6" rx="1" fill="#eef5ff" opacity=".7"/><rect x="60" y="0" width="22" height="6" rx="1" fill="#eef5ff" opacity=".7"/>
+        <ellipse cx="50" cy="56" rx="38" ry="27" fill="#1e140c"/><ellipse cx="50" cy="53" rx="38" ry="27" fill="#b8bec7"/><ellipse cx="50" cy="53" rx="37" ry="26" fill="#5e3e25"/>
+        <path d="M 50 47 L 55 56 L 45 56 Z" fill="#23262c"/><circle cx="50" cy="53" r="1" fill="#45e09a"/>
+        <rect x="22" y="62" width="10" height="7" rx="1" fill="#c9ced6" transform="rotate(-14 27 65)"/><rect x="70" y="61" width="6" height="8" fill="#fbfaf4"/>
+        ${seats.map(([x, y]) => `<rect x="${x - 6}" y="${y - 6}" width="12" height="12" rx="4" fill="#2b2f36" stroke="#4a505b" stroke-width=".8"/>`).join('')}
+      </svg>`;
+    }
     if (k === 'cozy') {
       const pil = ['#f3e0c8', '#f2b3c2', '#b8d2f0', '#f6dc8e', '#d8c4ef'];
       return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -1516,7 +1529,7 @@
         const el = document.createElement('div');
         el.className = `seat spot-${spot}`;
         const fanSide = spot === 'right' || spot === 'tr' ? 'l' : 'r';
-        el.innerHTML = `<div class="chair" style="--chair-rot:${CHAIR_ROT[spot] || 0}deg">${ROOM === 'cozy' && window.RoomCozy ? RoomCozy.chair(spot) : chairSvg()}</div>
+        el.innerHTML = `<div class="chair" style="--chair-rot:${CHAIR_ROT[spot] || 0}deg">${roomSkin() ? roomSkin().chair(spot) : chairSvg()}</div>
           <div class="ava"><div class="ring"></div><span class="ini"></span></div>
           <div class="plate"><div class="line1"><span class="nm"></span><span class="sc">0</span></div><div class="pips"></div></div>
           <div class="fan ${fanSide}"></div><div class="xtra"></div>`;
@@ -2389,7 +2402,7 @@
       if (!v || !tw || !this.seatEls || this.seatEls.length !== v.n) return;
       tw.innerHTML = tableSvg(Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
       this.neonDeg = null; this.puckDeg = null; this.puckK = null; this.puckIn = null; this.puckAnim = false; this.ballLast = null; this.ballTrail = []; this.sideCur = null; this.puckGoal = null; cancelAnimationFrame(this.puckRaf);
-      this.seatEls.forEach((el, p) => { const ch = el && el.querySelector('.chair'); if (ch) ch.innerHTML = ROOM === 'cozy' ? RoomCozy.chair(spotOf(v, p)) : chairSvg(); });
+      this.seatEls.forEach((el, p) => { const ch = el && el.querySelector('.chair'); if (ch) ch.innerHTML = roomSkin() ? roomSkin().chair(spotOf(v, p)) : chairSvg(); });
       try { this.updateNeon(v); this.updatePuck(v, true); } catch (e) { console.error(e); }
     },
     refreshFaces() {
