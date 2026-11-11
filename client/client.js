@@ -813,9 +813,23 @@
   function showCustomize(tab = S.custTab || 'decks', from) {
     if (from !== undefined) S.custFrom = from;
     S.custTab = tab;
-    const tabs = [['decks', 'Колоды'], ['rooms', 'Комнаты'], ['fx', 'Эффекты']];
+    const tabs = [['decks', 'Колоды'], ['rooms', 'Комнаты'], ['fx', 'Эффекты'], ['wheel', 'Эмоции']];
     let body;
-    if (tab === 'decks') {
+    if (tab === 'wheel') {
+      const w = myWheel(), sel = S.wheelSlot || 0;
+      const slots = w.emotes.map((e, i) => {
+        const a = (i / w.emotes.length) * Math.PI * 2 - Math.PI / 2;
+        return `<button class="wheel-item ${i === sel ? 'sel' : ''}" style="--x:${(Math.cos(a) * 64).toFixed(1)}px;--y:${(Math.sin(a) * 64).toFixed(1)}px;animation:none" data-act="wheelSlot" data-i="${i}">${e}</button>`;
+      }).join('');
+      body = `<div class="wheel-cfg">
+        <div class="wc-col wc-wheel"><div class="menu-cap">${T('Колесо')}</div><div class="wheel wheel-edit">${slots}<div class="wheel-hub">😀</div></div></div>
+        <div class="wc-col"><div class="menu-cap">${T('Выберите место на колесе, затем смайлик')}</div>
+          <div class="emo-pool">${EMOTE_POOL.map(e => `<button class="${w.emotes.includes(e) ? 'used' : ''}" data-act="wheelPick" data-e="${e}">${e}</button>`).join('')}</div></div>
+        <div class="wc-col"><div class="menu-cap">${T('Фразы')}</div>
+          <div class="wc-phrases">${w.phrases.map((p, i) => `<input class="wheel-phrase" data-i="${i}" maxlength="${PHRASE_MAX}" value="${esc(T(p))}" placeholder="${T('Пусто')}">`).join('')}</div>
+          <button class="btn-ghost wc-reset" data-act="wheelReset">${T('Сбросить по умолчанию')}</button></div>
+      </div>`;
+    } else if (tab === 'decks') {
       body = `<div class="deck-grid">${DECKS.map(([k, n]) => {
         const D = deckImpl(k), on = prefs.cards === k;
         const faces = ['Т♥', '7♠', 'Д♦'].map(id => `<span class="dk-card" style="background-image:${D.url(Cards.parse(id))}"></span>`).join('');
@@ -2250,6 +2264,18 @@
     '👏': { cls: 'emo-clap', fx: (x, y) => FX.burst(x, y, { n: 30, type: 'conf', colors: ['#f6d27a', '#ff4d5e', '#9ae8ff', '#46e08a', '#c9a2ff'], speed: [120, 300], g: 260, life: [0.9, 1.4], size: [6, 10] }) },
     '💀': { cls: 'emo-dead', fx: (x, y) => FX.burst(x, y, { n: 18, type: 'dust', colors: ['#9a9aa2'], speed: [30, 110], g: 40, life: [0.8, 1.3], size: [14, 24], size2: 1.6 }) },
   };
+  // Колесо эмоций игрока: 8 смайликов из пула и 8 своих фраз. Хранится в личных настройках.
+  // Пул совпадает с EMOTE_POOL на сервере.
+  const EMOTE_POOL = ['😂', '😱', '🖕', '😎', '😡', '🤔', '👏', '💀', '🤣', '😭', '😏', '🙄', '😴', '🤯', '🥳', '😇', '🤡', '🤬', '🥶', '😈', '👍', '👎', '🙏', '🤝', '👀', '🔥', '💩', '❤️', '💔', '🍀', '🎯', '🏆'];
+  const WHEEL_DEF = { emotes: ['😂', '😱', '🖕', '😎', '😡', '🤔', '👏', '💀'], phrases: ['Блефуешь!', 'Проверю!', 'Ну ты даёшь', 'Везёт же', 'Давай быстрее', 'Красиво!', 'Не верю', 'GG'] };
+  const PHRASE_MAX = 24;
+  function myWheel() {
+    const w = prefs.wheel || {};
+    const emotes = WHEEL_DEF.emotes.map((d, i) => (Array.isArray(w.emotes) && EMOTE_POOL.includes(w.emotes[i]) ? w.emotes[i] : d));
+    const phrases = WHEEL_DEF.phrases.map((d, i) => (Array.isArray(w.phrases) && typeof w.phrases[i] === 'string' ? w.phrases[i].slice(0, PHRASE_MAX) : d)); // стандартные — русским ключом, переводятся при показе
+    return { emotes, phrases };
+  }
+  function saveWheel(w) { prefs.wheel = { emotes: w.emotes.slice(), phrases: w.phrases.slice() }; savePrefs(); }
   const mutesOf = name => prefs.mutes[name] || {};
   const isMuted = (name, what) => !!mutesOf(name)[what];
 
@@ -2332,7 +2358,8 @@
       el.textContent = id;
       el.style.left = x + 'px'; el.style.top = (y - 10) + 'px';
       $('#app').appendChild(el);
-      setTimeout(() => conf.fx && conf.fx(x, y - 30), 180);
+      const fx = conf.fx || ((fx_x, fx_y) => FX.burst(fx_x, fx_y, { n: 12, type: 'glyph', glyphs: ['✦'], colors: FX.GOLD, speed: [40, 120], g: 0, life: [0.6, 1], size: [10, 16] }));
+      setTimeout(() => fx(x, y - 30), 180);
       SFX.emote(id);
       setTimeout(() => el.remove(), 2400);
     },
@@ -2518,12 +2545,12 @@
       const v = S.view;
       const pick = $('#emo-pick');
       if (pick.classList.contains('on')) { pick.classList.remove('on'); return; }
-      const emotes = v.emotes || [];
+      const { emotes, phrases } = myWheel();
       pick.innerHTML = `<div class="wheel">${emotes.map((e, i) => {
         const a = (i / emotes.length) * Math.PI * 2 - Math.PI / 2;
         return `<button class="wheel-item" style="--x:${(Math.cos(a) * 74).toFixed(1)}px;--y:${(Math.sin(a) * 74).toFixed(1)}px;animation-delay:${i * 25}ms" data-act="emote" data-id="${e}">${e}</button>`;
       }).join('')}<div class="wheel-hub">😀</div></div>
-        <div class="phrases">${(v.phrases || []).map(p => `<button class="phrase" data-act="emote" data-id="${esc(p)}">${esc(T(p))}</button>`).join('')}</div>`;
+        <div class="phrases">${phrases.filter(p => p.trim()).map(p => `<button class="phrase" data-act="phrase" data-text="${esc(p)}">${esc(T(p))}</button>`).join('')}</div>`;
       pick.classList.add('on');
     },
   };
@@ -2709,6 +2736,16 @@
     'chat-close': () => Social.toggleChat(false),
     emotes: () => { Social.toggleChat(false); Social.openEmotes(); },
     emote: b => { $('#emo-pick').classList.remove('on'); social({ type: 'emote', id: b.dataset.id }); },
+    phrase: b => { $('#emo-pick').classList.remove('on'); social({ type: 'phrase', text: b.dataset.text }); },
+    wheelSlot: b => { S.wheelSlot = +b.dataset.i; showCustomize('wheel'); },
+    wheelPick: b => {
+      const w = myWheel(), i = S.wheelSlot || 0, e = b.dataset.e, j = w.emotes.indexOf(e);
+      if (j >= 0 && j !== i) w.emotes[j] = w.emotes[i]; // уже на колесе — меняем местами
+      w.emotes[i] = e; saveWheel(w);
+      S.wheelSlot = (i + 1) % w.emotes.length; // сразу к следующему месту
+      showCustomize('wheel');
+    },
+    wheelReset: () => { delete prefs.wheel; savePrefs(); S.wheelSlot = 0; showCustomize('wheel'); toast(T('Колесо эмоций сброшено')); },
     like: b => { Social.closeAvatarMenu(); social({ type: 'like', to: +b.dataset.seat }); },
     dislike: b => { Social.closeAvatarMenu(); social({ type: 'dislike', to: +b.dataset.seat }); },
     mud: b => { Social.closeAvatarMenu(); social({ type: 'mud', to: +b.dataset.seat }); },
@@ -2766,6 +2803,10 @@
     logout: () => Auth.logout(),
   };
   document.addEventListener('input', e => {
+    if (e.target.classList.contains('wheel-phrase')) {
+      const w = myWheel(); w.phrases[+e.target.dataset.i] = e.target.value.replace(/\s+/g, ' ').slice(0, PHRASE_MAX); saveWheel(w);
+      return;
+    }
     if (e.target.id !== 'music-vol') return;
     const pct = +e.target.value;
     prefs.musicVol = pct / 100; Music.setVolume(prefs.musicVol);

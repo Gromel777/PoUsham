@@ -53,6 +53,9 @@ const STATIC = {
 };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.webmanifest': 'application/manifest+json; charset=utf-8', '.mp3': 'audio/mpeg' };
 const EMOTES = ['😂', '😱', '🖕', '😎', '😡', '🤔', '👏', '💀'];
+// Пул смайликов, из которых игрок собирает своё колесо эмоций (такой же список в client.js).
+const EMOTE_POOL = ['😂', '😱', '🖕', '😎', '😡', '🤔', '👏', '💀', '🤣', '😭', '😏', '🙄', '😴', '🤯', '🥳', '😇', '🤡', '🤬', '🥶', '😈', '👍', '👎', '🙏', '🤝', '👀', '🔥', '💩', '❤️', '💔', '🍀', '🎯', '🏆'];
+const PHRASE_MAX = 24; // свои фразы игрока на колесе
 const PHRASES = ['Блефуешь!', 'Проверю!', 'Ну ты даёшь', 'Везёт же', 'Давай быстрее', 'Красиво!', 'Не верю', 'GG'];
 const LIKE_COOLDOWN = 60 * 1000; // у лайка, дизлайка и грязи — своя минута у каждого
 const CHAT_GAP = 1200, EMOTE_GAP = 1500;
@@ -406,10 +409,18 @@ function socialAction(r, seat, body) {
   if (body.type === 'emote') {
     const id = String(body.id || '');
     const phrase = PHRASES.includes(id);
-    if (!EMOTES.includes(id) && !phrase) fail('Нет такой эмоции');
+    if (!EMOTE_POOL.includes(id) && !phrase) fail('Нет такой эмоции');
     if (now - (s.emoteAt || 0) < EMOTE_GAP) fail('Не так быстро');
     s.emoteAt = now;
     push({ kind: phrase ? 'phrase' : 'emote', id });
+    return;
+  }
+  if (body.type === 'phrase') { // своя фраза с колеса эмоций
+    const text = String(body.text || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, PHRASE_MAX);
+    if (!text) fail('Пустое сообщение');
+    if (now - (s.emoteAt || 0) < EMOTE_GAP) fail('Не так быстро');
+    s.emoteAt = now;
+    push({ kind: 'phrase', id: text });
     return;
   }
   if (body.type === 'like' || body.type === 'dislike' || body.type === 'mud') {
@@ -803,7 +814,7 @@ async function handleApi(req, res, url) {
     const r = getRoom(body.room);
     const seat = requireSeat(r, body.token);
     if (body.type === 'rtc') { relayRtc(r, seat, body); return sendJson(res, 200, { ok: true }); }
-    if (['chat', 'emote', 'like', 'dislike', 'mud'].includes(body.type)) { socialAction(r, seat, body); r.touched = Date.now(); broadcast(r); return sendJson(res, 200, { ok: true }); }
+    if (['chat', 'emote', 'phrase', 'like', 'dislike', 'mud'].includes(body.type)) { socialAction(r, seat, body); r.touched = Date.now(); broadcast(r); return sendJson(res, 200, { ok: true }); }
     doAction(r, seat, body);
     update(r);
     return sendJson(res, 200, { ok: true });

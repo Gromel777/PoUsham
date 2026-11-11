@@ -28,6 +28,8 @@
     'секунд на ход (0 — без таймера)': 'seconds per move (0 — no timer)', 'Введите имя': 'Enter your name', 'Код комнаты — 4 символа': 'Room code is 4 characters',
     'Язык': 'Language',
     'Персонализация': 'Customize', 'Колоды': 'Decks', 'Комнаты': 'Rooms', 'Эффекты': 'Effects', 'Выбрана': 'Selected', 'Выбрать': 'Select',
+    'Колесо': 'Wheel', 'Фразы': 'Phrases', 'Пусто': 'Empty', 'Сбросить по умолчанию': 'Reset to default', 'Колесо эмоций сброшено': 'Emote wheel reset',
+    'Выберите место на колесе, затем смайлик': 'Pick a wheel slot, then an emoji',
     'Скоро здесь появятся оформления столов и комнат.': 'Table and room styles are coming soon.',
     'Скоро здесь появятся эффекты розыгрыша карт.': 'Card play effects are coming soon.',
     // умения

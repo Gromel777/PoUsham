@@ -1021,7 +1021,7 @@ input, select { font: inherit; }
 .cust-btn { white-space: nowrap; }
 .menu-row .cust-btn { flex: 1; }
 .modal.cust-modal { width: min(calc(var(--VW) * 92), 760px); padding: 12px 16px 16px; }
-.cust-tabs { grid-template-columns: repeat(3, 1fr); margin-bottom: 12px; }
+.cust-tabs { grid-template-columns: repeat(4, 1fr); margin-bottom: 12px; }
 .cust-body { min-height: calc(var(--VH) * 42); }
 .deck-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .deck-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px 10px; border-radius: 14px; border: 1px solid rgba(232, 196, 106, .15); background: rgba(0, 0, 0, .25); transition: border-color .2s, background .2s, transform .15s; }
@@ -1039,3 +1039,21 @@ input, select { font: inherit; }
 .deck-item.on .dk-state { color: var(--gold-2); }
 .cust-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: calc(var(--VH) * 42); color: var(--ink-dim); text-align: center; font-size: 14px; }
 .cust-empty-ic { font-size: 34px; color: rgba(232, 196, 106, .45); }
+
+/* колесо эмоций в персонализации */
+.modal.cust-modal { width: min(calc(var(--VW) * 94), 820px); }
+.wheel-cfg { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.wc-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.wheel.wheel-edit { width: 172px; height: 172px; }
+.wheel-edit .wheel-item { width: 42px; height: 42px; margin: -21px 0 0 -21px; font-size: 23px; }
+.wheel-edit .wheel-item.sel { border-color: var(--gold-2); background: rgba(232, 196, 106, .25); box-shadow: 0 0 14px rgba(232, 196, 106, .5); }
+.wheel-edit .wheel-hub { width: 44px; height: 44px; font-size: 22px; }
+.emo-pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 4px; }
+.emo-pool button { height: 34px; border-radius: 9px; font-size: 20px; border: 1px solid rgba(232, 196, 106, .15); background: rgba(0, 0, 0, .25); transition: transform .12s, background .15s; }
+.emo-pool button:hover { background: rgba(232, 196, 106, .15); transform: scale(1.1); }
+.emo-pool button.used { opacity: .4; }
+.wc-phrases { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.wheel-phrase { min-width: 0; padding: 6px 8px; border-radius: 9px; border: 1px solid var(--line); background: rgba(0, 0, 0, .3); color: var(--gold-2); font: inherit; font-size: 12px; font-weight: 700; }
+.wheel-phrase:focus { outline: none; border-color: var(--gold); }
+.wc-reset { align-self: flex-start; padding: 5px 10px !important; font-size: 11px !important; margin-top: 4px; }
+.wc-wheel { align-items: center; }
