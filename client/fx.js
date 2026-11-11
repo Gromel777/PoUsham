@@ -622,6 +622,21 @@
         tone(t, 120, 0.22, 0.4, 'sine', { to: 50 });
         for (let i = 0; i < 6; i++) tone(t + 0.08 + i * 0.05 + rnd(0, 0.03), rnd(180, 420), 0.06, 0.08, 'sine', { to: rnd(500, 900) });
       },
+      // Варианты броска лидера: сочный помидор, хрустящее яйцо, плевок.
+      squish() {
+        if (!ensure()) return; const t = now();
+        noise(t, 0.32, 'lowpass', 900, 1.4, 0.6, { to: 160 });
+        tone(t, 160, 0.25, 0.35, 'sine', { to: 60 });
+        for (let i = 0; i < 9; i++) tone(t + 0.05 + i * 0.04 + rnd(0, 0.03), rnd(260, 620), 0.05, 0.07, 'sine', { to: rnd(700, 1300) });
+      },
+      crack() {
+        if (!ensure()) return; const t = now();
+        for (let i = 0; i < 5; i++) noise(t + i * 0.012, 0.03, 'highpass', 2500 + i * 400, 1, 0.35, {});
+        noise(t + 0.05, 0.3, 'lowpass', 600, 1, 0.35, { to: 120 });
+        for (let i = 0; i < 4; i++) tone(t + 0.12 + i * 0.07, rnd(220, 380), 0.08, 0.06, 'sine', { to: rnd(120, 200) });
+      },
+      spitFly() { if (!ensure()) return; const t = now(); noise(t, 0.12, 'bandpass', 1800, 2, 0.35, { to: 600 }); tone(t, 520, 0.06, 0.15, 'triangle', { to: 260 }); },
+      spitHit() { if (!ensure()) return; const t = now(); noise(t, 0.14, 'lowpass', 1200, 1, 0.4, { to: 300 }); for (let i = 0; i < 4; i++) tone(t + 0.04 + i * 0.05, rnd(500, 900), 0.04, 0.05, 'sine', { to: rnd(1200, 1800) }); },
       coinsFly(n) { if (!ensure()) return; const t = now(); noise(t, 0.5, 'bandpass', 3000, 2, 0.06, { to: 6000, attack: 0.1 }); },
       coinHit(i) { if (!ensure()) return; const t = now(); tone(t, 1800 + (i % 5) * 220, 0.12, 0.07, 'sine', { wet: 0.3 }); tone(t, 3600 + (i % 3) * 300, 0.06, 0.03, 'sine'); },
       puck() { if (!ensure()) return; const t = now(); noise(t, 0.6, 'bandpass', 900, 3, 0.07, { to: 500, attack: 0.08 }); tone(t + 0.55, 1200, 0.15, 0.06, 'triangle', { wet: 0.3 }); },

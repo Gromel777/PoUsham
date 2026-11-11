@@ -93,6 +93,21 @@ const PHRASE_MAX = 24; // свои фразы игрока на колесе
 const PHRASES = ['Блефуешь!', 'Проверю!', 'Ну ты даёшь', 'Везёт же', 'Давай быстрее', 'Красиво!', 'Не верю', 'GG'];
 const LIKE_COOLDOWN = 60 * 1000; // у лайка, дизлайка и грязи — своя минута у каждого
 const CHAT_GAP = 1200, EMOTE_GAP = 1500;
+const MUD_STYLES = ['mud', 'tomato', 'egg', 'spit'];
+
+// Базовый фильтр мата (RU/EN): слово с запрещённым корнем → первая буква и звёздочки.
+// ANY — корни, которые ищем в любом месте слова; START — только в начале слова (после приставки),
+// чтобы не задевать «учебник», «потребление», «shitake».
+const BAD_ANY = ['х[уy][йеяюё]', 'х[уy]ил', 'п[иi][зz]д', 'бл[яa]д', 'бл[яa]т', 'муд[ао]к', 'мудил', 'пид[оа]р', 'гандон', 'залуп', 'шлюх', 'дроч', 'f+u+c+k', 'motherf', 'n[i1]gg'];
+const BAD_START = ['еб', 'ёб', 'ебл', 'бля', 'с[уy]к[аи]', 'b[i1]tch', 'c[u]nt', 'wh[o0]re', 'f[a@]gg', 'a[s$]{2}h[o0]le'];
+// Целые слова (с окончаниями) — чтобы «мандарин», «shitake», «dickens» не цеплялись.
+const BAD_WORD_RE = /^(?:манд[аыуе]|sh[i1]t(?:s|ty|ting)?|d[i1]ck(?:s|head)?|сук(?:а|и|е|у|ой))$/iu;
+const BAD_PREFIX = '(?:за|на|по|от|вы|до|пере|раз|рас|из|об|под|при|у|с|в)?';
+const BAD_ANY_RE = new RegExp(BAD_ANY.join('|'), 'iu');
+const BAD_START_RE = new RegExp(`^${BAD_PREFIX}(?:${BAD_START.join('|')})`, 'iu');
+function cleanText(t) {
+  return String(t).replace(/[\p{L}\p{N}@$]+/gu, w => (BAD_ANY_RE.test(w) || BAD_START_RE.test(w) || BAD_WORD_RE.test(w)) ? w[0] + '*'.repeat(Math.max(2, w.length - 1)) : w);
+}
 // Пауза (как в Dota): у каждого игрока несколько пауз на партию; снять может любой — через отсчёт 5…1.
 const PAUSES_PER_PLAYER = 3;
 const UNPAUSE_COUNTDOWN = 5000;
@@ -366,7 +381,9 @@ function viewFor(r, seat) {
   const base = {
     code: r.code, you: seat, youPid: me.pid, isHost: seat === hostSeat, size: r.size, rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff, skillsOn: r.skills, test: r.test,
     kind: r.kind, calib: r.calib, autoStartIn: !r.game && r.autoStartAt ? Math.max(0, r.autoStartAt - Date.now()) : 0,
-    chat: r.chat.slice(-40), social: r.social.slice(-16),
+    // личные сообщения видят только двое (отправитель и адресат)
+    chat: r.chat.filter(m => m.to == null || m.to === seat || m.from === seat).slice(-40),
+    social: r.social.filter(e => !(e.kind === 'chat' && e.to != null) || e.to === seat || e.from === seat).slice(-16),
     likeReadyIn: Math.max(0, (me.likeAt || 0) + LIKE_COOLDOWN - Date.now()),
     dislikeReadyIn: Math.max(0, (me.dislikeAt || 0) + LIKE_COOLDOWN - Date.now()),
     mudReadyIn: Math.max(0, (me.mudAt || 0) + LIKE_COOLDOWN - Date.now()),
@@ -612,12 +629,21 @@ function socialAction(r, seat, body) {
   const s = r.seats[seat];
   const now = Date.now();
   const push = ev => { ev.seq = ++r.socialSeq; ev.at = now; ev.from = seat; r.social.push(ev); if (r.social.length > 40) r.social.shift(); };
+  // Адресат (необязательно): смайл/фраза летят к его аватару, текст в чате становится личным сообщением.
+  const toOf = () => {
+    if (body.to == null || body.to === '') return null;
+    const to = Number(body.to);
+    if (!r.seats[to] || to === seat) fail('Выберите другого игрока');
+    return to;
+  };
   if (body.type === 'chat') {
-    const text = String(body.text || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200);
+    const text = cleanText(String(body.text || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200));
     if (!text) fail('Пустое сообщение');
     if (now - (s.chatAt || 0) < CHAT_GAP) fail('Не так быстро');
+    const to = toOf();
+    if (to != null && r.seats[to].bot) fail('Боты не читают личные сообщения');
     s.chatAt = now;
-    const msg = { seq: ++r.socialSeq, at: now, from: seat, name: s.name, text };
+    const msg = { seq: ++r.socialSeq, at: now, from: seat, name: s.name, text, ...(to != null ? { to, toName: r.seats[to].name } : {}) };
     r.chat.push(msg); if (r.chat.length > 60) r.chat.shift();
     r.social.push({ ...msg, kind: 'chat' }); if (r.social.length > 40) r.social.shift();
     return;
@@ -627,16 +653,18 @@ function socialAction(r, seat, body) {
     const phrase = PHRASES.includes(id);
     if (!EMOTE_POOL.includes(id) && !phrase) fail('Нет такой эмоции');
     if (now - (s.emoteAt || 0) < EMOTE_GAP) fail('Не так быстро');
+    const to = toOf();
     s.emoteAt = now;
-    push({ kind: phrase ? 'phrase' : 'emote', id });
+    push({ kind: phrase ? 'phrase' : 'emote', id, ...(to != null ? { to } : {}) });
     return;
   }
   if (body.type === 'phrase') { // своя фраза с колеса эмоций
-    const text = String(body.text || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, PHRASE_MAX);
+    const text = cleanText(String(body.text || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, PHRASE_MAX));
     if (!text) fail('Пустое сообщение');
     if (now - (s.emoteAt || 0) < EMOTE_GAP) fail('Не так быстро');
+    const to = toOf();
     s.emoteAt = now;
-    push({ kind: 'phrase', id: text });
+    push({ kind: 'phrase', id: text, ...(to != null ? { to } : {}) });
     return;
   }
   if (body.type === 'like' || body.type === 'dislike' || body.type === 'mud') {
@@ -649,7 +677,9 @@ function socialAction(r, seat, body) {
     const left = (s[key] || 0) + LIKE_COOLDOWN - now;
     if (left > 0) fail(`${what} можно через ${Math.ceil(left / 1000)} с`);
     s[key] = now;
-    push({ kind, to });
+    // Вид броска (лидера) — из персонализации: грязь, помидор, яйцо, плевок.
+    const style = kind === 'mud' && MUD_STYLES.includes(body.style) ? body.style : undefined;
+    push({ kind, to, ...(style ? { style } : {}) });
     return;
   }
   fail('Неизвестное действие');
@@ -955,6 +985,28 @@ async function accountOf(session, nick) {
   return acc;
 }
 
+// ---------- мировой чат ----------
+// Последние 100 сообщений в памяти сервера (после перезапуска пропадают). Читают все, пишут только с аккаунтом Google.
+// Приглашение — особое сообщение со столом из лобби: в чате у него кнопка «Сесть за стол».
+const WORLD = { msgs: [], seq: 0, max: 100, gap: 2500, inviteGap: 30000, readers: new Map(), last: new Map() };
+function worldPush(m) {
+  m.seq = ++WORLD.seq; m.at = Date.now();
+  WORLD.msgs.push(m);
+  if (WORLD.msgs.length > WORLD.max) WORLD.msgs.shift();
+  return m;
+}
+function worldView(m) {
+  if (m.kind !== 'invite') return m;
+  const r = rooms.get(m.room);
+  const humans = r ? r.seats.filter(x => !x.bot).length : 0;
+  return { ...m, players: humans, size: r ? r.size : m.size, open: !!r && !r.game && humans < r.size };
+}
+async function worldAccount(body) {
+  const acc = body.session ? await DB.bySession(body.session) : null;
+  if (!acc) fail('Писать в мировой чат можно только с аккаунтом Google');
+  return acc;
+}
+
 // ---------- HTTP ----------
 async function handleApi(req, res, url) {
   if (url.pathname === '/api/events' && req.method === 'GET') {
@@ -987,6 +1039,17 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, ok ? { ok, room: r.code, round: r.game.roundIdx + 1, rounds: r.game.plan.length, kind: r.kind } : { ok: false });
   }
   if (url.pathname === '/api/rooms' && req.method === 'GET') return sendJson(res, 200, { rooms: openRooms() });
+  if (url.pathname === '/api/world' && req.method === 'GET') {
+    const since = Number(url.searchParams.get('since')) || 0;
+    const rid = String(url.searchParams.get('rid') || '').slice(0, 40);
+    const now = Date.now();
+    if (rid) WORLD.readers.set(rid, now);
+    for (const [k, t] of WORLD.readers) if (now - t > 30000) WORLD.readers.delete(k);
+    const list = since ? WORLD.msgs.filter(m => m.seq > since) : WORLD.msgs;
+    // приглашения отдаём всегда свежими (сколько игроков, открыт ли стол)
+    const invites = since ? WORLD.msgs.filter(m => m.kind === 'invite' && m.seq <= since).map(worldView) : [];
+    return sendJson(res, 200, { msgs: list.map(worldView), invites, seq: WORLD.seq, online: WORLD.readers.size });
+  }
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return sendJson(res, 200, { googleClientId: GOOGLE_CLIENT_ID, ratings: DB.ready() });
   }
@@ -1016,6 +1079,31 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/logout') {
     if (body.session) await DB.dropSession(body.session).catch(() => {});
     return sendJson(res, 200, { ok: true });
+  }
+  if (url.pathname === '/api/world/send') {
+    const acc = await worldAccount(body);
+    const text = cleanText(String(body.text || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240));
+    if (!text) fail('Пустое сообщение');
+    const now = Date.now();
+    if (now - (WORLD.last.get(acc.id) || 0) < WORLD.gap) fail('Не так быстро');
+    WORLD.last.set(acc.id, now);
+    const m = worldPush({ kind: 'msg', uid: acc.id, name: acc.nick, pic: acc.picture || null, rating: acc.rating, text });
+    return sendJson(res, 200, { ok: true, seq: m.seq });
+  }
+  if (url.pathname === '/api/world/invite') {
+    const acc = await worldAccount(body);
+    const r = rooms.get(String(body.room || '').toUpperCase());
+    const seat = r ? seatOf(r, body.token) : -1;
+    if (!r || seat < 0) fail('Комната не найдена');
+    if (r.game) fail('Игра уже идёт');
+    if (matchedRoom(r)) fail('За этот стол садятся только через поиск игроков.');
+    if (r.seats.length >= r.size) fail('Свободных мест нет');
+    const now = Date.now();
+    if (now - (r.invitedAt || 0) < WORLD.inviteGap) fail(`Приглашение можно повторить через ${Math.ceil((WORLD.inviteGap - (now - r.invitedAt)) / 1000)} с`);
+    r.invitedAt = now;
+    const m = worldPush({ kind: 'invite', uid: acc.id, name: acc.nick, pic: acc.picture || null, rating: acc.rating, room: r.code, size: r.size,
+      rules: { rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff, skills: r.skills, test: r.test } });
+    return sendJson(res, 200, { ok: true, seq: m.seq });
   }
   if (url.pathname === '/api/leaderboard') {
     const me = await DB.bySession(body.session).catch(() => null);
@@ -1121,4 +1209,4 @@ setInterval(() => {
 
 server.listen(PORT, () => console.log(`В Точку: сервер запущен на порту ${PORT}`));
 DB.init();
-module.exports = { server, rooms, DB, MM, AWAY };
+module.exports = { server, rooms, DB, MM, AWAY, WORLD, cleanText };

@@ -151,6 +151,14 @@
     'Чат стола': 'Table chat', 'Сообщение…': 'Message…', 'Нажми и говори': 'Push to talk', 'говорить': 'talk',
     'Этот браузер не поддерживает голосовой чат': 'This browser does not support voice chat', 'Нет доступа к микрофону — разрешите его в настройках браузера': 'No microphone access — allow it in browser settings',
     '{n}: {w} {s}': '{n}: {w} {s}', 'голос': 'voice', 'чат': 'chat', 'эмоции и лайки': 'emotes and likes', 'заблокированы': 'blocked', 'снова видны': 'visible again',
+    // волна 2: меню аватара, личные сообщения, броски, мировой чат
+    'Реакции': 'Reactions', 'Лично ему': 'Just for them', 'Заглушить': 'Mute', 'Написать лично': 'Private message', 'Боты не читают личные': 'Bots don’t read DMs',
+    'Бросок лидера': 'Leader’s throw', 'Помидором!': 'Tomato!', 'Яйцом!': 'Egg!', 'Плюнуть!': 'Spit!', 'Лично': 'Private', 'Личное сообщение…': 'Private message…',
+    'Грязь': 'Mud', 'Помидор': 'Tomato', 'Яйцо': 'Egg', 'Плевок': 'Spit', 'Бросок лидера — чем лидер по очкам может бросить в соперника': 'Leader’s throw — what the score leader can throw at an opponent',
+    'Мировой чат': 'World chat', '{n} в сети': '{n} online', 'Пока тихо. Напишите первым!': 'Quiet so far. Be the first to write!', 'Сообщение всем…': 'Message to everyone…',
+    'Войдите через Google, чтобы писать': 'Sign in with Google to write', 'Зовёт за стол': 'Invites to table', 'Сесть за стол': 'Take a seat', 'Стол уже собран': 'Table is full',
+    '{n} раундов': '{n} rounds', 'обман': 'bluff', 'умения': 'skills', 'тест': 'test', 'Пригласить в мировой чат': 'Invite via world chat', 'Приглашение отправлено в мировой чат': 'Invite posted to world chat',
+    'Писать в мировой чат можно только с аккаунтом Google': 'Only Google accounts can write in world chat', 'Боты не читают личные сообщения': 'Bots don’t read private messages',
     // быстрые фразы (их id — русский текст)
     'Блефуешь!': 'You’re bluffing!', 'Проверю!': 'I’ll check!', 'Ну ты даёшь': 'Wow, really?', 'Везёт же': 'Lucky you', 'Давай быстрее': 'Hurry up', 'Красиво!': 'Beautiful!', 'Не верю': 'Don’t buy it',
     // ошибки сервера и движка
@@ -190,6 +198,7 @@
     [/^Игра уже идёт\. Чтобы вернуться за стол, введите имя, под которым играли: (.+)\.$/, (m, l) => `The game is running. To rejoin, enter the name you played under: ${l}.`],
     [/^Имя «(.+)» занято игроком с аккаунтом Google\./, (m, n) => `The name “${n}” belongs to a player signed in with Google. If that’s you, sign in with the same account, otherwise pick another name.`],
     [/^Вход через Google не удался: (.*)$/, (m, e) => `Google sign-in failed: ${e}`],
+    [/^Приглашение можно повторить через (\d+) с$/, (m, n) => `You can invite again in ${n} s`],
     [/^Игроков должно быть от (\d+) до (\d+)$/, (m, a, b) => `Players must be from ${a} to ${b}`],
   ];
   function trServer(msg) {

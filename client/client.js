@@ -289,7 +289,7 @@
     closeModal();
     if (Game.el) Game.destroy();
     Voice.stopAll();
-    Social.lastSeq = null; Social.toggleChat(false); Social.closeAvatarMenu();
+    Social.lastSeq = null; Social.toggleChat(false); Social.closeAvatarMenu(); Social.setDm(null);
     $('#emo-pick').classList.remove('on');
     $('#dock').classList.remove('on');
     S.err = msg || '';
@@ -375,6 +375,8 @@
         <div class="h-left">
           ${brandHtml()}
           <div class="home-fan"><div class="home-fan-inner">${fan.map((id, i) => miniCard(id, i, fan.length)).join('')}</div></div>
+          <button class="w-btn glass" data-act="world" title="${T('Мировой чат')}">🌍<span>${T('Мировой чат')}</span><i class="w-badge" id="w-badge"></i></button>
+          <div class="w-panel glass" id="w-panel"></div>
         </div>
         <div class="h-right" id="h-right" data-open="">
           <button class="h-player glass" id="h-player" data-act="profile"></button>
@@ -426,6 +428,7 @@
     renderGo();
     syncFsBtn();
     checkRejoin();
+    World.mount();
     if (roomParam) setTimeout(() => toast(T('Код стола подставлен — нажмите «Войти»')), 400);
   }
 
@@ -715,6 +718,7 @@
             <div class="qr-frame">${(() => { try { return window.qrSvg(joinLink(v.code), {}); } catch { return ''; } })()}</div>
             <div class="room-code gold-text">${esc(v.code)}</div>
             <button class="btn-ghost" data-act="copy">${T('Скопировать ссылку')}</button>
+            <button class="btn-ghost w-invite" data-act="worldInvite">🌍 ${T('Пригласить в мировой чат')}</button>
           </div>`}
           <div class="lobby-main">
             <div class="lobby-title">${lobbyTitle(v)} <span class="gold-text">${esc(v.code)}</span></div>
@@ -1106,8 +1110,17 @@
           <div class="room-prev room-prev-${k}">${roomPreview(k)}</div>
           <div class="dk-name">${T(n)}</div><div class="dk-state">${T(on ? 'Выбрана' : 'Выбрать')}</div></button>`;
       }).join('')}</div>`;
+    } else if (tab === 'fx') {
+      const cur = prefs.mudStyle || 'mud';
+      body = `<div class="menu-cap">${T('Бросок лидера — чем лидер по очкам может бросить в соперника')}</div>
+        <div class="deck-grid throw-grid">${THROWS.map(([k, n]) => {
+        const on = cur === k;
+        return `<button class="deck-item ${on ? 'on' : ''}" data-act="mudStyle" data-s="${k}">
+          <div class="throw-prev"><div class="tp-splat">${splatSvg(k)}</div><div class="tp-ball ${k === 'mud' ? 'mud-ball' : 't-' + k}">${throwSvg(k)}</div></div>
+          <div class="dk-name">${T(n)}</div><div class="dk-state">${T(on ? 'Выбрана' : 'Выбрать')}</div></button>`;
+      }).join('')}</div>`;
     } else {
-      const txt = tab === 'rooms' ? 'Скоро здесь появятся оформления столов и комнат.' : 'Скоро здесь появятся эффекты розыгрыша карт.';
+      const txt = 'Скоро здесь появятся оформления столов и комнат.';
       body = `<div class="cust-empty"><div class="cust-empty-ic">✦</div><div>${T(txt)}</div></div>`;
     }
     showModal(`<div class="menu-head"><h2 class="gold-text">${T('Персонализация')}</h2><button class="btn-gold menu-back" data-act="custBack">${T('Назад')}</button></div>
@@ -2903,6 +2916,13 @@
       return document.querySelector(`.lseat[data-i="${seat}"] .ava`);
     },
 
+    pulse(seat) {
+      const av = this.avatarEl(seat);
+      if (!av) return;
+      av.classList.remove('pinged'); void av.offsetWidth; av.classList.add('pinged');
+      setTimeout(() => av.classList.remove('pinged'), 900);
+    },
+
     update(v) {
       $('#dock').classList.add('on');
       const t = Date.now();
@@ -2923,16 +2943,20 @@
       const name = v.seats[e.from] && v.seats[e.from].name;
       if (e.kind === 'chat') {
         if (isMuted(name, 'chat')) return;
-        this.bubble(e.from, e.text, 'chat');
+        if (e.to != null) this.bubble(e.from, `🔒 ${e.from === v.you ? '→ ' + e.toName + ': ' : ''}${e.text}`, 'chat dm');
+        else this.bubble(e.from, e.text, 'chat');
         if (!this.open && e.from !== v.you) { this.unread++; this.badge(); }
         if (e.from !== v.you) SFX.msg();
       } else if (e.kind === 'phrase') {
         if (isMuted(name, 'emote')) return;
-        this.bubble(e.from, T(e.id), 'phrase');
+        const toN = e.to != null && v.seats[e.to] ? v.seats[e.to].name : null;
+        this.bubble(e.from, toN ? `→ ${toN}: ${T(e.id)}` : T(e.id), 'phrase');
+        if (toN) this.pulse(e.to);
         SFX.msg();
       } else if (e.kind === 'emote') {
         if (isMuted(name, 'emote')) return;
-        this.emote(e.from, e.id);
+        if (e.to != null && v.seats[e.to]) this.emoteTo(e.from, e.to, e.id);
+        else this.emote(e.from, e.id);
       } else if (e.kind === 'like') {
         if (isMuted(name, 'emote')) return;
         this.like(e.from, e.to);
@@ -2941,7 +2965,7 @@
         this.dislike(e.from, e.to);
       } else if (e.kind === 'mud') {
         if (isMuted(name, 'emote')) return;
-        this.mud(e.from, e.to);
+        this.mud(e.from, e.to, e.style);
       }
     },
 
@@ -2955,8 +2979,8 @@
       b.style.top = (up ? y - 44 : y + 44) + 'px';
       b.classList.add(up ? 'up' : 'down');
       $('#app').appendChild(b);
-      setTimeout(() => b.classList.add('out'), kind === 'chat' ? 4200 : 2600);
-      setTimeout(() => b.remove(), kind === 'chat' ? 4700 : 3100);
+      setTimeout(() => b.classList.add('out'), kind.startsWith('chat') ? 4200 : 2600);
+      setTimeout(() => b.remove(), kind.startsWith('chat') ? 4700 : 3100);
     },
 
     emote(seat, id) {
@@ -3030,41 +3054,100 @@
       }, 720 + 7 * 60);
     },
 
-    // Грязь (только лидер): ком грязи летит по дуге и шлёпается на аватар, брызги и подтёки держатся несколько секунд.
-    mud(from, to) {
+    // Бросок лидера (вид — из персонализации): грязь, помидор, яйцо или плевок. Летит по дуге, взрывается брызгами,
+    // оставляет на аватаре след с подтёками; у каждого вида своя траектория, вращение, удар и звук.
+    mud(from, to, style = 'mud') {
       const [x1, y1] = this.avatarCenter(from), [x2, y2] = this.avatarCenter(to);
+      const S2 = {
+        mud: { dur: 820, arc: 150, spin: 520, size: [30, 26], trail: ['#5a3a1c'], snd: 'mudThrow' },
+        tomato: { dur: 760, arc: 170, spin: 640, size: [36, 36], trail: ['#e8261a', '#ff6a4a'], snd: 'mudThrow' },
+        egg: { dur: 860, arc: 190, spin: 900, size: [28, 34], trail: [], snd: 'mudThrow' },
+        spit: { dur: 430, arc: 40, spin: 0, size: [26, 20], trail: ['#e3f3ff', '#bfe0f5'], snd: 'spitFly' },
+      }[style] || null;
+      if (!S2) return this.mud(from, to, 'mud');
       const ball = document.createElement('div');
-      ball.className = 'mud-ball';
+      ball.className = style === 'mud' ? 'mud-ball' : `throw-ball t-${style}`;
+      if (style !== 'mud') { ball.innerHTML = throwSvg(style); ball.style.width = S2.size[0] + 'px'; ball.style.height = S2.size[1] + 'px'; }
       $('#app').appendChild(ball);
-      const peak = Math.min(y1, y2) - 150;
-      SFX.mudThrow();
+      SFX[S2.snd] && SFX[S2.snd]();
+      // плевок: «пфу» у бросающего
+      if (style === 'spit') FX.burst(x1, y1 - 6, { n: 8, type: 'glow', colors: ['#ffffff', '#cfe9fb'], speed: [40, 120], angle: Math.atan2(y2 - y1, x2 - x1), spread: 0.5, g: 200, life: [0.25, 0.45], size: [2, 4] });
+      const peak = Math.min(y1, y2) - S2.arc;
+      const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+      const rot = k => style === 'spit' ? `rotate(${ang}deg) scaleX(${1 + k * 0.6})` : `rotate(${S2.spin * k}deg)`;
       const a = ball.animate([
-        { transform: `translate(${x1}px, ${y1}px) translate(-50%,-50%) scale(.6) rotate(0deg)` },
-        { transform: `translate(${(x1 + x2) / 2}px, ${peak}px) translate(-50%,-50%) scale(1.3) rotate(260deg)`, offset: 0.5 },
-        { transform: `translate(${x2}px, ${y2}px) translate(-50%,-50%) scale(1) rotate(520deg)` },
-      ], { duration: 820, easing: 'cubic-bezier(.35,.1,.6,1)', fill: 'forwards' });
-      let trail = setInterval(() => {
+        { transform: `translate(${x1}px, ${y1}px) translate(-50%,-50%) scale(.55) ${rot(0)}` },
+        { transform: `translate(${(x1 + x2) / 2}px, ${peak}px) translate(-50%,-50%) scale(1.35) ${rot(0.5)}`, offset: 0.5 },
+        { transform: `translate(${x2}px, ${y2}px) translate(-50%,-50%) scale(1) ${rot(1)}` },
+      ], { duration: S2.dur, easing: style === 'spit' ? 'cubic-bezier(.2,.6,.4,1)' : 'cubic-bezier(.35,.1,.6,1)', fill: 'forwards' });
+      // Тень снаряда на столе — объём полёта.
+      const shadow = document.createElement('div');
+      shadow.className = 'throw-shadow';
+      $('#app').appendChild(shadow);
+      shadow.animate([{ transform: `translate(${x1}px, ${y1 + 26}px) translate(-50%,-50%) scale(.6)`, opacity: 0.4 },
+        { transform: `translate(${(x1 + x2) / 2}px, ${Math.max(y1, y2) + 30}px) translate(-50%,-50%) scale(.35)`, opacity: 0.15, offset: 0.5 },
+        { transform: `translate(${x2}px, ${y2 + 26}px) translate(-50%,-50%) scale(.9)`, opacity: 0.45 }], { duration: S2.dur, easing: 'cubic-bezier(.35,.1,.6,1)', fill: 'forwards' });
+      const trail = S2.trail.length ? setInterval(() => {
         const r = VIEW.rect(ball);
-        FX.burst(r.left + r.width / 2, r.top + r.height / 2, { n: 2, type: 'dust', colors: ['#5a3a1c'], speed: [5, 20], g: 120, life: [0.4, 0.7], size: [6, 10], size2: 0.6, add: false });
-      }, 50);
+        FX.burst(r.left + r.width / 2, r.top + r.height / 2, { n: style === 'spit' ? 3 : 2, type: style === 'mud' ? 'dust' : 'glow', colors: S2.trail, speed: [5, 25], g: 160, life: [0.3, 0.6], size: style === 'mud' ? [6, 10] : [2, 4], size2: 0.6, add: style === 'spit' });
+      }, 40) : 0;
+      const done = () => { clearInterval(trail); shadow.remove(); };
       a.finished.then(() => {
-        clearInterval(trail);
-        ball.remove();
+        done();
+        // удар: снаряд сплющивается о цель
+        ball.animate([{ transform: `translate(${x2}px, ${y2}px) translate(-50%,-50%) scale(1) ${rot(1)}` }, { transform: `translate(${x2}px, ${y2}px) translate(-50%,-50%) scale(1.7, .35) ${rot(1)}`, opacity: 0 }], { duration: 110, fill: 'forwards' })
+          .finished.then(() => ball.remove(), () => ball.remove());
+        this.impact(to, style, x2, y2);
+      }).catch(() => { done(); ball.remove(); });
+    },
+
+    impact(to, style, x2, y2) {
+      const av = this.avatarEl(to);
+      if (style === 'mud') {
         SFX.splat();
         FX.burst(x2, y2, { n: 34, type: 'dust', colors: ['#6b4423', '#4a2e14', '#8a5a2b'], speed: [120, 380], g: 520, life: [0.6, 1.1], size: [6, 14], size2: 0.7, add: false });
         FX.burst(x2, y2, { n: 16, type: 'glyph', glyphs: ['●'], colors: ['#5a3a1c', '#7a4e26'], speed: [160, 340], g: 600, life: [0.6, 1], size: [8, 16], add: false });
         FX.shake(5, 0.25);
-        vibrate(40);
-        const av = this.avatarEl(to);
-        if (!av) return;
-        av.classList.remove('booed'); void av.offsetWidth; av.classList.add('booed');
-        const splat = document.createElement('div');
-        splat.className = 'mud-splat';
-        splat.innerHTML = mudSvg();
-        av.appendChild(splat);
-        setTimeout(() => { splat.classList.add('out'); av.classList.remove('booed'); }, 6500);
-        setTimeout(() => splat.remove(), 7300);
-      }).catch(() => { clearInterval(trail); ball.remove(); });
+      } else if (style === 'tomato') {
+        SFX.squish();
+        FX.burst(x2, y2, { n: 40, type: 'glow', colors: ['#ff3a26', '#d81e10', '#ff8a5c'], speed: [140, 420], g: 620, life: [0.5, 1], size: [3, 7], add: false });
+        FX.burst(x2, y2, { n: 18, type: 'glyph', glyphs: ['●'], colors: ['#c41a0e', '#e8261a'], speed: [180, 380], g: 700, life: [0.6, 1], size: [7, 15], add: false });
+        FX.burst(x2, y2, { n: 14, type: 'glyph', glyphs: ['•'], colors: ['#ffe7a0'], speed: [120, 300], g: 650, life: [0.5, 0.9], size: [8, 12], add: false });
+        FX.burst(x2 - 6, y2 - 14, { n: 4, type: 'glyph', glyphs: ['❦'], colors: ['#3fa34d'], speed: [120, 220], angle: -Math.PI / 2, spread: 1, g: 500, life: [0.8, 1.2], size: [12, 16], add: false });
+        FX.ring(x2, y2, { r1: 60, color: '#ff5a3c', width: 3, life: 0.4 });
+        FX.shake(6, 0.28);
+      } else if (style === 'egg') {
+        SFX.crack();
+        // скорлупа разлетается крупными осколками
+        for (let i = 0; i < 9; i++) {
+          const sh = document.createElement('div');
+          sh.className = 'egg-shell';
+          sh.style.setProperty('--w', rnd(7, 13) + 'px');
+          $('#app').appendChild(sh);
+          const ang = rnd(-Math.PI, 0) + rnd(-0.3, 0.3), sp = rnd(50, 120), dx = Math.cos(ang) * sp, dy = Math.sin(ang) * sp;
+          sh.animate([{ transform: `translate(${x2}px, ${y2}px) rotate(0deg)`, opacity: 1 },
+            { transform: `translate(${x2 + dx * 0.6}px, ${y2 + dy * 0.6}px) rotate(${rnd(-200, 200)}deg)`, opacity: 1, offset: 0.4 },
+            { transform: `translate(${x2 + dx}px, ${y2 + dy + 140}px) rotate(${rnd(-500, 500)}deg)`, opacity: 0 }], { duration: rnd(800, 1200), easing: 'cubic-bezier(.2,.6,.5,1)', fill: 'forwards' })
+            .finished.then(() => sh.remove(), () => sh.remove());
+        }
+        FX.burst(x2, y2, { n: 22, type: 'glow', colors: ['#fffbe8', '#ffe28a'], speed: [80, 260], g: 520, life: [0.5, 0.9], size: [3, 6], add: false });
+        FX.burst(x2, y2, { n: 8, type: 'glyph', glyphs: ['●'], colors: ['#ffc21a', '#ffb000'], speed: [100, 240], g: 600, life: [0.6, 1], size: [8, 13], add: false });
+        FX.shake(4, 0.22);
+      } else if (style === 'spit') {
+        SFX.spitHit();
+        FX.burst(x2, y2, { n: 26, type: 'glow', colors: ['#ffffff', '#d5ecfb', '#a9cfe8'], speed: [80, 260], g: 400, life: [0.4, 0.8], size: [2, 5], add: true });
+        FX.burst(x2, y2, { n: 10, type: 'glyph', glyphs: ['○'], colors: ['#e8f6ff'], speed: [30, 90], g: -30, life: [0.8, 1.3], size: [6, 10] });
+      }
+      vibrate(style === 'spit' ? 25 : 40);
+      if (!av) return;
+      av.classList.remove('booed', 'disgust'); void av.offsetWidth; av.classList.add(style === 'spit' ? 'disgust' : 'booed');
+      const splat = document.createElement('div');
+      splat.className = `mud-splat sp-${style}`;
+      splat.innerHTML = splatSvg(style);
+      av.appendChild(splat);
+      const keep = style === 'spit' ? 4500 : 6500;
+      setTimeout(() => { splat.classList.add('out'); av.classList.remove('booed', 'disgust'); }, keep);
+      setTimeout(() => splat.remove(), keep + 800);
     },
 
     renderChat(v) {
@@ -3074,7 +3157,12 @@
       const key = msgs.map(m => m.seq).join(',');
       if (list.dataset.key === key) return;
       list.dataset.key = key;
-      list.innerHTML = msgs.map(m => `<div class="${m.from === v.you ? 'mine' : ''}"><b style="color:${nameColor(m.from)}">${esc(m.name)}:</b> ${esc(m.text)}</div>`).join('') || `<div class="hint">${T('Сообщений пока нет')}</div>`;
+      list.innerHTML = msgs.map(m => {
+        const dm = m.to != null;
+        const who = dm ? `🔒 <b style="color:${nameColor(m.from)}">${esc(m.name)}</b> → <b style="color:${nameColor(m.to)}">${esc(m.toName)}</b>:` : `<b style="color:${nameColor(m.from)}">${esc(m.name)}:</b>`;
+        const reply = dm && m.from !== v.you ? ` data-act="dmTo" data-seat="${m.from}"` : '';
+        return `<div class="${m.from === v.you ? 'mine' : ''} ${dm ? 'dm' : ''}"${reply}>${who} ${esc(m.text)}</div>`;
+      }).join('') || `<div class="hint">${T('Сообщений пока нет')}</div>`;
       list.scrollTop = list.scrollHeight;
     },
     badge() { const b = $('#chat-badge'); b.textContent = this.unread; b.classList.toggle('on', this.unread > 0); },
@@ -3118,7 +3206,8 @@
       });
     },
 
-    // Меню аватара соперника: лайк и три блокировки.
+    // Меню аватара соперника — три группы: «Реакции» (лайк/дизлайк/бросок лидера), «Лично ему» (смайлик или фраза
+    // летят к его аватару — видят все; «Написать лично» — личное сообщение в чате, видят только двое), «Заглушить».
     openAvatarMenu(seat) {
       const v = S.view;
       if (!v || seat === v.you || !v.seats[seat]) return;
@@ -3128,25 +3217,63 @@
       const now = Date.now();
       const left = k => Math.ceil(Math.max(0, this.readyAt[k] - now) / 1000);
       const L = left('like'), D = left('dislike'), M = left('mud');
+      const st = prefs.mudStyle || 'mud';
+      const th = { mud: ['🟤', 'Грязью!'], tomato: ['🍅', 'Помидором!'], egg: ['🥚', 'Яйцом!'], spit: ['💦', 'Плюнуть!'] }[st] || ['🟤', 'Грязью!'];
+      const { emotes, phrases } = myWheel();
       const pop = $('#ava-menu');
       pop.innerHTML = `<div class="am-title">${esc(s.name)}${s.bot ? ` <span class="hint">${T('бот')}</span>` : ''}</div>
+        <div class="am-cap">${T('Реакции')}</div>
         <div class="am-acts">
           <button class="am-act like" data-act="like" data-seat="${seat}" ${L ? 'disabled' : ''}><span>👍</span>${L ? T('{n} с', { n: L }) : T('Лайк')}</button>
           <button class="am-act dislike" data-act="dislike" data-seat="${seat}" ${D ? 'disabled' : ''}><span>👎</span>${D ? T('{n} с', { n: D }) : T('Дизлайк')}</button>
-          <button class="am-act mud" data-act="mud" data-seat="${seat}" ${M || !this.canMud ? 'disabled' : ''} title="${T(this.canMud ? 'Кинуть грязью' : 'Только для лидера по очкам')}"><span>🟤</span>${!this.canMud ? T('Только лидер') : M ? T('{n} с', { n: M }) : T('Грязью!')}</button>
+          <button class="am-act mud t-${st}" data-act="mud" data-seat="${seat}" ${M || !this.canMud ? 'disabled' : ''} title="${T(this.canMud ? 'Бросок лидера' : 'Только для лидера по очкам')}"><span>${th[0]}</span>${!this.canMud ? T('Только лидер') : M ? T('{n} с', { n: M }) : T(th[1])}</button>
         </div>
+        <div class="am-cap">${T('Лично ему')}</div>
+        <div class="am-emos">${emotes.map(e => `<button data-act="emoteTo" data-id="${e}" data-seat="${seat}">${e}</button>`).join('')}</div>
+        <div class="am-phr">${phrases.filter(p => p.trim()).map(p => `<button data-act="phraseTo" data-text="${esc(p)}" data-seat="${seat}">${esc(T(p))}</button>`).join('')}</div>
+        <button class="am-dm" data-act="dmTo" data-seat="${seat}" ${s.bot ? 'disabled' : ''}>✉ ${T(s.bot ? 'Боты не читают личные' : 'Написать лично')}</button>
+        <div class="am-cap">${T('Заглушить')}</div>
         <div class="am-row">
           <button class="am-tg ${m.voice ? 'on' : ''}" data-act="mute" data-what="voice" data-seat="${seat}" ${s.bot ? 'disabled' : ''}><span>🎙</span>${T(m.voice ? 'Голос выкл' : 'Голос')}</button>
           <button class="am-tg ${m.chat ? 'on' : ''}" data-act="mute" data-what="chat" data-seat="${seat}"><span>💬</span>${T(m.chat ? 'Чат выкл' : 'Чат')}</button>
           <button class="am-tg ${m.emote ? 'on' : ''}" data-act="mute" data-what="emote" data-seat="${seat}"><span>😀</span>${T(m.emote ? 'Эмоции выкл' : 'Эмоции')}</button>
         </div>`;
-      pop.style.left = Math.min(VIEW.w - 150, Math.max(150, x)) + 'px';
-      pop.style.top = (y > VIEW.h / 2 ? y - 70 : y + 70) + 'px';
-      pop.classList.toggle('above', y > VIEW.h / 2);
+      pop.style.left = Math.min(VIEW.w - 160, Math.max(160, x)) + 'px';
       pop.classList.add('on');
+      // меню высокое: прижимаем к экрану по вертикали
+      const h = pop.offsetHeight || 300;
+      const top = y > VIEW.h / 2 ? Math.max(6, y - 50 - h) : Math.min(VIEW.h - h - 6, y + 50);
+      pop.style.top = top + 'px';
+      pop.classList.remove('above');
       pop.dataset.seat = seat;
       clearInterval(this.amT);
       if (L || D || M) this.amT = setInterval(() => { if (!pop.classList.contains('on')) return clearInterval(this.amT); this.openAvatarMenu(seat); }, 1000);
+    },
+    // Личное сообщение: чат открывается с адресатом; ✕ на плашке — снова общий чат.
+    dmTo: null,
+    setDm(seat) {
+      const v = S.view;
+      this.dmTo = seat != null && v && v.seats[seat] && !v.seats[seat].bot ? seat : null;
+      const tag = $('#chat-to');
+      if (!tag) return;
+      tag.classList.toggle('on', this.dmTo != null);
+      tag.innerHTML = this.dmTo != null ? `🔒 ${T('Лично')}: <b>${esc(v.seats[this.dmTo].name)}</b> <button type="button" data-act="dmClear">✕</button>` : '';
+      $('#chat-input').placeholder = T(this.dmTo != null ? 'Личное сообщение…' : 'Сообщение…');
+    },
+    // Смайлик, адресованный игроку: летит от отправителя к его аватару и «взрывается» там.
+    emoteTo(from, to, id) {
+      const [x1, y1] = this.avatarCenter(from), [x2, y2] = this.avatarCenter(to);
+      const el = document.createElement('div');
+      el.className = 'emo-fly';
+      el.textContent = id;
+      $('#app').appendChild(el);
+      const peak = Math.min(y1, y2) - 60;
+      el.animate([
+        { transform: `translate(${x1}px, ${y1}px) translate(-50%,-50%) scale(.6)` },
+        { transform: `translate(${(x1 + x2) / 2}px, ${peak}px) translate(-50%,-50%) scale(1.3) rotate(-12deg)`, offset: 0.5 },
+        { transform: `translate(${x2}px, ${y2}px) translate(-50%,-50%) scale(1)` },
+      ], { duration: 650, easing: 'cubic-bezier(.4,.1,.5,1)', fill: 'forwards' }).finished
+        .then(() => { el.remove(); this.emote(to, id); }, () => el.remove());
     },
     closeAvatarMenu() { $('#ava-menu').classList.remove('on'); clearInterval(this.amT); },
 
@@ -3177,6 +3304,57 @@
     return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">${blobs}<circle cx="40" cy="38" r="3" fill="#a07040" opacity=".6"/></svg>`;
   }
 
+  // ---------- броски лидера: грязь, помидор, яйцо, плевок ----------
+  const THROWS = [['mud', 'Грязь'], ['tomato', 'Помидор'], ['egg', 'Яйцо'], ['spit', 'Плевок']];
+  const blobPath = (cx, cy, r, n = 14, j = [0.75, 1.25]) => {
+    let d = '';
+    for (let k = 0; k <= n; k++) { const a = (k / n) * Math.PI * 2, rr = r * rnd(j[0], j[1]); d += `${k ? 'L' : 'M'}${(cx + Math.cos(a) * rr).toFixed(1)} ${(cy + Math.sin(a) * rr).toFixed(1)} `; }
+    return d + 'Z';
+  };
+  // Снаряд в полёте (SVG).
+  function throwSvg(style) {
+    if (style === 'tomato') return `<svg viewBox="0 0 44 44"><defs><radialGradient id="tmG" cx=".36" cy=".34" r=".72"><stop offset="0" stop-color="#ff9a86"/><stop offset=".35" stop-color="#ef3a26"/><stop offset=".8" stop-color="#b3150b"/><stop offset="1" stop-color="#6e0904"/></radialGradient></defs>
+      <ellipse cx="22" cy="24" rx="17" ry="15" fill="url(#tmG)"/><path d="M14 16 Q22 10 30 16" fill="none" stroke="#8a0c06" stroke-width="1" opacity=".5"/>
+      <path d="M22 10 L18 6 L21 9 L16 9 L21 11 L19 15 L22 12 L25 15 L23 11 L28 9 L23 9 L26 6 Z" fill="#3fa34d" stroke="#1d5e27" stroke-width=".6"/><rect x="21" y="3" width="2" height="6" rx="1" fill="#2e7d3a"/>
+      <ellipse cx="15" cy="19" rx="4.5" ry="3" fill="#fff" opacity=".55" transform="rotate(-30 15 19)"/></svg>`;
+    if (style === 'egg') return `<svg viewBox="0 0 40 48"><defs><radialGradient id="egG" cx=".38" cy=".3" r=".8"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f6efe2"/><stop offset="1" stop-color="#c9b89a"/></radialGradient></defs>
+      <path d="M20 3 C31 3 37 20 37 30 C37 40 29 46 20 46 C11 46 3 40 3 30 C3 20 9 3 20 3 Z" fill="url(#egG)" stroke="#b9a684" stroke-width=".8"/>
+      <circle cx="12" cy="30" r="1" fill="#c8b48e" opacity=".6"/><circle cx="26" cy="36" r=".8" fill="#c8b48e" opacity=".6"/><ellipse cx="13" cy="15" rx="4" ry="6" fill="#fff" opacity=".8" transform="rotate(-20 13 15)"/></svg>`;
+    if (style === 'spit') return `<svg viewBox="0 0 30 24"><defs><radialGradient id="spG" cx=".35" cy=".35" r=".7"><stop offset="0" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".5" stop-color="#dff2ff" stop-opacity=".75"/><stop offset="1" stop-color="#9fc8e6" stop-opacity=".55"/></radialGradient></defs>
+      <path d="M2 12 C8 6 18 5 26 9 C30 12 28 18 22 19 C14 20 7 17 2 12 Z" fill="url(#spG)" stroke="#b9dcf2" stroke-width=".6"/><circle cx="19" cy="10" r="2.2" fill="#fff" opacity=".9"/><circle cx="12" cy="14" r="1.2" fill="none" stroke="#fff" stroke-width=".5" opacity=".8"/></svg>`;
+    return '';
+  }
+  // След на аватаре после попадания.
+  function splatSvg(style) {
+    if (style === 'tomato') {
+      let x = `<defs><radialGradient id="tsG" cx=".45" cy=".4" r=".7"><stop offset="0" stop-color="#ff6a4a"/><stop offset=".6" stop-color="#d81e10"/><stop offset="1" stop-color="#8a0c06"/></radialGradient></defs>`;
+      x += `<path d="${blobPath(50, 42, 30, 18, [0.65, 1.3])}" fill="url(#tsG)"/>`;
+      x += `<path d="${blobPath(48, 40, 16, 12, [0.7, 1.2])}" fill="#ff8a5c" opacity=".75"/>`;
+      for (let i = 0; i < 11; i++) { const a = rnd(0, 6.28), r = rnd(4, 20); x += `<ellipse cx="${(48 + Math.cos(a) * r).toFixed(1)}" cy="${(40 + Math.sin(a) * r).toFixed(1)}" rx="1.6" ry="2.4" fill="#ffe7a0" transform="rotate(${rnd(0, 180).toFixed(0)} ${(48 + Math.cos(a) * r).toFixed(1)} ${(40 + Math.sin(a) * r).toFixed(1)})"/>`; }
+      for (let i = 0; i < 7; i++) { const a = rnd(0, 6.28), r = rnd(34, 46); x += `<circle cx="${(50 + Math.cos(a) * r).toFixed(1)}" cy="${(42 + Math.sin(a) * r * 0.9).toFixed(1)}" r="${rnd(1.5, 4).toFixed(1)}" fill="#d81e10"/>`; }
+      for (let i = 0; i < 4; i++) x += `<rect class="drip" x="${rnd(30, 66).toFixed(1)}" y="${rnd(52, 62).toFixed(1)}" width="${rnd(3, 5).toFixed(1)}" height="${rnd(18, 34).toFixed(1)}" rx="2.5" fill="#c41a0e" style="animation-delay:${(i * 0.35).toFixed(2)}s"/>`;
+      x += `<path d="M38 28 Q46 22 56 26" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".55"/>`;
+      return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">${x}</svg>`;
+    }
+    if (style === 'egg') {
+      let x = `<defs><radialGradient id="ysG" cx=".38" cy=".34" r=".7"><stop offset="0" stop-color="#fff3a0"/><stop offset=".45" stop-color="#ffc21a"/><stop offset="1" stop-color="#e08a00"/></radialGradient></defs>`;
+      x += `<path d="${blobPath(50, 46, 34, 20, [0.7, 1.25])}" fill="#fffbe8" opacity=".5" stroke="#fff" stroke-opacity=".6" stroke-width="1"/>`;
+      x += `<rect class="drip slow" x="38" y="60" width="9" height="34" rx="4.5" fill="#fffbe8" opacity=".45"/><rect class="drip slow" x="58" y="58" width="6" height="26" rx="3" fill="#fffbe8" opacity=".4" style="animation-delay:.6s"/>`;
+      x += `<g class="yolk"><circle cx="50" cy="44" r="14" fill="url(#ysG)"/><ellipse cx="45" cy="38" rx="5" ry="3" fill="#fff" opacity=".8" transform="rotate(-25 45 38)"/></g>`;
+      for (let i = 0; i < 5; i++) { const a = rnd(0, 6.28), r = rnd(24, 40); const cx = 50 + Math.cos(a) * r, cy = 46 + Math.sin(a) * r * 0.8; x += `<path d="M${cx.toFixed(1)} ${cy.toFixed(1)} l${rnd(4, 8).toFixed(1)} ${rnd(-3, 3).toFixed(1)} l${rnd(-2, 2).toFixed(1)} ${rnd(4, 7).toFixed(1)} Z" fill="#f6efe2" stroke="#c9b89a" stroke-width=".6"/>`; }
+      return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">${x}</svg>`;
+    }
+    if (style === 'spit') {
+      let x = `<defs><radialGradient id="ssG" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".6" stop-color="#d5ecfb" stop-opacity=".8"/><stop offset="1" stop-color="#a9cfe8" stop-opacity=".7"/></radialGradient></defs>`;
+      x += `<path d="${blobPath(54, 40, 22, 16, [0.6, 1.3])}" fill="url(#ssG)" stroke="#e8f6ff" stroke-opacity=".8" stroke-width="1"/>`;
+      for (let i = 0; i < 9; i++) x += `<circle cx="${rnd(38, 70).toFixed(1)}" cy="${rnd(26, 54).toFixed(1)}" r="${rnd(1, 3).toFixed(1)}" fill="none" stroke="#fff" stroke-width=".7" opacity=".85"/>`;
+      for (let i = 0; i < 6; i++) { const a = rnd(0, 6.28), r = rnd(26, 38); x += `<circle cx="${(54 + Math.cos(a) * r).toFixed(1)}" cy="${(40 + Math.sin(a) * r * 0.8).toFixed(1)}" r="${rnd(1.2, 3).toFixed(1)}" fill="#e3f3ff" opacity=".7"/>`; }
+      x += `<rect class="drip slow" x="50" y="56" width="3.5" height="30" rx="1.8" fill="#dff0fb" opacity=".6"/><path d="M44 32 Q52 26 62 30" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".8"/>`;
+      return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">${x}</svg>`;
+    }
+    return mudSvg();
+  }
+
   function rtcSend(to, data) {
     if (!S.room || S.local) return;
     fetch(API + '/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: S.room, token: S.token, type: 'rtc', to, data }) }).catch(() => {});
@@ -3197,6 +3375,107 @@
     const l = $('#chat-list'); if (l) l.dataset.key = '';
     if (S.view) { try { Social.renderChat(S.view); } catch {} }
   }
+  // ---------- мировой чат (главный экран) ----------
+  // Сервер хранит последние 100 сообщений в памяти (после перезапуска история пропадает). Читать могут все,
+  // писать — только с аккаунтом Google. Приглашения за стол из лобби приходят карточками с кнопкой «Сесть за стол».
+  const World = {
+    msgs: [], seq: 0, online: 0, open: false, unread: 0, timer: 0, busy: false, seen: 0,
+    rid: (() => { try { let r = sessionStorage.getItem('vtochku-rid'); if (!r) { r = Math.random().toString(36).slice(2, 10); sessionStorage.setItem('vtochku-rid', r); } return r; } catch { return 'x' + Math.random().toString(36).slice(2, 8); } })(),
+    mount() {
+      this.render(); this.badge();
+      this.poll();
+    },
+    schedule() {
+      clearTimeout(this.timer);
+      if (S.screen !== 'home') return;
+      this.timer = setTimeout(() => this.poll(), this.open ? 4000 : 15000);
+    },
+    async poll() {
+      clearTimeout(this.timer);
+      if (S.screen !== 'home' || this.busy) return this.schedule();
+      if (document.hidden) return this.schedule();
+      this.busy = true;
+      try {
+        await Server.ready;
+        const j = await fetch(`${API}/api/world?since=${this.seq}&rid=${this.rid}`).then(r => r.json());
+        this.online = j.online || 0;
+        if (j.seq < this.seq) this.msgs = []; // сервер перезапустился — история новая
+        const known = new Map(this.msgs.map(m => [m.seq, m]));
+        for (const m of j.invites || []) if (known.has(m.seq)) Object.assign(known.get(m.seq), m);
+        const fresh = (j.msgs || []).filter(m => !known.has(m.seq));
+        this.msgs = this.msgs.concat(fresh).slice(-100);
+        const first = !this.seen;
+        this.seq = j.seq;
+        if (!first && !this.open) this.unread += fresh.filter(m => !Auth.me || m.uid !== Auth.me.id).length;
+        this.seen = 1;
+        if (fresh.length || (j.invites || []).length || first) this.render();
+        else this.renderHead();
+        this.badge();
+      } catch {}
+      this.busy = false;
+      this.schedule();
+    },
+    badge() {
+      const b = $('#w-badge');
+      if (!b) return;
+      b.textContent = this.unread > 99 ? '99+' : this.unread;
+      b.classList.toggle('on', this.unread > 0);
+    },
+    toggle(force) {
+      this.open = force == null ? !this.open : force;
+      const p = $('#w-panel');
+      if (!p) return;
+      p.classList.toggle('on', this.open);
+      $('.w-btn') && $('.w-btn').classList.toggle('on', this.open);
+      if (this.open) { this.unread = 0; this.badge(); this.render(); this.poll(); }
+    },
+    renderHead() {
+      const h = $('#w-online');
+      if (h) h.textContent = T('{n} в сети', { n: this.online });
+    },
+    item(m) {
+      const mine = Auth.me && m.uid === Auth.me.id;
+      const ava = `<div class="ava w-ava"><span class="ini">${esc(initial(m.name))}</span>${avaPicHtml(m.pic)}</div>`;
+      const time = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const who = `<div class="w-who"><b>${esc(m.name)}</b>${m.rating != null ? ` <span class="w-rt">${rtTag(m.rating)}</span>` : ''}<span class="w-time">${time}</span></div>`;
+      if (m.kind === 'invite') {
+        const r = m.rules || {};
+        const tags = [T('{n} раундов', { n: r.rounds || '—' }), r.bluff ? T('обман') : '', r.skills ? T('умения') : '', r.test ? T('тест') : ''].filter(Boolean).join(' · ');
+        return `<div class="w-msg w-inv ${mine ? 'mine' : ''}">${ava}<div class="w-body">${who}
+          <div class="w-card"><div>🃏 ${T('Зовёт за стол')} <b class="gold-text">${esc(m.room)}</b> · ${m.players}/${m.size}</div><div class="hint">${esc(tags)}</div>
+          ${m.open ? `<button class="btn-gold" data-act="worldJoin" data-room="${esc(m.room)}">${T('Сесть за стол')}</button>` : `<span class="hint">${T('Стол уже собран')}</span>`}</div></div></div>`;
+      }
+      return `<div class="w-msg ${mine ? 'mine' : ''}">${ava}<div class="w-body">${who}<div class="w-text">${esc(m.text)}</div></div></div>`;
+    },
+    render() {
+      const p = $('#w-panel');
+      if (!p) return;
+      const list = this.msgs.map(m => this.item(m)).join('') || `<div class="hint w-empty">${T('Пока тихо. Напишите первым!')}</div>`;
+      const foot = Auth.me
+        ? `<form class="chat-form" id="w-form"><input id="w-input" maxlength="240" placeholder="${T('Сообщение всем…')}" autocomplete="off"><button class="btn-gold" type="submit">➤</button></form>`
+        : `<button class="btn-ghost w-signin" data-act="profile">🔑 ${T('Войдите через Google, чтобы писать')}</button>`;
+      const keep = $('#w-input') ? $('#w-input').value : '';
+      const focused = document.activeElement && document.activeElement.id === 'w-input';
+      p.innerHTML = `<div class="chat-head"><span>🌍 ${T('Мировой чат')} <i class="hint" id="w-online"></i></span><button data-act="worldClose">✕</button></div>
+        <div class="chat-list w-list" id="w-list">${list}</div>${foot}`;
+      this.renderHead();
+      const l = $('#w-list'); l.scrollTop = l.scrollHeight;
+      const f = $('#w-form');
+      if (f) {
+        const inp = $('#w-input'); inp.value = keep; if (focused) inp.focus();
+        f.addEventListener('submit', async e => {
+          e.preventDefault();
+          const text = inp.value.trim();
+          if (!text || !Auth.session) return;
+          inp.value = '';
+          try { await api('/api/world/send', { session: Auth.session, text }); this.poll(); }
+          catch (er) { toast(er.message); inp.value = text; }
+        });
+      }
+    },
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.screen === 'home') World.poll(); });
+
   function buildDock() {
     const dock = document.createElement('div');
     dock.id = 'dock';
@@ -3204,6 +3483,7 @@
       <div class="chat-panel glass" id="chat-panel">
         <div class="chat-head"><span>${T('Чат стола')}</span><button data-act="chat-close">✕</button></div>
         <div class="chat-list" id="chat-list"></div>
+        <div class="chat-to" id="chat-to"></div>
         <form class="chat-form" id="chat-form"><input id="chat-input" maxlength="200" placeholder="${T('Сообщение…')}" autocomplete="off"><button class="btn-gold" type="submit">➤</button></form>
       </div>
       <div class="dock-btns">
@@ -3222,7 +3502,7 @@
       const text = inp.value.trim();
       if (!text) return;
       inp.value = '';
-      social({ type: 'chat', text });
+      social({ type: 'chat', text, ...(Social.dmTo != null ? { to: Social.dmTo } : {}) });
     });
     // «Нажми и говори»: держите кнопку — вас слышат; отпустили — микрофон выключен.
     const ptt = $('#ptt');
@@ -3321,6 +3601,21 @@
       try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, skills: S.skills, test: S.test, listed: S.listed, lang: I18N.lang, ...geo(), session: Auth.session }); connect(j.room, j.token); }
       catch (e) { toast(e.message); }
     },
+    world: () => World.toggle(),
+    worldClose: () => World.toggle(false),
+    worldJoin: async b => {
+      if (searchLock()) return;
+      const name = needName();
+      if (!name) return;
+      save(STORE_KEY, { name });
+      try { const j = await api('/api/join', { name, room: b.dataset.room, session: Auth.session }); World.toggle(false); connect(j.room, j.token); }
+      catch (e) { toast(e.message); }
+    },
+    worldInvite: async b => {
+      if (!Auth.session) { toast(T('Писать в мировой чат можно только с аккаунтом Google')); return; }
+      try { await api('/api/world/invite', { session: Auth.session, room: S.room, token: S.token }); toast(T('Приглашение отправлено в мировой чат')); b.disabled = true; setTimeout(() => { b.disabled = false; }, 30000); }
+      catch (e) { toast(e.message); }
+    },
     join: async () => {
       if (searchLock()) return;
       const room = ($('#code') ? $('#code').value : '').trim().toUpperCase();
@@ -3363,6 +3658,10 @@
     emotes: () => { Social.toggleChat(false); Social.openEmotes(); },
     emote: b => { $('#emo-pick').classList.remove('on'); social({ type: 'emote', id: b.dataset.id }); },
     phrase: b => { $('#emo-pick').classList.remove('on'); social({ type: 'phrase', text: b.dataset.text }); },
+    emoteTo: b => { Social.closeAvatarMenu(); social({ type: 'emote', id: b.dataset.id, to: +b.dataset.seat }); },
+    phraseTo: b => { Social.closeAvatarMenu(); social({ type: 'phrase', text: b.dataset.text, to: +b.dataset.seat }); },
+    dmTo: b => { Social.closeAvatarMenu(); Social.setDm(+b.dataset.seat); Social.toggleChat(true); setTimeout(() => $('#chat-input') && $('#chat-input').focus(), 50); },
+    dmClear: () => Social.setDm(null),
     wheelSlot: b => { S.wheelSlot = +b.dataset.i; showCustomize('wheel'); },
     wheelPick: b => {
       const w = myWheel(), i = S.wheelSlot || 0, e = b.dataset.e, j = w.emotes.indexOf(e);
@@ -3374,7 +3673,7 @@
     wheelReset: () => { delete prefs.wheel; savePrefs(); S.wheelSlot = 0; showCustomize('wheel'); toast(T('Колесо эмоций сброшено')); },
     like: b => { Social.closeAvatarMenu(); social({ type: 'like', to: +b.dataset.seat }); },
     dislike: b => { Social.closeAvatarMenu(); social({ type: 'dislike', to: +b.dataset.seat }); },
-    mud: b => { Social.closeAvatarMenu(); social({ type: 'mud', to: +b.dataset.seat }); },
+    mud: b => { Social.closeAvatarMenu(); social({ type: 'mud', to: +b.dataset.seat, style: prefs.mudStyle || 'mud' }); },
     mute: b => {
       const v = S.view, s = v && v.seats[+b.dataset.seat];
       if (!s) return;
@@ -3388,6 +3687,10 @@
     theme: b => { prefs.cards = b.dataset.t; savePrefs(); Cards.setTheme(prefs.cards); syncHome(); if (S.screen === 'home') { showHomeFanRefresh(); } Game.refreshFaces(); if ($('#overlay .cust-modal')) showCustomize(); else if ($('#overlay').classList.contains('on') && $('#overlay .menu-list, #overlay .menu-modal')) showMenu(); },
     customize: b => showCustomize('decks', b.closest('.menu-modal') ? 'menu' : 'home'),
     custTab: b => showCustomize(b.dataset.tab),
+    mudStyle: b => {
+      prefs.mudStyle = b.dataset.s; savePrefs(); showCustomize('fx');
+      ({ tomato: SFX.squish, egg: SFX.crack, spit: SFX.spitHit, mud: SFX.splat }[prefs.mudStyle] || (() => {}))();
+    },
     room: b => {
       prefs.room = b.dataset.r; savePrefs(); applyRoom(prefs.room);
       Game.refreshRoom && Game.refreshRoom();
@@ -3658,6 +3961,6 @@
       maybeWelcome();
     });
   }
-  window.VT = { S, Game, Social, Auth, tierOf, enqueue };
+  window.VT = { S, Game, Social, Auth, World, tierOf, enqueue };
   init();
 })();

@@ -93,9 +93,10 @@ README.md            Human README in Russian (structure, run, deploy, env).
 - `rateGame()`: only `kind==='ranked'`, needs ≥2 accounts (unless calib) and DB ready → `DB.recordMatch` → `g.rating {status, changes}`.
 
 ### HTTP API
-GET: `/health`, `/api/events` (SSE; events: default state, `kicked`, `rtc`), `/api/rooms` (open public tables), `/api/config` (googleClientId, ratings), `/api/alive?room&token` (is the last game still running and the seat ours — home «Вернуться в игру»).
-POST: `/api/auth/google`, `/api/me`, `/api/logout`, `/api/tutorial` (mark tutorial done for the session's account), `/api/leaderboard`, `/api/create`, `/api/join`, `/api/mm/join|status|cancel`, `/api/action`.
-`/api/action` types: game — `start, restart, kick, voteKick, vote, pause, unpause, bid, play, nextRound, check, skill`; social — `chat, emote, phrase, like, dislike, mud` (mud only for score leader); `rtc` relay.
+GET: `/health`, `/api/events` (SSE; events: default state, `kicked`, `rtc`), `/api/rooms` (open public tables), `/api/config` (googleClientId, ratings), `/api/alive?room&token` (is the last game still running and the seat ours — home «Вернуться в игру»), `/api/world?since=&rid=` (world chat: new msgs, refreshed old invites, `seq`, `online` = readers in last 30s).
+POST: `/api/auth/google`, `/api/me`, `/api/logout`, `/api/tutorial` (mark tutorial done for the session's account), `/api/leaderboard`, `/api/create`, `/api/join`, `/api/mm/join|status|cancel`, `/api/action`, `/api/world/send {session,text}` (Google only, gap 2.5s), `/api/world/invite {session,room,token}` (lobby of a non-matchmade table with free seats, once per 30s).
+`/api/action` types: game — `start, restart, kick, voteKick, vote, pause, unpause, bid, play, nextRound, check, skill`; social — `chat, emote, phrase, like, dislike, mud` (mud only for score leader, `style` ∈ `MUD_STYLES` mud/tomato/egg/spit); optional `to` on chat = private message (only sender+recipient see it, filtered in `viewFor`; not to bots), on emote/phrase = flies to that avatar (everyone sees); chat/phrases/world chat go through `cleanText()` (basic profanity filter); `rtc` relay.
+World chat (`WORLD` in server.js): last 100 messages in memory only (lost on restart), kinds `msg` | `invite`.
 Errors: throw via `fail('русский текст')` (GameError → 400 with `{error}`).
 CORS `*` on `/health` and `/api/*` (client may be served from the static site); `OPTIONS` → 204.
 
@@ -108,7 +109,7 @@ Search by the `// ----------` headers (line numbers drift):
 `стол` (`classicTableSvg`, chairs, icons) · `модальные окна, тосты`, `rulesHtml`, `showMenu` ·
 `персонализация` (`showCustomize`: Колоды / Комнаты / Эффекты, emote wheel) · `параллакс` · `геометрия` (seat/hand positions) ·
 `карты в DOM` (`makeCard`, `fly`) · `игровой экран` (largest block: score, trick, deal, bluff checks, reshuffle, round banner (+«Двойные очки»), leader crown, first-move ball = leader of the current trick, lead card highlight + `#lead-suit` (`markLead`), bid announcement `announceBid`, card pre-select `queued`/`playQueued` (double tap while others play), away countdown `tickAway`, neon, pause, round results) ·
-`общение` (chat, emote wheel, likes, mud, voice dock) · `экран загрузки` (`showWaking` while server wakes) ·
+`общение` (chat + private `Social.setDm`, emote wheel, avatar menu groups Реакции/Лично ему/Заглушить, `emoteTo`, leader throws `mud(from,to,style)` + `impact` with `throwSvg`/`splatSvg`, `prefs.mudStyle` chosen in Персонализация → Эффекты, voice dock) · `мировой чат` (`World`: home left button + translucent panel, polls /api/world 4s open / 15s closed; lobby button «Пригласить в мировой чат») · `экран загрузки` (`showWaking` while server wakes) ·
 `обучение` (`maybeWelcome`/`showWelcome` — welcome overlay #welcome; `startTutorial` sets `S.local` = local table: `act()` routes to it, `social()` is off;
 `finishTutorial`, `markTutorialDone` → `/api/tutorial` or `S.tutPending` until sign-in; flag cached in `vtochku-auth.tutorial`) · `действия по кнопкам` (click handlers by `data-act`) · `PWA` · `init()`.
 
@@ -119,7 +120,7 @@ Search by the `// ----------` headers (line numbers drift):
 `DATABASE_URL` (Neon pooled string), `GOOGLE_CLIENT_ID` (fallback hardcoded, not secret), `PORT`. Check `/health` → `db: "ok"`, `google: true`. Never put secret values in the repo.
 
 ## Run & test
-`npm start` → http://localhost:3000 (in-memory DB). `npm test` → engine, rating, lobby/matchmaking, test modes, online integration (port 3999), pause, dropped player (test-away.js, port 3997), tutorial script (test-tutorial.js).
+`npm start` → http://localhost:3000 (in-memory DB). `npm test` → engine, rating, lobby/matchmaking, test modes, online integration (port 3999), pause, dropped player (test-away.js, port 3997), social/private chat/profanity/world chat (test-chat.js, port 3994), tutorial script (test-tutorial.js).
 Tutorial in a real browser: Playwright + /usr/bin/google-chrome works in the sandbox (Google sign-in/fonts are blocked there).
 
 ## Not implemented yet / planned (don't assume they exist)

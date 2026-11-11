@@ -5,7 +5,7 @@
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "test": "node test-engine.js && node test-rating.js && node test-lobby.js && node test-modes.js && node test-online.js && node test-pause.js && node test-away.js && node test-tutorial.js",
+    "test": "node test-engine.js && node test-rating.js && node test-lobby.js && node test-modes.js && node test-online.js && node test-pause.js && node test-away.js && node test-chat.js && node test-tutorial.js",
     "build:static": "node scripts/build-static.js"
   },
   "engines": {
