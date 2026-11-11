@@ -48,11 +48,11 @@
 
   const STEPS = [
     // ===== Раунд 1: старшая карта =====
-    { when: g => bidStart(g, 0), tap: true, ru: 'Добро пожаловать за стол! Ты и 4 бота. В каждом раунде все сначала <b>заявляют</b>, сколько взяток возьмут, а потом разыгрывают карты. Попал в заявку — получаешь очки.',
-      en: 'Welcome to the table! You and 4 bots. Each round everyone first <b>bids</b> how many tricks they will take, then the cards are played. Hit your bid — score points.' },
-    { when: g => myBid(g, 0), ...bid(1), ru: 'У тебя <b>туз треф</b> — самая старшая трефа. Козырей (червей ♥) ни у кого нет, значит, взятка твоя. Заяви <b>1</b>.',
+    { when: g => bidStart(g, 0), tap: true, ru: 'Добро пожаловать за стол! В каждом раунде все сначала <b>заявляют</b>, сколько взяток возьмут, а потом разыгрывают карты. Попал в заявку — получаешь очки.',
+      en: 'Welcome to the table! Each round everyone first <b>bids</b> how many tricks they will take, then the cards are played. Hit your bid — score points.' },
+    { when: g => myBid(g, 0), ...bid(1), ru: 'У тебя <b>Туз треф</b> — старшая карта. Козырей (червей ♥)сейчас ни у кого нет, значит, взятка твоя. Заяви <b>1</b>.',
       en: 'You hold the <b>ace of clubs</b> — the highest club. Nobody has trumps (hearts ♥), so the trick is yours. Bid <b>1</b>.' },
-    { when: g => myPlay(g, 0, 1), ...play('Т♣'), ru: 'Ты ходишь первым. Нажми на карту — она выделится, — и нажми ещё раз, чтобы положить.',
+    { when: g => myPlay(g, 0, 1), ...play('Т♣'), ru: 'Ты ходишь первым. Нажми на карту — она выделится, — и нажми ещё раз, чтобы разыграть.',
       en: 'You lead. Tap the card to select it, then tap again to play it.' },
     { when: g => trickDone(g, 0, 1), tap: true, ru: 'Взятку забирает <b>старшая карта в масти первого хода</b>. Карты других мастей не бьют — кроме козыря.',
       en: 'The trick goes to the <b>highest card of the led suit</b>. Other suits can’t beat it — except trumps.' },
