@@ -613,7 +613,11 @@
         <ellipse cx="${cx}" cy="${cy + 180}" rx="300" ry="40" fill="#fff" opacity=".035" filter="url(#softBlur)"/>
       </g>
       <ellipse cx="${cx}" cy="${cy}" rx="330" ry="170" fill="none" stroke="url(#gold)" stroke-opacity=".35" stroke-width="1.5"/>
-      <g opacity=".2" transform="translate(${cx - 70} ${cy - 112}) scale(1.4 1)">${Brand.hood({ id: 'tbl' }).replace(/<svg[^>]*>|<\/svg>/g, '')}</g>
+      <g class="tbl-logo" transform="translate(${cx - 95} ${cy - 128}) scale(1.9 1.36)">
+        <image href="/img/logo.webp?v=1" width="100" height="100" opacity=".34"/>
+        <g class="tbl-eyes" style="mix-blend-mode:screen"><ellipse cx="44.1" cy="37.2" rx="7.5" ry="2.2" transform="rotate(23 44.1 37.2)" fill="url(#tblEye)"/><ellipse cx="56.1" cy="37.2" rx="7.5" ry="2.2" transform="rotate(-23 56.1 37.2)" fill="url(#tblEye)"/></g>
+        <radialGradient id="tblEye"><stop offset="0" stop-color="#fffbe6"/><stop offset=".45" stop-color="#ffd678" stop-opacity=".9"/><stop offset="1" stop-color="#f5a028" stop-opacity="0"/></radialGradient>
+      </g>
       <text x="${cx}" y="${cy + 128}" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="30" letter-spacing="12" fill="#e8c46a" opacity=".22">${T('В ТОЧКУ')}</text>
       <defs>
         <radialGradient id="ballG" cx=".36" cy=".3" r=".78"><stop offset="0" stop-color="#fffbe8"/><stop offset=".16" stop-color="#ffe9a8"/><stop offset=".42" stop-color="#e6b552"/><stop offset=".74" stop-color="#9c6b1d"/><stop offset="1" stop-color="#3e2808"/></radialGradient>

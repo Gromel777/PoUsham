@@ -410,7 +410,7 @@ input, select { font: inherit; }
   .chip { width: 44px; height: 44px; font-size: 17px; }
   .log-body { max-height: calc(var(--VH) * 24); }
 }
-@media (prefers-reduced-motion: reduce) { .mote, .btn-gold::after, .logo, .logo-hood .eye { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .mote, .btn-gold::after, .logo, .logo-hood .eye, .tbl-eyes { animation: none !important; } }
 
 /* ================= обновления: логотип, плашка снизу, неон, общение ================= */
 .logo-row { display: flex; align-items: center; gap: 10px; }
@@ -420,6 +420,7 @@ input, select { font: inherit; }
 .logo-hood .eye { position: absolute; top: 37.2%; width: 15%; height: 4.4%; margin: -2.2% 0 0 -7.5%; border-radius: 50%; pointer-events: none; mix-blend-mode: screen;
   background: radial-gradient(closest-side, #fffbe6, rgba(255, 214, 120, .9) 45%, rgba(245, 160, 40, 0)); opacity: .1; animation: eyeGlow 4.5s ease-in-out infinite; }
 .logo-hood .eye::after { content: ''; position: absolute; inset: -150% -35%; border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 170, 50, .45), rgba(255, 140, 30, 0)); }
+.tbl-eyes { opacity: .1; animation: eyeGlow 4.5s ease-in-out infinite; }
 .logo-hood .eye.l { left: 44.1%; transform: rotate(23deg); }
 .logo-hood .eye.r { left: 56.1%; transform: rotate(-23deg); }
 @keyframes eyeGlow { 0%, 100% { opacity: .1; } 36% { opacity: .5; } 45% { opacity: 1; } 55% { opacity: .45; } 72% { opacity: .2; } }
