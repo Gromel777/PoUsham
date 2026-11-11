@@ -410,13 +410,19 @@ input, select { font: inherit; }
   .chip { width: 44px; height: 44px; font-size: 17px; }
   .log-body { max-height: calc(var(--VH) * 24); }
 }
-@media (prefers-reduced-motion: reduce) { .mote, .btn-gold::after, .logo { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .mote, .btn-gold::after, .logo, .logo-hood .eye { animation: none !important; } }
 
 /* ================= обновления: логотип, плашка снизу, неон, общение ================= */
 .logo-row { display: flex; align-items: center; gap: 10px; }
-.logo-hood { width: clamp(44px, calc(var(--VH) * 12), 72px); height: clamp(44px, calc(var(--VH) * 12), 72px); flex: none; filter: drop-shadow(0 0 12px rgba(246, 210, 122, .35)); animation: hoodFloat 4s ease-in-out infinite; }
-.logo-hood svg { width: 100%; height: 100%; }
-@keyframes hoodFloat { 50% { transform: translateY(-3px); filter: drop-shadow(0 0 18px rgba(246, 210, 122, .55)); } }
+.logo-hood { position: relative; width: clamp(44px, calc(var(--VH) * 12), 72px); height: clamp(44px, calc(var(--VH) * 12), 72px); flex: none; filter: drop-shadow(0 0 10px rgba(246, 210, 122, .3)); }
+.logo-hood img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
+/* свечение глаз поверх картинки: глаза на изображении — 44% и 56% по ширине, 37% по высоте */
+.logo-hood .eye { position: absolute; top: 37.2%; width: 15%; height: 4.4%; margin: -2.2% 0 0 -7.5%; border-radius: 50%; pointer-events: none; mix-blend-mode: screen;
+  background: radial-gradient(closest-side, #fffbe6, rgba(255, 214, 120, .9) 45%, rgba(245, 160, 40, 0)); opacity: .1; animation: eyeGlow 4.5s ease-in-out infinite; }
+.logo-hood .eye::after { content: ''; position: absolute; inset: -150% -35%; border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 170, 50, .45), rgba(255, 140, 30, 0)); }
+.logo-hood .eye.l { left: 44.1%; transform: rotate(23deg); }
+.logo-hood .eye.r { left: 56.1%; transform: rotate(-23deg); }
+@keyframes eyeGlow { 0%, 100% { opacity: .1; } 36% { opacity: .5; } 45% { opacity: 1; } 55% { opacity: .45; } 72% { opacity: .2; } }
 
 /* соперники на 15% меньше, веер карт — в стороне от имени и заявки */
 :root { --ava: 48px; }

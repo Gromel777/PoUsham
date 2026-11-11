@@ -44,13 +44,14 @@ const STATIC = {
   '/icons/icon-192.png': 'client/icons/icon-192.png',
   '/icons/icon-512.png': 'client/icons/icon-512.png',
   '/icons/maskable-512.png': 'client/icons/maskable-512.png',
+  '/img/logo.webp': 'client/img/logo.webp',
   '/fx.js': 'client/fx.js',
   '/engine.js': 'engine/engine.js',
   '/music/menu.mp3': 'client/music/menu.mp3',
   '/music/ranked.mp3': 'client/music/ranked.mp3',
   '/music/victory.mp3': 'client/music/victory.mp3',
 };
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webmanifest': 'application/manifest+json; charset=utf-8', '.mp3': 'audio/mpeg' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.webmanifest': 'application/manifest+json; charset=utf-8', '.mp3': 'audio/mpeg' };
 const EMOTES = ['😂', '😱', '🖕', '😎', '😡', '🤔', '👏', '💀'];
 const PHRASES = ['Блефуешь!', 'Проверю!', 'Ну ты даёшь', 'Везёт же', 'Давай быстрее', 'Красиво!', 'Не верю', 'GG'];
 const LIKE_COOLDOWN = 60 * 1000; // у лайка, дизлайка и грязи — своя минута у каждого
@@ -814,7 +815,7 @@ function serveStatic(req, res, url) {
   if (ext === '.mp3') return serveMedia(req, res, path.join(ROOT, rel));
   fs.readFile(path.join(ROOT, rel), (err, data) => {
     if (err) { res.writeHead(500); return res.end('Ошибка сервера'); }
-    res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': ext === '.png' ? 'public, max-age=86400' : 'no-cache' });
+    res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': (ext === '.png' || ext === '.webp') ? 'public, max-age=86400' : 'no-cache' });
     res.end(data);
   });
 }

@@ -297,7 +297,7 @@
     S.screen = name;
     return el;
   }
-  const logoHtml = (size = '') => `<div class="logo-row"><span class="logo-hood">${Brand.hood({ id: 'logo' })}</span><h1 class="logo gold-text" ${size}>${T('В Точку')}</h1></div>`;
+  const logoHtml = (size = '') => `<div class="logo-row"><span class="logo-hood"><img src="/img/logo.webp?v=1" alt="" draggable="false"><i class="eye l"></i><i class="eye r"></i></span><h1 class="logo gold-text" ${size}>${T('В Точку')}</h1></div>`;
 
   function showConnecting() {
     setScreen('connecting', `<div class="connecting"><div style="text-align:center"><div class="loader"></div>${logoHtml('style="font-size:34px"')}

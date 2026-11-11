@@ -1,7 +1,7 @@
 // Сервис-воркер «В Точку»: позволяет установить игру как приложение.
 // Сначала сеть (всегда свежая версия), кэш — только если связи нет.
-const CACHE = 'vtochku-v11';
-const SHELL = ['/', '/style.css', '/client.js', '/cards.js', '/cards-light.js', '/cards-sil.js', '/i18n.js', '/brand.js', '/viewport.js', '/fx.js', '/qrcode.js', '/voice.js', '/music.js', '/manifest.webmanifest', '/icons/icon-192.png'];
+const CACHE = 'vtochku-v12';
+const SHELL = ['/', '/style.css', '/client.js', '/cards.js', '/cards-light.js', '/cards-sil.js', '/i18n.js', '/brand.js', '/viewport.js', '/fx.js', '/qrcode.js', '/voice.js', '/music.js', '/manifest.webmanifest', '/icons/icon-192.png', '/img/logo.webp?v=1'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {
