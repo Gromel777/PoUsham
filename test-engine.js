@@ -39,17 +39,18 @@ E.playCard(g, 0, 'Т♠');
 assert.strictEqual(E.legalPlays(g, 1).length, 2);
 E.playCard(g, 1, 'К♥'); // обман: были пики
 assert.strictEqual(g.trick.plays[1].lawful, false);
-// ошибочная проверка честной карты: −20 проверяющему
+// ошибочная проверка честной карты: −20 проверяющему, +5 проверенному
 E.playCard(g, 2, 'Д♣'); // честно (пик нет) → взятка завершена
 assert.strictEqual(g.phase, 'trickDone');
 assert.strictEqual(g.trickWinner, 1);
 E.check(g, 0, 'Д♣');
-assert.deepStrictEqual(g.scores, [-20, 0, 0]);
+assert.deepStrictEqual(g.scores, [-20, 0, 5]);
+assert.strictEqual(g.lastCheck.reward, 5);
 assert.throws(() => E.check(g, 1, 'Д♣'), /уже проверили/);
 assert.throws(() => E.check(g, 1, 'К♥'), /Свою карту/);
 // пойманный обман после завершения взятки: ±50, карта возвращается, взятка пересчитывается
 E.check(g, 2, 'К♥');
-assert.deepStrictEqual(g.scores, [-20, -50, 50]);
+assert.deepStrictEqual(g.scores, [-20, -50, 55]);
 assert.strictEqual(g.phase, 'play'); assert.strictEqual(g.turn, 1);
 assert.deepStrictEqual(g.took, [0, 0, 0]);
 assert.strictEqual(ids(E.legalPlays(g, 1)), '6♠', 'замена — только честная карта');
@@ -59,7 +60,7 @@ E.playCard(g, 1, '6♠');
 assert.strictEqual(g.trick.plays[1].card.id, '6♠', 'карта встаёт на своё место');
 assert.strictEqual(g.phase, 'trickDone'); assert.strictEqual(g.trickWinner, 0);
 assert.deepStrictEqual(g.took, [1, 0, 0]);
-assert.deepStrictEqual(g.bonus, [-20, -50, 50]);
+assert.deepStrictEqual(g.bonus, [-20, -50, 55]);
 // пойманный обман в середине взятки: ход возвращается тому, кто ходил бы
 g = table([['Т♠', '6♦'], ['6♠', 'К♥', '7♦'], ['Д♣', '9♥', '8♦'], ['8♠', '6♣']], { bluff: true });
 E.playCard(g, 0, 'Т♠'); E.playCard(g, 1, 'К♥');
@@ -121,8 +122,8 @@ E.playCard(g, 0, 'Т♠');
 assert.strictEqual(ids(E.legalPlays(g, 1)), ids([C('7♠'), C('6♠')]), 'другие пики — обязан');
 
 // Очки
-assert.strictEqual(E.scoreFor(0, 0, 1), 12, 'ноль: 10 + 2 за карту');
-assert.strictEqual(E.scoreFor(0, 0, 9), 28);
+assert.strictEqual(E.scoreFor(0, 0, 1), 6, 'ноль: 5 + 1 за карту');
+assert.strictEqual(E.scoreFor(0, 0, 9), 14);
 assert.strictEqual(E.scoreFor(3, 3, 9), 60);
 assert.strictEqual(E.scoreFor(3, 1, 9), -40);
 assert.strictEqual(E.scoreFor(1, 4, 9), 3, 'перебор: +1 за лишнюю');
@@ -216,4 +217,30 @@ console.log('тестовый режим ok');
     });
   }
   console.log(`пересдача ok · ботами применено: ${used} за 40 партий`);
+}
+
+// «Двойные очки»: первый и последний раунд ×2, с «Тёмной» — ×4; обучение может выключить
+{
+  const g = E.newGame({ players: 3, rounds: 5, names: ['a', 'b', 'c'] });
+  const last = g.plan.length - 1;
+  assert.ok(E.isDoubleRound(g, 0) && E.isDoubleRound(g, last) && !E.isDoubleRound(g, 1), 'двойные — первый и последний');
+  assert.strictEqual(E.roundMult(g, 0), 2);
+  assert.strictEqual(E.roundMult(g, 1), 1);
+  assert.strictEqual(g.double, true, 'флаг двойного раунда в первом раунде');
+  assert.strictEqual(E.roundMult({ doubles: true, plan: [1, 2, 3], modes: ['normal', 'normal', 'dark'] }, 2), 4, 'тёмная в последнем — ×4');
+  const off = E.newGame({ players: 3, rounds: 5, names: ['a', 'b', 'c'], doubles: false });
+  assert.ok(!E.isDoubleRound(off, 0) && E.roundMult(off, 0) === 1, 'doubles:false — без удвоения');
+  // целая партия ботами: дельта первого и последнего раунда = очки ×2
+  const h = E.newGame({ players: 3, rounds: 4, names: ['a', 'b', 'c'] });
+  for (let guard = 0; guard < 5000 && h.phase !== 'gameOver'; guard++) {
+    if (h.phase === 'pre') E.beginBidding(h);
+    else if (h.phase === 'bid') E.placeBid(h, h.turn, Bots.bid(h, h.turn));
+    else if (h.phase === 'play') { const m = Bots.play(h, h.turn); E.playCard(h, h.turn, m.cardId, m.mode); }
+    else if (h.phase === 'trickDone') E.nextTrick(h);
+    else if (h.phase === 'roundDone') E.nextRound(h);
+  }
+  const hl = h.history;
+  [0, hl.length - 1].forEach(i => hl[i].bids.forEach((b, p) => assert.strictEqual(hl[i].delta[p], 2 * E.scoreFor(b, hl[i].took[p], hl[i].cards), 'двойные очки в раунде ' + i)));
+  assert.strictEqual(hl[1].mult, 1);
+  console.log('двойные очки ok');
 }

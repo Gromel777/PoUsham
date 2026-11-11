@@ -56,8 +56,8 @@
       en: 'You lead. Tap the card to select it, then tap again to play it.' },
     { when: g => trickDone(g, 0, 1), tap: true, ru: 'Взятку забирает <b>старшая карта в масти первого хода</b>. Карты других мастей не бьют — кроме козыря.',
       en: 'The trick goes to the <b>highest card of the led suit</b>. Other suits can’t beat it — except trumps.' },
-    { when: g => roundDone(g, 0), ...next(), ru: 'Заявил 1 — взял 1: <b>в точку, +20</b>. Боты заявили 0 и ничего не взяли — это тоже точно: 10 + 2 за карту.',
-      en: 'Bid 1, took 1: <b>spot on, +20</b>. The bots bid 0 and took nothing — also exact: 10 + 2 per card.' },
+    { when: g => roundDone(g, 0), ...next(), ru: 'Заявил 1 — взял 1: <b>в точку, +20</b>. Боты заявили 0 и ничего не взяли — это тоже точно: 5 + 1 за карту.',
+      en: 'Bid 1, took 1: <b>spot on, +20</b>. The bots bid 0 and took nothing — also exact: 5 + 1 per card.' },
 
     // ===== Раунд 2: козырь =====
     { when: g => bidStart(g, 1), tap: true, ru: '<b>Червы ♥ — козырь.</b> Любой козырь бьёт любую карту другой масти, даже туза.',
@@ -92,16 +92,16 @@
       en: '<b>+40 — spot on.</b> With an exact bid, every trick is worth 20.' },
 
     // ===== Раунд 4: очки =====
-    { when: g => bidStart(g, 3), tap: true, ru: 'Этот раунд — про очки:<br>• попал в заявку — <b>20 за каждую взятку</b>;<br>• заявил 0 и не взял — <b>10 + 2 за каждую карту</b>;<br>• недобор — <b>−20</b> за каждую недостающую;<br>• перебор — всего <b>+1</b> за лишнюю.',
-      en: 'This round is about scoring:<br>• exact bid — <b>20 per trick</b>;<br>• bid 0 and took 0 — <b>10 + 2 per card</b>;<br>• short — <b>−20</b> per missing trick;<br>• over — only <b>+1</b> per extra trick.' },
-    { when: g => myBid(g, 3), ...bid(0), ru: 'Карты слабые: ни козырей, ни старших. Заяви <b>0</b> — точный ноль сейчас даст 10 + 2×4 = <b>18</b>.',
-      en: 'Weak cards: no trumps, no high cards. Bid <b>0</b> — an exact zero now gives 10 + 2×4 = <b>18</b>.' },
+    { when: g => bidStart(g, 3), tap: true, ru: 'Этот раунд — про очки:<br>• попал в заявку — <b>20 за каждую взятку</b>;<br>• заявил 0 и не взял — <b>5 + 1 за каждую карту</b>;<br>• недобор — <b>−20</b> за каждую недостающую;<br>• перебор — всего <b>+1</b> за лишнюю.',
+      en: 'This round is about scoring:<br>• exact bid — <b>20 per trick</b>;<br>• bid 0 and took 0 — <b>5 + 1 per card</b>;<br>• short — <b>−20</b> per missing trick;<br>• over — only <b>+1</b> per extra trick.' },
+    { when: g => myBid(g, 3), ...bid(0), ru: 'Карты слабые: ни козырей, ни старших. Заяви <b>0</b> — точный ноль сейчас даст 5 + 4 = <b>9</b>.',
+      en: 'Weak cards: no trumps, no high cards. Bid <b>0</b> — an exact zero now gives 5 + 4 = <b>9</b>.' },
     { when: g => myPlay(g, 3, 1), ...play('6♠'), ru: 'Ход в пики — пика у тебя одна, кладёшь её.', en: 'Spades led — you have one spade, so you play it.' },
     { when: g => myPlay(g, 3, 2), ...play('7♣'), ru: 'Трефы — кладёшь 7♣.', en: 'Clubs — play the 7♣.' },
     { when: g => myPlay(g, 3, 3), ...play('6♦'), ru: 'Бубны: обе твои младше туза. Положи 6♦.', en: 'Diamonds: both of yours are below the ace. Play the 6♦.' },
     { when: g => myPlay(g, 3, 4), ...play('8♦'), ru: 'Червей нет — кладёшь последнюю карту.', en: 'No hearts — play your last card.' },
-    { when: g => roundDone(g, 3), ...next(), ru: 'Ты: 0 из 0 → <b>+18</b>. {3}: заявка 2, взятки 3 → только <b>+1</b>. {4}: заявка 2, взятка 1 → <b>−20</b>. Точность важнее количества!',
-      en: 'You: 0 of 0 → <b>+18</b>. {3}: bid 2, took 3 → only <b>+1</b>. {4}: bid 2, took 1 → <b>−20</b>. Accuracy beats quantity!' },
+    { when: g => roundDone(g, 3), ...next(), ru: 'Ты: 0 из 0 → <b>+9</b>. {3}: заявка 2, взятки 3 → только <b>+1</b>. {4}: заявка 2, взятка 1 → <b>−20</b>. Точность важнее количества!',
+      en: 'You: 0 of 0 → <b>+9</b>. {3}: bid 2, took 3 → only <b>+1</b>. {4}: bid 2, took 1 → <b>−20</b>. Accuracy beats quantity!' },
 
     // ===== Раунд 5: режим обмана =====
     { when: g => bidStart(g, 4), tap: true, ru: 'Теперь — <b>режим обмана</b>, как в рейтинговых играх. Можно положить любую карту, даже против правил. Но пока взятка на столе, любой может её проверить: поймали — обманщик отдаёт <b>50 очков</b>.',
@@ -144,7 +144,7 @@
     return q;
   };
   function newTutorialGame(names) {
-    return E.newGame({ players: SCRIPT.players, rounds: SCRIPT.rounds, names, deals: SCRIPT.deals, firstLeader: SCRIPT.firstLeader, bluffFrom: SCRIPT.bluffFrom });
+    return E.newGame({ players: SCRIPT.players, rounds: SCRIPT.rounds, names, deals: SCRIPT.deals, firstLeader: SCRIPT.firstLeader, bluffFrom: SCRIPT.bluffFrom, doubles: false });
   }
   const matches = (exp, body) => exp && body.type === exp.type &&
     (exp.value === undefined || Number(body.value) === exp.value) &&

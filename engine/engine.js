@@ -14,6 +14,7 @@ const Engine = (() => {
   const MIN_PLAYERS = 2, MAX_PLAYERS = 6;
   const CHEAT_FINE = 50;   // пойманный на обмане отдаёт проверившему
   const WRONG_CHECK = 20;  // штраф за ошибочную проверку
+  const HONEST_BONUS = 5;  // проверили честного — ему +5 за напрасное подозрение
   // Порядок мастей при равном достоинстве (только для «самой сильной карты»): ♥ > ♠ > ♣ > ♦
   const SUIT_TIE = { '♥': 3, '♠': 2, '♣': 1, '♦': 0 };
   const SUIT_SORT = { '♠': 0, '♣': 1, '♦': 2, '♥': 3 };
@@ -54,10 +55,10 @@ const Engine = (() => {
     return [...up, ...down];
   }
 
-  // Очки за раунд: точно — 20 за взятку; точный ноль — 10 + 2 за каждую карту на руке;
+  // Очки за раунд: точно — 20 за взятку; точный ноль — 5 + 1 за каждую карту на руке;
   // недобор — −20 за каждую недостающую; перебор — +1 за каждую лишнюю взятку.
   function scoreFor(bid, took, cards = 0) {
-    if (took === bid) return bid === 0 ? 10 + 2 * cards : 20 * bid;
+    if (took === bid) return bid === 0 ? 5 + cards : 20 * bid;
     if (took < bid) return -20 * (bid - took);
     return took - bid;
   }
@@ -73,11 +74,15 @@ const Engine = (() => {
 
   // Для обучения: deals — заранее заданные руки по раундам ([раунд][место] = список id карт),
   // firstLeader — кто ходит первым в 1-м раунде, bluffFrom — с какого раунда (индекс) включается режим обмана.
-  function newGame({ players, rounds, names, bluff = false, skills = false, test = false, deals = null, firstLeader = null, bluffFrom = null }) {
+  // «Двойные очки»: в первом и последнем раунде партии все очки раунда ×2 (с «Тёмной» — ×4). doubles=false — выключить (обучение).
+  function isDoubleRound(g, idx = g.roundIdx) { return !!g.doubles && (idx === 0 || idx === g.plan.length - 1); }
+  function roundMult(g, idx = g.roundIdx) { return (g.modes[idx] === 'dark' ? 2 : 1) * (isDoubleRound(g, idx) ? 2 : 1); }
+
+  function newGame({ players, rounds, names, bluff = false, skills = false, test = false, deals = null, firstLeader = null, bluffFrom = null, doubles = true }) {
     if (players < MIN_PLAYERS || players > MAX_PLAYERS) throw new Error(`Игроков должно быть от ${MIN_PLAYERS} до ${MAX_PLAYERS}`);
     const plan = roundPlan(rounds, maxCards(players));
     const g = {
-      n: players, names, plan, modes: roundModes(plan, test), test: !!test, roundIdx: 0, bluff: !!bluff,
+      n: players, names, plan, modes: roundModes(plan, test), test: !!test, roundIdx: 0, bluff: !!bluff, doubles: !!doubles,
       scores: Array(players).fill(0), history: [], log: [],
       firstLeader: Number.isInteger(firstLeader) ? firstLeader : Math.floor(Math.random() * players),
       deals, bluffFrom,
@@ -119,7 +124,8 @@ const Engine = (() => {
     // Окно пересдачи перед заявками: если у кого-то осталось умение (в «Тёмной» карт не видно — окна нет).
     g.phase = g.skillsOn && g.mode !== 'dark' && g.skills.some(s => s.reshuffle) ? 'pre' : 'bid';
     g.trick = null; g.lastTrick = null; g.trickWinner = null; g.fix = null;
-    const tag = g.mode === 'notrump' ? ' БЕСКОЗЫРКА!' : g.mode === 'dark' ? ' ТЁМНАЯ: заявки вслепую, очки ×2!' : '';
+    g.double = isDoubleRound(g); g.mult = roundMult(g);
+    const tag = (g.mode === 'notrump' ? ' БЕСКОЗЫРКА!' : g.mode === 'dark' ? ' ТЁМНАЯ: заявки вслепую, очки ×2!' : '') + (g.double ? ` ДВОЙНЫЕ ОЧКИ ×${g.mult}!` : '');
     log(g, `— Раунд ${g.roundIdx + 1}/${g.plan.length}: по ${k} карт.${tag} Первый ход у ${g.names[g.leader]}, заявки начинает ${g.names[g.turn]}.`);
   }
   // Окно пересдачи закрылось — начинаются заявки.
@@ -281,8 +287,9 @@ const Engine = (() => {
       log(g, `${g.names[ch]} проверяет ${g.names[pl.p]}: ОБМАН! ${g.names[pl.p]} −${CHEAT_FINE}, ${g.names[ch]} +${CHEAT_FINE}. Карта ${pl.card.id} возвращается, нужен честный ход.`);
     } else {
       g.scores[ch] -= WRONG_CHECK; g.bonus[ch] -= WRONG_CHECK;
-      g.lastCheck = { seq: g.checkSeq, by: ch, target: pl.p, cardId, caught: false, delta: WRONG_CHECK };
-      log(g, `${g.names[ch]} проверяет ${g.names[pl.p]}: честно. ${g.names[ch]} −${WRONG_CHECK}.`);
+      g.scores[pl.p] += HONEST_BONUS; g.bonus[pl.p] += HONEST_BONUS;
+      g.lastCheck = { seq: g.checkSeq, by: ch, target: pl.p, cardId, caught: false, delta: WRONG_CHECK, reward: HONEST_BONUS };
+      log(g, `${g.names[ch]} проверяет ${g.names[pl.p]}: честно. ${g.names[ch]} −${WRONG_CHECK}, ${g.names[pl.p]} +${HONEST_BONUS}.`);
     }
     return g.lastCheck;
   }
@@ -297,10 +304,10 @@ const Engine = (() => {
   }
 
   function scoreRound(g) {
-    const k = g.plan[g.roundIdx], mult = g.mode === 'dark' ? 2 : 1;
+    const k = g.plan[g.roundIdx], mult = roundMult(g);
     const delta = g.bids.map((b, p) => scoreFor(b, g.took[p], k) * mult);
     delta.forEach((d, p) => { g.scores[p] += d; });
-    g.history.push({ cards: k, mode: g.mode, bids: [...g.bids], took: [...g.took], delta, bonus: [...g.bonus] });
+    g.history.push({ cards: k, mode: g.mode, mult, double: !!g.double, bids: [...g.bids], took: [...g.took], delta, bonus: [...g.bonus] });
     g.trick = null;
     g.phase = g.roundIdx === g.plan.length - 1 ? 'gameOver' : 'roundDone';
     log(g, `Итог раунда: ${g.names.map((nm, p) => `${nm} ${delta[p] >= 0 ? '+' : ''}${delta[p]}`).join(', ')}`);
@@ -312,7 +319,7 @@ const Engine = (() => {
     startRound(g);
   }
 
-  return { SUITS, TRUMP, RANKS, SPECIAL_ID, MIN_PLAYERS, MAX_PLAYERS, CHEAT_FINE, WRONG_CHECK,
+  return { SUITS, TRUMP, RANKS, SPECIAL_ID, MIN_PLAYERS, MAX_PLAYERS, CHEAT_FINE, WRONG_CHECK, HONEST_BONUS, isDoubleRound, roundMult,
            strength, beats, strongestOf, maxCards, roundPlan, roundModes, scoreFor, leadSuit,
            newGame, beginBidding, handsHidden, placeBid, strictLegal, legalPlays, specialModes, currentBest, playCard,
            canCheck, check, nextTrick, nextRound, canReshuffle, reshuffle };

@@ -12,6 +12,7 @@
   } catch {}
 
   const EN = {
+    'Вернуться в игру': 'Back to game', 'раунд {a}/{b}': 'round {a}/{b}', 'Скрыть': 'Hide', 'очки': 'points', 'Ход': 'Lead', 'Старшие на стол!': 'Highest on the table!', 'Не нравятся карты? Есть {s} секунд': 'Don’t like your cards? You have {s} seconds', 'заказ': 'bid', '— ни одной!': '— none!', 'ДВОЙНЫЕ ОЧКИ': 'DOUBLE POINTS', 'Все очки раунда — и плюсы, и минусы — удваиваются': 'All points this round — gains and losses — are doubled', 'Замена через {n} с': 'Replace in {n} s', 'Выбранную заранее карту сейчас положить нельзя — выберите другую': 'The pre-selected card can’t be played now — choose another', 'Предвыбор снят': 'Pre-selection cleared', 'Карта выбрана заранее — сыграется, когда дойдёт ваш ход': 'Card pre-selected — it will be played on your turn', 'Сейчас не ваш ход · двойной тап — выбрать карту заранее': 'Not your turn · double-tap to pre-select a card', 'пики': 'spades', 'трефы': 'clubs', 'бубны': 'diamonds', 'червы': 'hearts',
     'Поиск рейтинговой игры': 'Searching ranked game', 'Поиск обычной игры': 'Searching casual game', 'Идёт поиск игры — сначала отмените его': 'Search in progress — cancel it first',
     'Рейтинговая игра': 'Ranked game', 'Создание лобби': 'Create lobby', 'Гость': 'Guest', 'Количество игроков': 'Number of players', 'Любое': 'Any', 'Список лобби': 'Lobby list', 'Без рейтинга. Подберём живых игроков на стол выбранного размера; если за 45 с не набрались — свободные места займут боты. Правила стола — классические.': 'Unrated. We match real players for a table of the chosen size; if not enough join within 45 s, bots take the free seats. Classic table rules.', 'Играть с ботами': 'Play with bots', 'Приватная': 'Private', 'Создать': 'Create', 'Код стола подставлен — нажмите «Войти»': 'Table code filled in — press “Join”', 'Текущий рейтинг': 'Current rating', 'нужен вход через Google': 'Google sign-in required', 'Стол на 4 игрока, 17 раундов, режим обмана. Подбираем соперников близкого рейтинга; если за минуту четверо не набрались — садимся втроём, четвёртое место займёт бот. Рейтинг меняется только между людьми.': '4-player table, 17 rounds, bluff mode. We match opponents of similar rating; if four don’t gather within a minute, three play and a bot takes the fourth seat. Rating changes only between people.', 'Первые 5 партий — калибровка: после них вы попадёте в таблицу лидеров.': 'Your first 5 games are calibration — after them you enter the leaderboard.', 'Войдите в аккаунт': 'Sign in to your account', 'Калибровка {a}/5': 'Calibration {a}/5', 'Поиск игры': 'Find a game', 'Звуки игры': 'Game sounds', 'Установить приложение': 'Install app', 'Окно': 'Window', 'Полный экран': 'Fullscreen', 'Гость · войти': 'Guest · sign in', 'Вход': 'Sign in', 'или': 'or', 'С аккаунтом Google сохраняются рейтинг и прохождение обучения, и можно играть в рейтинговой игре.': 'With a Google account your rating and tutorial progress are saved, and you can play ranked games.', 'Введите имя, чтобы играть': 'Enter a name to play', 'столов: {n}': 'tables: {n}', 'Открытых столов пока нет — создайте свой в «Создание лобби» или нажмите «Поиск игры».': 'No open tables yet — create one in “Create lobby” or press “Find a game”.', 'Разброс ±{w}': 'Range ±{w}', 'через {s} с — втроём + бот': 'in {s} s — three players + bot', 'втроём + бот, как только найдётся третий': 'three + bot as soon as a third player is found', 'Ищем соперников…': 'Looking for opponents…', 'Ищем игроков…': 'Looking for players…',
     // общее
@@ -162,7 +163,7 @@
     'Партия ещё не закончена': 'The game is not over yet', 'Пустое сообщение': 'Empty message', 'Свободных мест нет': 'No free seats', 'Слишком большое сообщение': 'Message too long',
     'Убирать игроков может только хост': 'Only the host can remove players', 'Этого игрока убрать нельзя': 'This player can’t be removed',
     'Игра в этой комнате уже идёт, свободных мест нет.': 'A game is running in this room and there are no free seats.', 'Хост убрал вас из комнаты.': 'The host removed you from the room.',
-    'Голосованием ваше место отдано боту.': 'By vote your seat went to a bot.', 'Ошибка сервера': 'Server error', 'Не найдено': 'Not found', 'Слишком большой запрос': 'Request too large',
+    'Голосованием ваше место отдано боту.': 'By vote your seat went to a bot.', 'Вы не вернулись за 2 минуты — ваше место занял бот.': 'You did not return within 2 minutes — a bot took your seat.', 'Ошибка сервера': 'Server error', 'Не найдено': 'Not found', 'Слишком большой запрос': 'Request too large',
     'Сейчас не ваша заявка': 'Not your bid', 'Недопустимая заявка': 'Invalid bid', 'Нужно заменить карту честной': 'Replace it with an honest card', 'Эту карту сейчас нельзя положить': 'You can’t play this card now',
     'Так сыграть эту карту нельзя': 'You can’t play this card that way', 'Проверки доступны только в режиме обмана': 'Checks are only in bluff mode', 'Подождите: идёт замена карты': 'Wait: a card is being swapped',
     'Сейчас проверять нельзя': 'You can’t check now', 'Этой карты нет на столе': 'That card is not on the table', 'Свою карту проверять нельзя': 'You can’t check your own card',
@@ -183,6 +184,7 @@
 
   // Тексты с подстановками, которые приходят с сервера.
   const SERVER_RE = [
+    [/^Голосовать можно через (\d+) с после вылета$/, (m, n) => `Voting is possible ${n} s after the player dropped`],
     [/^(Лайк|Дизлайк|Грязь) можно через (\d+) с$/, (m, w, n) => `${{ 'Лайк': 'Like', 'Дизлайк': 'Dislike', 'Грязь': 'Mud' }[w]} available in ${n} s`],
     [/^Игрок «(.+)» уже за столом\./, (m, n) => `Player “${n}” is already at the table. If that’s you, close the other tab or use another name.`],
     [/^Игра уже идёт\. Чтобы вернуться за стол, введите имя, под которым играли: (.+)\.$/, (m, l) => `The game is running. To rejoin, enter the name you played under: ${l}.`],
@@ -199,12 +201,16 @@
 
   const NOTE = s => s.replace(' — «СТАРШИЕ НА СТОЛ!»', ' — “HIGHEST ON THE TABLE!”').replace(' — как самая старшая!', ' — as the top card!');
   const LOG_RE = [
-    [/^— Раунд (\d+)\/(\d+): по (\d+) карт\.( БЕСКОЗЫРКА!| ТЁМНАЯ: заявки вслепую, очки ×2!)? Первый ход у (.+), заявки начинает (.+)\.$/, (m, a, b, k, sp, l, f) => `— Round ${a}/${b}: ${k} card${k === '1' ? '' : 's'} each.${!sp ? '' : sp.includes('БЕСК') ? ' NO TRUMPS!' : ' DARK: blind bids, points ×2!'} ${l} leads, ${f} bids first.`],
+    [/^— Раунд (\d+)\/(\d+): по (\d+) карт\.( БЕСКОЗЫРКА!| ТЁМНАЯ: заявки вслепую, очки ×2!)?( ДВОЙНЫЕ ОЧКИ ×(\d)!)? Первый ход у (.+), заявки начинает (.+)\.$/, (m, a, b, k, sp, dbl, x, l, f) => `— Round ${a}/${b}: ${k} card${k === '1' ? '' : 's'} each.${!sp ? '' : sp.includes('БЕСК') ? ' NO TRUMPS!' : ' DARK: blind bids, points ×2!'}${dbl ? ` DOUBLE POINTS ×${x}!` : ''} ${l} leads, ${f} bids first.`],
+    [/^(.+) вылетел — пока за него ходит бот\. На возвращение 2 минуты$/, (m, n) => `${n} dropped out — a bot plays for them. 2 minutes to come back`],
+    [/^(.+) не вернулся за 2 минуты$/, (m, n) => `${n} did not return within 2 minutes`],
+    [/^(.+) вернулся за стол$/, (m, n) => `${n} is back at the table`],
     [/^Заявлено всего (\d+) из (\d+)\. Первым ходит (.+)\.$/, (m, s, k, l) => `Total bid ${s} of ${k}. ${l} leads.`],
     [/^Итог раунда: (.*)$/, (m, r) => `Round result: ${r}`],
     [/^Взятку забирает (.+)$/, (m, n) => `${n} takes the trick`],
     [/^(.+) проверяет (.+): ОБМАН! (.+) −(\d+), (.+) \+(\d+)\. Карта (\S+) возвращается, нужен честный ход\.$/, (m, a, b, c, x, d, y, id) => `${a} checks ${b}: CHEAT! ${c} −${x}, ${d} +${y}. ${cardEn(id)} goes back, an honest card is required.`],
     [/^(.+) проверяет (.+): честно\. (.+) −(\d+)\.$/, (m, a, b, c, x) => `${a} checks ${b}: honest. ${c} −${x}.`],
+    [/^(.+) проверяет (.+): честно\. (.+) −(\d+), (.+) \+(\d+)\.$/, (m, a, b, c, x, d, y) => `${a} checks ${b}: honest. ${c} −${x}, ${d} +${y}.`],
     [/^(.+): место игрока занял бот$/, (m, n) => `${n}: a bot took the seat`],
     [/^Новый хост — (.+)$/, (m, n) => `New host — ${n}`],
     [/^(.+) ставит паузу$/, (m, n) => `${n} paused the game`],

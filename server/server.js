@@ -12,14 +12,39 @@ const DB = require('./db').create();
 
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, '..');
-const BOT_NAMES = ['Бот Аня', 'Бот Борис', 'Бот Вика', 'Бот Гоша', 'Бот Даша'];
-const BOT_NAMES_EN = ['Bot Anna', 'Bot Boris', 'Bot Vika', 'Bot Gosha', 'Bot Dasha'];
+// Имена ботов по региону игроков: RU, EN, ZH, KZ, IN (регион — по языку браузера и часовому поясу хозяина/ищущего).
+const BOT_NAMES = {
+  ru: ['Аня', 'Борис', 'Вика', 'Гоша', 'Даша', 'Егор', 'Женя', 'Ира', 'Костя', 'Лена'],
+  en: ['Anna', 'Ben', 'Chloe', 'Dylan', 'Emma', 'Finn', 'Grace', 'Harry', 'Ivy', 'Jack'],
+  zh: ['李伟', '王芳', '张磊', '刘洋', '陈静', '杨帆', '赵敏', '黄浩', '周婷', '吴军'],
+  kz: ['Айдана', 'Ерлан', 'Әсел', 'Нұрлан', 'Дана', 'Арман', 'Жанна', 'Бауыржан', 'Мадина', 'Самат'],
+  in: ['Aarav', 'Priya', 'Rohan', 'Ananya', 'Vikram', 'Isha', 'Arjun', 'Kavya', 'Rahul', 'Diya'],
+};
+const BOT_WORD = { ru: 'Бот', en: 'Bot', zh: '机器人', kz: 'Бот', in: 'Bot' };
+function regionOf(lang, tz) {
+  const l = String(lang || '').toLowerCase(), z = String(tz || '');
+  if (/^zh/.test(l) || /^Asia\/(Shanghai|Chongqing|Harbin|Urumqi|Hong_Kong|Macau|Taipei)$/.test(z)) return 'zh';
+  if (/^(hi|bn|ta|te|mr|gu|kn|ml|pa)\b/.test(l) || /^Asia\/(Kolkata|Calcutta)$/.test(z)) return 'in';
+  if (/^kk/.test(l) || /^Asia\/(Almaty|Qyzylorda|Qostanay|Aqtobe|Aqtau|Atyrau|Oral)$/.test(z)) return 'kz';
+  if (/^(ru|uk|be)/.test(l)) return 'ru';
+  if (/^(Europe\/(Moscow|Minsk|Kiev|Kyiv|Volgograd|Samara|Kaliningrad)|Asia\/(Yekaterinburg|Omsk|Novosibirsk|Krasnoyarsk|Irkutsk|Yakutsk|Vladivostok|Magadan|Kamchatka|Tashkent|Bishkek))/.test(z)) return 'ru';
+  return 'en';
+}
+function botNames(r, count) {
+  const reg = BOT_NAMES[r.region] ? r.region : (r.lang === 'en' ? 'en' : 'ru');
+  const pool = BOT_NAMES[reg].slice().sort(() => Math.random() - 0.5);
+  const taken = new Set(r.seats.map(s => s.name));
+  return pool.map(n => `${BOT_WORD[reg]} ${n}`).filter(n => !taken.has(n)).slice(0, count);
+}
 const BOT_DELAY = 1000;
 const TRICK_PAUSE = 2100; // время на эффекты последней карты и показ, кто взял
 const TRICK_PAUSE_BLUFF = 5000; // в режиме обмана — время, чтобы успеть проверить
 const DEFAULT_TURN_TIME = 30;
 // Окно «Пересдачи» перед заявками: 3 с после того, как у игроков отыграли объявление раунда и раздача.
-const PRE_WINDOW = 3000;
+const PRE_WINDOW = 5000;      // окно «Пересдачи» после раздачи (с запасом на задержки сети)
+// Вылет игрока: сразу за него ходит бот (после короткой паузы на случайный обрыв); 2 минуты, чтобы вернуться
+// на своё место, потом место навсегда за ботом. Голосовать за замену можно после 20 с отсутствия.
+const AWAY = { GRACE: 4000, KEEP: 120000, VOTE: 20000 }; // тесты могут ужать
 // Итоги раунда: следующий раунд — когда все живые игроки нажали «Следующий раунд», или по таймеру.
 const NEXT_WAIT = 15000;      // сколько ждём забывших (отсчёт видят все)
 const RESULTS_ANIM = 5000;    // запас на сбор карт, монеты и корону: окно итогов появляется позже конца раунда
@@ -112,10 +137,31 @@ function getRoom(code) {
 function seatOf(r, token) { return token ? r.seats.findIndex(s => s.token === token) : -1; }
 function requireSeat(r, token) { const s = seatOf(r, token); if (s < 0) fail('Вы не за этим столом'); return s; }
 function isOnline(r, seat) { for (const st of r.streams) if (st.seat === seat) return true; return false; }
+// За вылетевшего (дольше AWAY.GRACE) ходит бот — как за бота.
+function autoSeat(r, i) {
+  const s = r.seats[i];
+  return !!s && (s.bot || (!!r.game && !!s.awaySince && Date.now() - s.awaySince >= AWAY.GRACE));
+}
+function markAway(r, seat) {
+  const s = r.seats[seat];
+  if (!s || s.bot || isOnline(r, seat)) return;
+  const since = s.awaySince = Date.now();
+  if (!r.game) return;
+  gameLog(r, `${s.name} вылетел — пока за него ходит бот. На возвращение 2 минуты`);
+  setTimeout(() => update(r), AWAY.GRACE + 50);
+  setTimeout(() => {
+    if (s.awaySince !== since || s.bot || !r.game || r.game.phase === 'gameOver' || !r.seats.includes(s)) return;
+    const i = r.seats.indexOf(s);
+    if (r.vote && r.vote.target === i) r.vote = null;
+    gameLog(r, `${s.name} не вернулся за 2 минуты`);
+    replaceWithBot(r, i, 'Вы не вернулись за 2 минуты — ваше место занял бот.');
+    update(r);
+  }, AWAY.KEEP);
+}
 
 // kind: 'private' — по коду; 'public' — виден в списке столов; 'casual' — собран подбором (без рейтинга);
 // 'ranked' — собран рейтинговым подбором или калибровка с ботами (calib).
-function createRoom({ name, players, rounds, turnTime, bluff, skills, test, lang, listed }, acc = null, extra = {}) {
+function createRoom({ name, players, rounds, turnTime, bluff, skills, test, lang, listed, region }, acc = null, extra = {}) {
   const size = clampInt(players, Engine.MIN_PLAYERS, Engine.MAX_PLAYERS, 4);
   const r = {
     code: newCode(),
@@ -130,7 +176,8 @@ function createRoom({ name, players, rounds, turnTime, bluff, skills, test, lang
     skills: skills !== false && !extra.kind, // умения: на своих столах по умолчанию включены, в подборе и рейтинге — нет
     // «Тестовый режим» (только свои столы): 17 раундов, 10-й — «Бескозырка», 15-й — «Тёмная».
     test: !!test && !extra.kind,
-    lang: lang === 'en' ? 'en' : 'ru', // язык имён ботов
+    lang: lang === 'en' ? 'en' : 'ru', // язык интерфейса хозяина (служебные подписи)
+    region: BOT_NAMES[region] ? region : (lang === 'en' ? 'en' : 'ru'), // набор имён ботов
     turnTimer: null, turnKey: null, deadline: 0, checkTimers: [],
     chat: [], social: [], socialSeq: 0,
     seats: [],
@@ -266,9 +313,10 @@ function lobbyKick(r, target) {
 }
 
 // Игра: место вылетевшего игрока занимает бот.
-function replaceWithBot(r, target) {
+function replaceWithBot(r, target, why = 'Голосованием ваше место отдано боту.') {
   const s = r.seats[target];
-  dropStreams(r, target, 'Голосованием ваше место отдано боту.');
+  delete s.awaySince;
+  dropStreams(r, target, why);
   s.bot = true; s.token = null; s.name = `${s.name} (${r.lang === 'en' ? 'bot' : 'бот'})`;
   if (s.uid) s.left = true; // в рейтинге ушедший считается последним
   r.game.names[target] = s.name;
@@ -296,8 +344,9 @@ function checkVote(r) {
 }
 
 function startGame(r) {
+  const names = botNames(r, r.size - r.seats.length);
   let b = 0;
-  while (r.seats.length < r.size) r.seats.push({ name: (r.lang === 'en' ? BOT_NAMES_EN : BOT_NAMES)[b++], token: null, bot: true, pid: newPid() });
+  while (r.seats.length < r.size) r.seats.push({ name: names[b++] || `Bot ${b}`, token: null, bot: true, pid: newPid() });
   r.seenPlays = new Set();
   r.gameSeq = (r.gameSeq || 0) + 1;
   r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff, skills: r.skills, test: r.test });
@@ -306,7 +355,8 @@ function startGame(r) {
 
 function seatView(r, s, i) {
   const acc = s.uid && !s.left;
-  return { name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === r.hostSeat, pid: s.pid, rating: acc ? s.rating : null, pic: acc ? s.pic : null, uid: acc ? s.uid : null };
+  const away = !s.bot && s.awaySince ? Date.now() - s.awaySince : 0;
+  return { name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), away, keepLeft: away ? Math.max(0, AWAY.KEEP - away) : 0, voteIn: away ? Math.max(0, AWAY.VOTE - away) : 0, host: i === r.hostSeat, pid: s.pid, rating: acc ? s.rating : null, pic: acc ? s.pic : null, uid: acc ? s.uid : null };
 }
 
 // Что видит конкретный игрок: только свои карты, у остальных — количество.
@@ -336,7 +386,7 @@ function viewFor(r, seat) {
     ...base, stage: 'game',
     names: g.names,
     seats: r.seats.map((s, i) => seatView(r, s, i)),
-    n: g.n, plan: g.plan, modes: g.modes, mode: g.mode, trump: g.trump, roundIdx: g.roundIdx, phase: g.phase, turn: g.turn, leader: g.leader,
+    n: g.n, plan: g.plan, modes: g.modes, mode: g.mode, double: !!g.double, mult: g.mult || 1, doubles: !!g.doubles, trump: g.trump, roundIdx: g.roundIdx, phase: g.phase, turn: g.turn, leader: g.leader,
     bids: g.bids, took: g.took, scores: g.scores,
     handCounts: g.hands.map(h => h.length),
     // В «Тёмной» свои карты не видны, пока идут заявки: вместо них — рубашки.
@@ -393,7 +443,7 @@ function schedule(r) {
   if (!g || halted(r)) return; // голосование или пауза
   if (g.phase === 'trickDone') {
     r.timer = setTimeout(() => { Engine.nextTrick(g); update(r); }, g.bluff ? TRICK_PAUSE_BLUFF : TRICK_PAUSE);
-  } else if ((g.phase === 'bid' || g.phase === 'play') && r.seats[g.turn].bot) {
+  } else if ((g.phase === 'bid' || g.phase === 'play') && autoSeat(r, g.turn)) {
     r.timer = setTimeout(() => {
       const p = g.turn;
       try {
@@ -407,7 +457,7 @@ function schedule(r) {
 // Таймер хода для живых игроков: по истечении — автоматическая заявка или случайная честная карта.
 function turnKeyOf(r) {
   const g = r.game;
-  if (!g || halted(r) || !r.turnTime || r.seats[g.turn].bot) return null;
+  if (!g || halted(r) || !r.turnTime || autoSeat(r, g.turn)) return null;
   if (g.phase !== 'bid' && g.phase !== 'play') return null;
   return `${g.roundIdx}:${g.reshuffleSeq}:${g.phase}:${g.turn}:${g.trick ? g.trick.plays.length : 0}:${g.fix ? 'f' : ''}:${g.took.join('')}`;
 }
@@ -681,6 +731,8 @@ function doAction(r, seat, body) {
     if (r.vote) fail('Голосование уже идёт');
     if (!r.seats[target] || r.seats[target].bot || target === seat) fail('За этого игрока голосовать нельзя');
     if (isOnline(r, target)) fail('Игрок в сети — голосовать можно только за вылетевшего');
+    const away = r.seats[target].awaySince ? Date.now() - r.seats[target].awaySince : 0;
+    if (away < AWAY.VOTE) fail(`Голосовать можно через ${Math.ceil((AWAY.VOTE - away) / 1000)} с после вылета`);
     freezeTimers(r);
     r.vote = { target, yes: new Set([seat]), no: new Set() };
     gameLog(r, `${r.seats[seat].name} предлагает заменить ботом игрока ${r.seats[target].name}. Игра на паузе.`);
@@ -793,7 +845,7 @@ function mmJoin(body, acc) {
   for (const [t, e] of MM.queue) if (!e.result && ((acc && e.acc && e.acc.id === acc.id) || (body.prev && t === body.prev))) MM.queue.delete(t);
   const ticket = newToken();
   MM.queue.set(ticket, {
-    ticket, mode, sizes, acc, name: cleanName(body.name || (acc && acc.nick)), lang: body.lang === 'en' ? 'en' : 'ru',
+    ticket, mode, sizes, acc, name: cleanName(body.name || (acc && acc.nick)), lang: body.lang === 'en' ? 'en' : 'ru', region: regionOf(body.blang, body.tz),
     rating: acc ? acc.rating : 0, since: Date.now(), seen: Date.now(), result: null,
   });
   mmMatch();
@@ -858,7 +910,7 @@ function mmMatch() {
 
 function mmMakeRoom(group, size, mode) {
   const first = group[0];
-  const { r, token } = createRoom({ name: first.name, players: size, turnTime: DEFAULT_TURN_TIME, lang: first.lang, ...(mode === 'ranked' ? RANKED_RULES : { bluff: false }) }, first.acc,
+  const { r, token } = createRoom({ name: first.name, players: size, turnTime: DEFAULT_TURN_TIME, lang: first.lang, region: first.region, ...(mode === 'ranked' ? RANKED_RULES : { bluff: false }) }, first.acc,
     { kind: mode, autoStartAt: Date.now() + MM.AUTOSTART });
   first.result = { room: r.code, token, kind: mode };
   const taken = new Set([r.seats[0].name.toLowerCase()]);
@@ -919,12 +971,20 @@ async function handleApi(req, res, url) {
     const st = { res, seat };
     r.streams.add(st);
     r.seats[seat].everOnline = true;
+    if (r.seats[seat].awaySince) { delete r.seats[seat].awaySince; if (r.game) gameLog(r, `${r.seats[seat].name} вернулся за стол`); }
     r.touched = Date.now();
     checkVote(r);
     update(r);
     if (r.autoStartAt) autoStartTick(); // все подключились — не ждём таймера
-    req.on('close', () => { if (r.streams.delete(st)) { checkVote(r); update(r); } });
+    req.on('close', () => { if (r.streams.delete(st)) { markAway(r, seat); checkVote(r); update(r); } });
     return;
+  }
+  // «Вернуться в игру»: жива ли комната и наше ли ещё место (для кнопки на главном экране).
+  if (url.pathname === '/api/alive' && req.method === 'GET') {
+    const r = rooms.get(String(url.searchParams.get('room') || '').toUpperCase());
+    const seat = r ? seatOf(r, url.searchParams.get('token')) : -1;
+    const ok = !!r && seat >= 0 && !r.seats[seat].bot && !!r.game && r.game.phase !== 'gameOver';
+    return sendJson(res, 200, ok ? { ok, room: r.code, round: r.game.roundIdx + 1, rounds: r.game.plan.length, kind: r.kind } : { ok: false });
   }
   if (url.pathname === '/api/rooms' && req.method === 'GET') return sendJson(res, 200, { rooms: openRooms() });
   if (url.pathname === '/api/config' && req.method === 'GET') {
@@ -966,7 +1026,7 @@ async function handleApi(req, res, url) {
   }
   if (url.pathname === '/api/create') {
     const acc = await accountOf(body.session, body.name);
-    const { r, token } = createRoom(body, acc);
+    const { r, token } = createRoom({ ...body, region: regionOf(body.blang, body.tz) }, acc);
     return sendJson(res, 200, { room: r.code, token });
   }
   if (url.pathname === '/api/mm/join') {
@@ -1061,4 +1121,4 @@ setInterval(() => {
 
 server.listen(PORT, () => console.log(`В Точку: сервер запущен на порту ${PORT}`));
 DB.init();
-module.exports = { server, rooms, DB, MM };
+module.exports = { server, rooms, DB, MM, AWAY };

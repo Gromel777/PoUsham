@@ -72,8 +72,8 @@ README.md            Human README in Russian (structure, run, deploy, env).
 - First leader random in round 1, then rotates clockwise each round. Bidding starts from leader+1. Sum of bids unrestricted.
 - Follow suit strictly (`strictLegal`): must play lead suit if you have it (trump NOT allowed then); 7♠ always allowed and doesn't count as spade; no lead suit → any card.
 - 7♠ modes (`specialModes`): `normal`; `command` on lead = "Старшие на стол!" (everyone must play their strongest; leader takes trick); `top` when following = absolute top card.
-- Scoring `scoreFor(bid, took, cards)`: exact → 20×bid; exact zero → 10 + 2×cards; under → −20 per missing; over → +1 per extra. "dark" round ×2.
-- Bluff mode (`g.bluff`): any card may be played; others may `check` a non-first, non-7♠, non-forced card while trick is on table. Caught cheat −50 to cheater, +50 to checker, card returns, `g.fix` forces an honest replacement. Wrong check −20.
+- Scoring `scoreFor(bid, took, cards)`: exact → 20×bid; exact zero → 5 + 1×cards; under → −20 per missing; over → +1 per extra. Round multiplier `roundMult(g)`: "dark" ×2, «Двойные очки» (first and last round, `g.doubles`, off in tutorial) ×2 → dark+double ×4. `g.double`/`g.mult` per round, history keeps `mult`.
+- Bluff mode (`g.bluff`): any card may be played; others may `check` a non-first, non-7♠, non-forced card while trick is on table. Caught cheat −50 to cheater, +50 to checker, card returns, `g.fix` forces an honest replacement. Wrong check −20 to checker and +5 (`HONEST_BONUS`) to the checked player (`lastCheck.reward`).
 - Skills: only `reshuffle` (once per game per player, only in `pre`, max once per round). Off in matchmade/ranked tables.
 - `newGame` tutorial options: `deals` (fixed hands per round), `firstLeader`, `bluffFrom` (round index from which `g.bluff` turns on).
 - Test mode (`test`, custom tables only): 17 rounds, round 10 `notrump`, round 15 `dark` (blind bids, hands hidden).
@@ -83,7 +83,9 @@ README.md            Human README in Russian (structure, run, deploy, env).
 - Room object `r`: `code` (4 chars), `kind`: `private` (code only) | `public` (listed in lobby) | `casual` (matchmade, unrated) | `ranked` (matchmade only; `r.calib` is legacy, always false), `seats[]` `{name, token, bot, pid, uid, rating, pic, left, everOnline}`, `hostSeat`, `game` (engine state), `streams` (SSE), timers.
 - Ranked: always `RANKED_RULES = { bluff: true, rounds: 17 }`, **table of 4 only** (`MM.RANKED_SIZE`), no skills/test, no restart, no lobby kick.
 - `update(r)` is the central tick after any change: rate if gameOver → next-round readiness → pre window → turn timer → `broadcast` → bot moves → bot checks.
-- Timers: `TRICK_PAUSE` 2.1s (5s in bluff, time to check), `DEFAULT_TURN_TIME` 30s (timeout → auto bid / random honest card), `PRE_WINDOW` 3s, `NEXT_WAIT` 15s, `BOT_DELAY` 1s.
+- Timers: `TRICK_PAUSE` 2.1s (5s in bluff, time to check), `DEFAULT_TURN_TIME` 30s (timeout → auto bid / random honest card), `PRE_WINDOW` 5s, `NEXT_WAIT` 15s, `BOT_DELAY` 1s.
+- Dropped player (`AWAY`, exported for tests): after `AWAY.GRACE` 4s a bot plays for them (`autoSeat()`), they have `AWAY.KEEP` 2 min to come back (same name/account), then `replaceWithBot`; vote-kick allowed only after `AWAY.VOTE` 20s. Seats in view carry `away/keepLeft/voteIn`.
+- Bot names by region (`regionOf(blang, tz)` from the creator / first in matchmaking): `BOT_NAMES` ru/en/zh/kz/in.
 - Pause: 3 per player per game, unpause countdown 5s, max 5 min. Vote-kick only for an offline player; game halts until all online voters vote; kicked seat → bot, `left=true` (last place in rating).
 - Rejoin: same Google account or same name of an offline seat gets the seat back with a new token.
 - Matchmaking `MM`: queue by ticket, client polls `/api/mm/status`. Ranked: 4 people by rating window that widens with wait; after `MM.RANKED_BOTS_AFTER` (60s) without four — 3 people + 1 bot (`MM.RANKED_MIN`). Casual fills with bots after 45s. Matched rooms auto-start (15s or when all connected); no-shows become bots.
@@ -91,7 +93,7 @@ README.md            Human README in Russian (structure, run, deploy, env).
 - `rateGame()`: only `kind==='ranked'`, needs ≥2 accounts (unless calib) and DB ready → `DB.recordMatch` → `g.rating {status, changes}`.
 
 ### HTTP API
-GET: `/health`, `/api/events` (SSE; events: default state, `kicked`, `rtc`), `/api/rooms` (open public tables), `/api/config` (googleClientId, ratings).
+GET: `/health`, `/api/events` (SSE; events: default state, `kicked`, `rtc`), `/api/rooms` (open public tables), `/api/config` (googleClientId, ratings), `/api/alive?room&token` (is the last game still running and the seat ours — home «Вернуться в игру»).
 POST: `/api/auth/google`, `/api/me`, `/api/logout`, `/api/tutorial` (mark tutorial done for the session's account), `/api/leaderboard`, `/api/create`, `/api/join`, `/api/mm/join|status|cancel`, `/api/action`.
 `/api/action` types: game — `start, restart, kick, voteKick, vote, pause, unpause, bid, play, nextRound, check, skill`; social — `chat, emote, phrase, like, dislike, mud` (mud only for score leader); `rtc` relay.
 Errors: throw via `fail('русский текст')` (GameError → 400 with `{error}`).
@@ -105,7 +107,7 @@ Search by the `// ----------` headers (line numbers drift):
 `экраны` (`showHome` — layout from owner's sketch: left logo + «Spot On» (always English) + card fan; right column: player plate `#h-player` (→ `showProfile`: guest name / Google), sections `.h-sec` ranked/casual/create/settings opened by `openSec()` (FLIP animation, one at a time, click on empty space closes), bottom row Настройки/Правила/Полный экран; `renderGo()` = big button or in-panel search status; `showRoomsList` modal; `myName()/needName()`; `showLobby`, `showGameScreen`) · `поиск игроков` ·
 `стол` (`classicTableSvg`, chairs, icons) · `модальные окна, тосты`, `rulesHtml`, `showMenu` ·
 `персонализация` (`showCustomize`: Колоды / Комнаты / Эффекты, emote wheel) · `параллакс` · `геометрия` (seat/hand positions) ·
-`карты в DOM` (`makeCard`, `fly`) · `игровой экран` (largest block: score, trick, deal, bluff checks, reshuffle, round banner, leader crown, first-move ball, neon, pause, round results) ·
+`карты в DOM` (`makeCard`, `fly`) · `игровой экран` (largest block: score, trick, deal, bluff checks, reshuffle, round banner (+«Двойные очки»), leader crown, first-move ball = leader of the current trick, lead card highlight + `#lead-suit` (`markLead`), bid announcement `announceBid`, card pre-select `queued`/`playQueued` (double tap while others play), away countdown `tickAway`, neon, pause, round results) ·
 `общение` (chat, emote wheel, likes, mud, voice dock) · `экран загрузки` (`showWaking` while server wakes) ·
 `обучение` (`maybeWelcome`/`showWelcome` — welcome overlay #welcome; `startTutorial` sets `S.local` = local table: `act()` routes to it, `social()` is off;
 `finishTutorial`, `markTutorialDone` → `/api/tutorial` or `S.tutPending` until sign-in; flag cached in `vtochku-auth.tutorial`) · `действия по кнопкам` (click handlers by `data-act`) · `PWA` · `init()`.
@@ -117,7 +119,7 @@ Search by the `// ----------` headers (line numbers drift):
 `DATABASE_URL` (Neon pooled string), `GOOGLE_CLIENT_ID` (fallback hardcoded, not secret), `PORT`. Check `/health` → `db: "ok"`, `google: true`. Never put secret values in the repo.
 
 ## Run & test
-`npm start` → http://localhost:3000 (in-memory DB). `npm test` → engine, rating, lobby/matchmaking, test modes, online integration (port 3999), pause, tutorial script (test-tutorial.js).
+`npm start` → http://localhost:3000 (in-memory DB). `npm test` → engine, rating, lobby/matchmaking, test modes, online integration (port 3999), pause, dropped player (test-away.js, port 3997), tutorial script (test-tutorial.js).
 Tutorial in a real browser: Playwright + /usr/bin/google-chrome works in the sandbox (Google sign-in/fonts are blocked there).
 
 ## Not implemented yet / planned (don't assume they exist)

@@ -44,10 +44,10 @@ for (let run = 0; run < 30; run++) {
   assert.deepStrictEqual([h(1).took[0], h(1).delta[0], h(1).delta[1]], [1, 20, -20]);
   // 3: 7♠ — 2/2 = +40
   assert.deepStrictEqual([h(2).took[0], h(2).delta[0]], [2, 40]);
-  // 4: точный ноль +18, перебор +1 у бота 3, недобор −20 у бота 4
-  assert.deepStrictEqual([h(3).took[0], h(3).delta[0], h(3).delta[3], h(3).delta[4]], [0, 18, 1, -20]);
-  // 5: ноль удержан (+16) и +50 за поимку бота 2
-  assert.deepStrictEqual([h(4).took[0], h(4).delta[0], h(4).bonus[0], h(4).bonus[2]], [0, 16, 50, -50]);
+  // 4: точный ноль +9 (5 + 4 карты), перебор +1 у бота 3, недобор −20 у бота 4
+  assert.deepStrictEqual([h(3).took[0], h(3).delta[0], h(3).delta[3], h(3).delta[4]], [0, 9, 1, -20]);
+  // 5: ноль удержан (+8 = 5 + 3 карты) и +50 за поимку бота 2
+  assert.deepStrictEqual([h(4).took[0], h(4).delta[0], h(4).bonus[0], h(4).bonus[2]], [0, 8, 50, -50]);
   assert.ok(g.bluff, 'последние раунды — в режиме обмана');
 }
 console.log('обучение ok · сценарий из', T.STEPS.length, 'шагов');
