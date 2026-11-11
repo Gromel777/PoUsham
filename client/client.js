@@ -20,12 +20,18 @@
   function load(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } }
   function save(key, patch) { try { localStorage.setItem(key, JSON.stringify({ ...load(key), ...patch })); } catch {} }
   const prefs = { sound: true, music: true, musicVol: 0.1, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang, ...load(PREF_KEY) };
-  // Оформление комнаты (стол, окружение). Прототип: ?room=cozy — «Пижамная вечеринка».
-  const ROOM = (() => { const q = new URLSearchParams(location.search).get('room'); return q || prefs.room || 'classic'; })();
-  if (ROOM === 'cozy' && window.RoomCozy) {
-    document.body.classList.add('room-cozy');
-    const bg = document.querySelector('.bg'); if (bg) bg.insertAdjacentHTML('beforeend', `<div class="cz-deco">${RoomCozy.deco()}</div>`);
+  // Оформление комнаты (стол, окружение): classic — премиальный стол, cozy — «Пижамная вечеринка».
+  // Выбирается в «Персонализация → Комнаты»; ?room=… в адресе — для быстрого просмотра.
+  const ROOMS = [['classic', 'Классика'], ['cozy', 'Пижамная вечеринка']];
+  let ROOM = 'classic';
+  function applyRoom(k) {
+    ROOM = k === 'cozy' && window.RoomCozy ? 'cozy' : 'classic';
+    document.body.classList.toggle('room-cozy', ROOM === 'cozy');
+    const bg = document.querySelector('.bg'), deco = bg && bg.querySelector('.cz-deco');
+    if (ROOM === 'cozy' && bg && !deco) bg.insertAdjacentHTML('beforeend', `<div class="cz-deco">${RoomCozy.deco()}</div>`);
+    if (ROOM !== 'cozy' && deco) deco.remove();
   }
+  applyRoom(new URLSearchParams(location.search).get('room') || prefs.room);
   // Новая колода «Силуэты» становится основной и для тех, у кого была сохранена старая.
   if (!prefs.deckV) { prefs.cards = 'sil'; prefs.deckV = 2; }
   // Базовая громкость музыки снижена до 10% — и для тех, у кого уже сохранились прежние 20%.
@@ -837,6 +843,29 @@
   // Колоды — личная настройка игрока (prefs.cards). Комнаты и эффекты — заготовки под будущие скины.
   const DECKS = [['sil', 'Силуэты'], ['dark', 'Чёрные'], ['light', 'Классика']];
   const deckImpl = k => (k === 'light' ? window.CardsLight : k === 'sil' ? window.CardsSil : window.CardsDark) || Cards;
+  // Мини-превью комнаты: стол сверху и места игроков.
+  function roomPreview(k) {
+    const seats = [[50, 88], [8, 50], [30, 14], [70, 14], [92, 50]];
+    if (k === 'cozy') {
+      const pil = ['#f3e0c8', '#f2b3c2', '#b8d2f0', '#f6dc8e', '#d8c4ef'];
+      return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        <rect width="100" height="100" fill="#3b2214"/>${[20, 40, 60, 80].map(x => `<rect x="${x}" width="1" height="100" fill="#1e0e05" opacity=".6"/>`).join('')}
+        <path d="M 0 9 Q 25 22 50 9 Q 75 22 100 9" fill="none" stroke="#2a1a10" stroke-width=".8"/>${[8, 20, 32, 44, 56, 68, 80, 92].map((x, i) => `<circle cx="${x}" cy="${i % 2 ? 14 : 12}" r="1.6" fill="#ffd27a"/><circle cx="${x}" cy="${i % 2 ? 14 : 12}" r="4" fill="#ffc46b" opacity=".25"/>`).join('')}
+        ${['#d98e7e', '#e9c9a8', '#9bb8a6', '#c9a2b8'].map((c, i) => `<ellipse cx="50" cy="55" rx="${48 - i * 3}" ry="${36 - i * 2.4}" fill="none" stroke="${c}" stroke-width="3"/>`).join('')}
+        <ellipse cx="50" cy="56" rx="36" ry="25" fill="#7a4523"/><ellipse cx="50" cy="53" rx="36" ry="25" fill="#c08850"/>
+        ${[37, 45, 53, 61, 69].map(y => `<rect x="10" y="${y}" width="80" height=".5" fill="#4a2a14" opacity=".35"/>`).join('')}
+        <ellipse cx="50" cy="53" rx="12" ry="8" fill="#fff8ea" opacity=".25"/>
+        ${seats.map(([x, y], i) => `<rect x="${x - 6}" y="${y - 6}" width="12" height="12" rx="4" fill="${pil[i]}"/>`).join('')}
+      </svg>`;
+    }
+    return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
+      <rect width="100" height="100" fill="#0e0b14"/><ellipse cx="50" cy="50" rx="45" ry="35" fill="rgba(120,80,190,.18)"/>
+      <ellipse cx="50" cy="56" rx="38" ry="27" fill="#141418"/><ellipse cx="50" cy="53" rx="38" ry="27" fill="#2a2a30"/>
+      <ellipse cx="50" cy="53" rx="38" ry="27" fill="none" stroke="#8c5bff" stroke-width=".8" opacity=".8"/>
+      <ellipse cx="50" cy="53" rx="28" ry="18" fill="#1b2340"/><ellipse cx="50" cy="53" rx="24" ry="15" fill="none" stroke="#e8c46a" stroke-width=".4" opacity=".5"/>
+      ${seats.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="6" fill="#1c1c20" stroke="#d9b45a" stroke-width=".8" stroke-dasharray="1 1"/>`).join('')}
+    </svg>`;
+  }
   function showCustomize(tab = S.custTab || 'decks', from) {
     if (from !== undefined) S.custFrom = from;
     S.custTab = tab;
@@ -862,6 +891,13 @@
         const faces = ['Т♥', '7♠', 'Д♦'].map(id => `<span class="dk-card" style="background-image:${D.url(Cards.parse(id))}"></span>`).join('');
         return `<button class="deck-item ${on ? 'on' : ''}" data-act="theme" data-t="${k}">
           <div class="dk-fan"><span class="dk-card dk-back" style="background-image:${D.backUrl()}"></span>${faces}</div>
+          <div class="dk-name">${T(n)}</div><div class="dk-state">${T(on ? 'Выбрана' : 'Выбрать')}</div></button>`;
+      }).join('')}</div>`;
+    } else if (tab === 'rooms') {
+      body = `<div class="deck-grid room-grid">${ROOMS.map(([k, n]) => {
+        const on = ROOM === k;
+        return `<button class="deck-item ${on ? 'on' : ''}" data-act="room" data-r="${k}">
+          <div class="room-prev room-prev-${k}">${roomPreview(k)}</div>
           <div class="dk-name">${T(n)}</div><div class="dk-state">${T(on ? 'Выбрана' : 'Выбрать')}</div></button>`;
       }).join('')}</div>`;
     } else {
@@ -2037,6 +2073,15 @@
       clearTimeout(this['nf' + cls]); this['nf' + cls] = setTimeout(() => tw.classList.remove(cls), ms);
     },
     // Перерисовать карты после смены темы колоды.
+    // Смена комнаты прямо за столом: перерисовываем стол и места, состояние шара и подсветки — заново.
+    refreshRoom() {
+      const v = S.view, tw = this.el && $('#table-wrap', this.el);
+      if (!v || !tw || !this.seatEls || this.seatEls.length !== v.n) return;
+      tw.innerHTML = tableSvg(Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
+      this.neonDeg = null; this.puckDeg = null; this.puckK = null; this.puckIn = null; this.puckAnim = false; this.ballLast = null; this.ballTrail = []; this.sideCur = null; this.puckGoal = null; cancelAnimationFrame(this.puckRaf);
+      this.seatEls.forEach((el, p) => { const ch = el && el.querySelector('.chair'); if (ch) ch.innerHTML = ROOM === 'cozy' ? RoomCozy.chair(spotOf(v, p)) : chairSvg(); });
+      try { this.updateNeon(v); this.updatePuck(v, true); } catch (e) { console.error(e); }
+    },
     refreshFaces() {
       if (!this.el) return;
       this.el.querySelectorAll('.card').forEach(el => {
@@ -2959,6 +3004,11 @@
     theme: b => { prefs.cards = b.dataset.t; savePrefs(); Cards.setTheme(prefs.cards); syncHome(); if (S.screen === 'home') { showHomeFanRefresh(); } Game.refreshFaces(); if ($('#overlay .cust-modal')) showCustomize(); else if ($('#overlay').classList.contains('on') && $('#overlay .menu-list, #overlay .menu-modal')) showMenu(); },
     customize: b => showCustomize('decks', b.closest('.menu-modal') ? 'menu' : 'home'),
     custTab: b => showCustomize(b.dataset.tab),
+    room: b => {
+      prefs.room = b.dataset.r; savePrefs(); applyRoom(prefs.room);
+      Game.refreshRoom && Game.refreshRoom();
+      showCustomize('rooms');
+    },
     custBack: () => { if (S.custFrom === 'menu') showMenu(); else closeModal(); },
     lang: b => {
       const l = b.dataset.l;
