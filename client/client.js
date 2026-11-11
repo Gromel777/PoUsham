@@ -12,7 +12,8 @@
 
   const S = {
     view: null, es: null, room: null, token: null, err: '', connecting: false, prefillCode: '', screen: null, busy: false,
-    tab: 'create', players: 4, rounds: 17, roundsTouched: false, turnTime: 30, bluff: false,
+    tab: 'ranked', players: 4, rounds: 17, roundsTouched: false, turnTime: 30, bluff: false, listed: true,
+    rankedSize: 0, casualSize: 0, // 0 — «любой стол»
   };
 
   // ---------- настройки и сессия ----------
@@ -67,7 +68,7 @@
       });
     },
     async onCredential(resp) {
-      const nameEl = $('#name');
+      const nameEl = cur('#name');
       try {
         const j = await api('/api/auth/google', { credential: resp.credential, nick: nameEl ? nameEl.value.trim() : '' });
         this.session = j.session; this.me = j.me;
@@ -85,23 +86,35 @@
       renderAcct();
     },
   };
+  // Элемент текущего экрана (во время смены экрана старый ещё в DOM — не путаем их).
+  const cur = sel => (screenEl().querySelector('.screen:not(.leave)') || document).querySelector(sel);
+  // Аватар: фото из Google (если есть) поверх буквы, золотой ободок остаётся.
+  const avaPicHtml = pic => (pic ? `<img class="ava-pic" src="${esc(pic)}" referrerpolicy="no-referrer" alt="" onerror="this.remove()">` : '');
+  function setAvaPic(ava, pic) {
+    let img = ava.querySelector('.ava-pic');
+    if (!pic) { if (img) img.remove(); return; }
+    if (img && img.getAttribute('src') === pic) return;
+    if (img) img.remove();
+    ava.insertAdjacentHTML('beforeend', avaPicHtml(pic));
+  }
   const starSvg = '<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z" fill="currentColor"/></svg>';
   const rtTag = r => `<span class="rt">${starSvg}${r}</span>`;
   // Плашка аккаунта на главном экране: кнопка Google или «аватар · имя · рейтинг».
   function renderAcct() {
-    const box = $('#acct');
+    const box = cur('#acct');
     if (!box) return;
     const me = Auth.me;
-    const nameEl = $('#name');
+    const nameEl = cur('#name');
     if (me && nameEl && !nameEl.value.trim() && document.activeElement !== nameEl) nameEl.value = me.nick;
     if (me) {
-      const pic = me.picture ? `<img class="acct-pic" src="${esc(me.picture)}" referrerpolicy="no-referrer" alt="">` : `<div class="ava acct-ava">${esc(initial(me.nick))}</div>`;
+      const pic = `<div class="ava acct-ava"><span class="ini">${esc(initial(me.nick))}</span>${avaPicHtml(me.picture)}</div>`;
       box.innerHTML = `${pic}<div class="acct-who"><b>${esc(me.nick)}</b>${rtTag(me.rating)}<span class="hint">${gamesWord(me.games)}</span></div>
         <button class="btn-ghost acct-btn" data-act="board">${T('Лидеры')}</button><button class="btn-ghost acct-btn" data-act="logout" title="${T('Выйти из аккаунта')}">${T('Выход')}</button>`;
     } else {
       box.innerHTML = `<div class="gbtn" id="gbtn"></div><span class="hint acct-hint">${T('Войдите, чтобы играть на рейтинг')}</span><button class="btn-ghost acct-btn" data-act="board">${T('Лидеры')}</button>`;
       Auth.renderButton($('#gbtn', box));
     }
+    renderRankedPane();
   }
   function gamesWord(n) {
     return I18N.lang === 'en' ? `${n} game${n === 1 ? '' : 's'}` : `${n} ${plural(n, 'партия', 'партии', 'партий')}`;
@@ -275,13 +288,21 @@
         <div class="home-panel glass">
           <div class="home-head"><div>${logoHtml()}<div class="logo-sub">${T('заяви и попади')}</div></div>${langSeg()}</div>
           <label class="field">${T('Ваше имя')}<input id="name" maxlength="20" autocomplete="nickname" value="${esc(sess.name || (Auth.me && Auth.me.nick) || '')}" placeholder="${T('Как вас зовут?')}"></label>
-          <div class="tabs"><button data-act="tab" data-tab="create">${T('Создать стол')}</button><button data-act="tab" data-tab="join">${T('Войти по коду')}</button></div>
+          <div class="tabs tabs4">${[['ranked', 'Рейтинг'], ['casual', 'Обычная'], ['create', 'Свой стол'], ['join', 'По коду']].map(([k, n]) => `<button data-act="tab" data-tab="${k}">${T(n)}</button>`).join('')}</div>
+          <div class="pane" data-pane="ranked" id="pane-ranked"></div>
+          <div class="pane" data-pane="casual">
+            <div class="row"><span class="opt-label">${T('Стол')}</span><div class="seg" id="seg-casual">${[2, 3, 4, 5, 6, 0].map(n => `<button data-act="casualSize" data-n="${n}">${n || T('Любой')}</button>`).join('')}</div></div>
+            <button class="btn-gold" data-act="search" data-mode="casual">${T('Быстрая игра')}</button>
+            <div class="rooms-head"><span>${T('Открытые столы')}</span><span class="hint" id="rooms-count"></span></div>
+            <div class="room-list" id="room-list"><div class="hint">${T('Загружаем…')}</div></div>
+          </div>
           <div class="pane" data-pane="create">
             <div class="row"><span class="opt-label">${T('Игроков')}</span><div class="seg" id="seg-players">${[2, 3, 4, 5, 6].map(n => `<button data-act="players" data-n="${n}">${n}</button>`).join('')}</div></div>
             <div class="row"><span class="opt-label">${T('Раундов')}</span><div class="stepper"><button data-act="rounds" data-d="-1">−</button><b id="rounds-val"></b><button data-act="rounds" data-d="1">+</button></div>
               <span class="opt-label" style="min-width:0;margin-left:6px">${T('Таймер')}</span>
               <div class="stepper"><button data-act="timer" data-d="-5">−</button><input class="num-input" id="timer-val" inputmode="numeric" maxlength="3"><button data-act="timer" data-d="5">+</button></div></div>
             <div class="row"><label class="switch" data-act="bluff" id="bluff-sw"><i></i><span>${T('Режим обмана')}</span></label><span class="hint" id="timer-hint"></span></div>
+            <div class="row"><label class="switch" data-act="listed" id="listed-sw"><i></i><span>${T('Открытый стол')}</span></label><span class="hint">${T('виден всем в списке столов')}</span></div>
             <button class="btn-gold" data-act="create">${T('Создать стол')}</button>
           </div>
           <div class="pane" data-pane="join">
@@ -303,11 +324,106 @@
     if (tv) tv.addEventListener('change', () => { S.turnTime = clampTimer(parseInt(tv.value, 10)); syncHome(); });
     syncHome(el);
     renderAcct();
+    loadRooms();
+  }
+
+  // Вкладка «Рейтинг»: без входа — приглашение войти; с входом — поиск соперников и калибровка.
+  function renderRankedPane() {
+    const box = cur('#pane-ranked');
+    if (!box) return;
+    const me = Auth.me;
+    if (!me) {
+      box.innerHTML = `<p class="pane-note">${T('Рейтинговые партии — только с аккаунтом Google: так рейтинг сохраняется и его нельзя подделать.')}</p>
+        <div class="gbtn" id="gbtn2"></div>
+        <button class="btn-ghost" data-act="board">${T('Таблица лидеров')}</button>`;
+      Auth.renderButton($('#gbtn2', box));
+      return;
+    }
+    const left = Math.max(0, 5 - me.games);
+    box.innerHTML = `<div class="rank-me">${rtTag(me.rating)}<span class="hint">${left ? T('калибровка {a}/5', { a: me.games }) : gamesWord(me.games)}</span>
+        <span style="flex:1"></span><button class="btn-ghost acct-btn" data-act="board">${T('Лидеры')}</button></div>
+      <div class="row"><span class="opt-label">${T('Стол')}</span><div class="seg" id="seg-ranked">${[2, 3, 4, 0].map(n => `<button data-act="rankedSize" data-n="${n}">${n || T('Любой')}</button>`).join('')}</div></div>
+      <button class="btn-gold" data-act="search" data-mode="ranked">${T('Найти соперников')}</button>
+      ${left ? `<button class="btn-ghost" data-act="calib">${T('Калибровка с ботами — осталось {n}', { n: left })}</button>` : ''}
+      <span class="hint">${left ? T('Первые 5 партий можно сыграть с ботами — после них вы попадёте в таблицу лидеров.') : T('Подбираем соперников близкого рейтинга. Чем дольше ждёте — тем шире разброс.')}</span>`;
+    syncHome();
+  }
+
+  // Список открытых столов (обновляется, пока открыта вкладка «Обычная»).
+  let roomsTimer = 0;
+  async function loadRooms() {
+    clearTimeout(roomsTimer);
+    if (S.screen !== 'home') return;
+    roomsTimer = setTimeout(loadRooms, 4000);
+    if (S.tab !== 'casual') return;
+    let list;
+    try { list = (await fetch('/api/rooms').then(r => r.json())).rooms || []; } catch { return; }
+    const box = cur('#room-list');
+    if (!box) return;
+    const cnt = cur('#rooms-count'); if (cnt) cnt.textContent = list.length ? String(list.length) : '';
+    box.innerHTML = list.length ? list.map(r => `<div class="room-row">
+        <div class="rr-main"><b>${esc(r.host)}</b><span class="hint">${T('{n} раундов', { n: r.rounds })} · ${r.turnTime ? T('таймер {s} с', { s: r.turnTime }) : T('без таймера')}${r.bluff ? ' · ' + T('обман') : ''}</span></div>
+        <span class="rr-seats">${r.players}/${r.size}</span>
+        <button class="btn-ghost" data-act="joinRoom" data-code="${esc(r.code)}">${T('Сесть')}</button></div>`).join('')
+      : `<div class="hint room-empty">${T('Открытых столов пока нет — нажмите «Быстрая игра» или создайте свой стол.')}</div>`;
+  }
+
+  // ---------- поиск игроков ----------
+  const MMS = { ticket: null, mode: null, timer: 0, started: 0, sizes: [] };
+  async function startSearch(mode) {
+    const name = (cur('#name') ? cur('#name').value.trim() : '') || (Auth.me && Auth.me.nick) || load(STORE_KEY).name || '';
+    if (!name) { const e = cur('#err'); if (e) e.textContent = T('Введите имя'); const n = cur('#name'); if (n) n.focus(); return; }
+    if (mode === 'ranked' && !Auth.me) { S.tab = 'ranked'; syncHome(); toast(T('Войдите через Google, чтобы играть на рейтинг')); return; }
+    save(STORE_KEY, { name });
+    const size = mode === 'ranked' ? S.rankedSize : S.casualSize;
+    MMS.sizes = size ? [size] : [];
+    try {
+      const j = await api('/api/mm/join', { mode, sizes: MMS.sizes, name, session: Auth.session, lang: I18N.lang, prev: MMS.ticket });
+      MMS.ticket = j.ticket; MMS.mode = mode; MMS.started = Date.now();
+    } catch (e) { toast(e.message); return; }
+    showModal(`<h2 class="gold-text">${T(mode === 'ranked' ? 'Ищем соперников' : 'Ищем игроков')}</h2>
+      <div class="search-box"><div class="search-ring"><div class="loader"></div><b id="mm-time">0:00</b></div>
+        <div class="search-info"><div>${T('Стол')}: <b>${MMS.sizes.length ? T('на {n}', { n: MMS.sizes[0] }) : T('любой (2–4)')}</b></div>
+          <div id="mm-line1" class="hint"></div><div id="mm-line2" class="hint"></div></div></div>
+      <div class="actions">${mode === 'casual' ? `<button class="btn-ghost" data-act="botsNow">${T('Играть с ботами сейчас')}</button>` : ''}<button class="btn-gold" data-act="cancelSearch">${T('Отменить')}</button></div>`, 'search-modal');
+    $('#overlay').dataset.kind = 'search';
+    pollSearch();
+  }
+  async function pollSearch() {
+    clearTimeout(MMS.timer);
+    if (!MMS.ticket) return;
+    const t = $('#mm-time');
+    if (t) { const s = Math.floor((Date.now() - MMS.started) / 1000); t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    let st;
+    try { st = await api('/api/mm/status', { ticket: MMS.ticket }); } catch { MMS.timer = setTimeout(pollSearch, 2000); return; }
+    if (!MMS.ticket) return; // отменили, пока ждали ответ
+    if (st.state === 'matched') {
+      MMS.ticket = null;
+      closeModal(); SFX.win && SFX.chip();
+      toast(T(st.kind === 'ranked' ? 'Соперники найдены!' : 'Игроки найдены!'));
+      connect(st.room, st.token);
+      return;
+    }
+    if (st.state === 'gone') { MMS.ticket = null; closeModalIf('search'); toast(T('Поиск прервался — попробуйте ещё раз')); return; }
+    const l1 = $('#mm-line1'), l2 = $('#mm-line2');
+    if (l1) l1.textContent = T('Ищут игру: {n}', { n: st.inQueue });
+    if (l2) l2.textContent = st.window != null ? T('Разброс рейтинга: ±{w}', { w: st.window })
+      : st.botsIn > 0 ? T('Через {s} с сядем с теми, кто есть, + боты', { s: Math.ceil(st.botsIn / 1000) }) : T('Свободные места займут боты');
+    MMS.timer = setTimeout(pollSearch, 1500);
+  }
+  function cancelSearch() {
+    clearTimeout(MMS.timer);
+    if (MMS.ticket) api('/api/mm/cancel', { ticket: MMS.ticket }).catch(() => {});
+    MMS.ticket = null;
+    closeModalIf('search');
   }
   function clampTimer(t) { return Number.isFinite(t) ? Math.max(0, Math.min(600, t)) : 30; }
-  function syncHome(el = screenEl()) {
+  function syncHome(el = screenEl().querySelector('.screen:not(.leave)') || screenEl()) {
     if (!S.roundsTouched) S.rounds = 2 * MAX_CARDS(S.players) - 1;
     el.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
+    el.querySelectorAll('#seg-ranked button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.rankedSize));
+    el.querySelectorAll('#seg-casual button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.casualSize));
+    const ls = $('#listed-sw', el); if (ls) ls.classList.toggle('on', S.listed);
     el.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === S.tab));
     el.querySelectorAll('#seg-players button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.players));
     const rv = $('#rounds-val', el); if (rv) rv.textContent = S.rounds;
@@ -322,18 +438,27 @@
   function settingsLine(v) {
     return `<div class="settings-line"><span>${T('{n} игроков', { n: v.size })}</span><span>${T('{n} раундов', { n: v.rounds })}</span><span>${v.turnTime ? T('таймер {s} с', { s: v.turnTime }) : T('без таймера')}</span>${v.bluff ? `<span class="bluff">${T('режим обмана')}</span>` : ''}</div>`;
   }
+  const matchedKind = v => v.kind === 'ranked' || v.kind === 'casual';
+  function lobbyTitle(v) {
+    if (v.calib) return T('Калибровка с ботами');
+    return T({ ranked: 'Рейтинговый стол', casual: 'Стол подбора', public: 'Открытый стол' }[v.kind] || 'Стол');
+  }
+  setInterval(() => {
+    const el = S.screen === 'lobby' && cur('#auto-left');
+    if (el) el.textContent = S.autoAt ? T('через {s} с', { s: Math.max(0, Math.ceil((S.autoAt - Date.now()) / 1000)) }) : '';
+  }, 500);
   function showLobby(v) {
     let el = screenEl().querySelector('.screen:not(.leave)');
     if (S.screen !== 'lobby') {
       el = setScreen('lobby', `
-        <div class="lobby">
-          <div class="lobby-qr glass">
+        <div class="lobby ${matchedKind(v) ? 'solo' : ''}">
+          ${matchedKind(v) ? '' : `<div class="lobby-qr glass">
             <div class="qr-frame">${(() => { try { return window.qrSvg(joinLink(v.code), {}); } catch { return ''; } })()}</div>
             <div class="room-code gold-text">${esc(v.code)}</div>
             <button class="btn-ghost" data-act="copy">${T('Скопировать ссылку')}</button>
-          </div>
+          </div>`}
           <div class="lobby-main">
-            <div class="lobby-title">${T('Стол')} <span class="gold-text">${esc(v.code)}</span></div>
+            <div class="lobby-title">${lobbyTitle(v)} <span class="gold-text">${esc(v.code)}</span></div>
             ${settingsLine(v)}
             <div class="lobby-seats" id="lobby-seats"></div>
             <div class="row" id="lobby-actions"></div>
@@ -344,12 +469,15 @@
       const s = v.seats[i];
       if (!s) return `<div class="lseat empty"><div class="ava bot">?</div><div><div class="nm">${T('Свободно')}</div><div class="sub">${T('займёт бот')}</div></div></div>`;
       return `<div class="lseat ${i === v.you ? 'me' : ''}" data-i="${i}">
-        <div class="ava ${s.online ? '' : 'off'}">${esc(initial(s.name))}</div>
-        <div style="min-width:0"><div class="nm">${esc(s.name)}${i === v.you ? ` <span class="hint">${T('(вы)')}</span>` : ''}</div><div class="sub">${T(s.host ? 'хост' : s.online ? 'в сети' : 'не в сети')}</div>${s.rating != null ? `<div class="sub">${rtTag(s.rating)}</div>` : ''}</div>
-        ${v.isHost && !s.host ? `<button class="btn-ghost kick" data-act="kick" data-seat="${i}">${T('Убрать')}</button>` : ''}
+        <div class="ava ${s.online ? '' : 'off'}"><span class="ini">${esc(initial(s.name))}</span>${avaPicHtml(s.pic)}</div>
+        <div style="min-width:0"><div class="nm">${esc(s.name)}${i === v.you ? ` <span class="hint">${T('(вы)')}</span>` : ''}</div><div class="sub">${T(s.host && !matchedKind(v) ? 'хост' : s.online ? 'в сети' : 'не в сети')}</div>${s.rating != null ? `<div class="sub">${rtTag(s.rating)}</div>` : ''}</div>
+        ${v.isHost && !s.host && !matchedKind(v) ? `<button class="btn-ghost kick" data-act="kick" data-seat="${i}">${T('Убрать')}</button>` : ''}
       </div>`;
     }).join('');
-    $('#lobby-actions', el).innerHTML = (v.isHost
+    S.autoAt = v.autoStartIn ? Date.now() + v.autoStartIn : 0;
+    $('#lobby-actions', el).innerHTML = (matchedKind(v)
+      ? `<div class="loader" style="width:22px;height:22px;margin:0;border-width:2px"></div><span class="hint">${T('Ждём игроков — игра начнётся сама')} <b id="auto-left"></b></span>`
+      : v.isHost
       ? `<button class="btn-gold" data-act="start">${T('Начать игру')}</button><span class="hint">${T('Пустые места займут боты')}</span>`
       : `<div class="loader" style="width:22px;height:22px;margin:0;border-width:2px"></div><span class="hint">${T('Ждём, когда хост начнёт игру…')}</span>`) +
       `<span style="flex:1"></span><button class="btn-ghost" data-act="rules">${T('Правила')}</button><button class="btn-ghost" data-act="leave">${T('Выйти')}</button>`;
@@ -900,6 +1028,7 @@
         const ava = el.querySelector('.ava');
         ava.classList.toggle('bot', s.bot); ava.classList.toggle('off', !s.online);
         el.querySelector('.ini').textContent = initial(s.name);
+        setAvaPic(ava, s.pic);
         markAvatar(ava, v, p);
         el.querySelector('.nm').textContent = s.name; el.style.setProperty('--pc', nameColor(p));
         setScore(el.querySelector('.sc'), v.scores[p], !!prev);
@@ -931,6 +1060,7 @@
       box.querySelector('.ini').textContent = initial(v.names[me]);
       box.querySelector('.nm').textContent = v.names[me]; box.style.setProperty('--pc', nameColor(me));
       const ava = box.querySelector('.ava');
+      setAvaPic(ava, v.seats[me] && v.seats[me].pic);
       markAvatar(ava, v, me);
       setScore(box.querySelector('.sc'), v.scores[me], !!prev);
       const b1 = box.querySelector('.b1'), b2 = box.querySelector('.b2');
@@ -1670,7 +1800,8 @@
       showModal(`<h2 class="gold-text" style="text-align:center">${T(iWon ? 'Победа!' : 'Игра окончена')}</h2>
         <div class="podium">${arranged.join('')}</div>
         <div class="over-rating" id="over-rating"></div>
-        <div class="actions" style="justify-content:center">${v.isHost ? `<button class="btn-gold" data-act="restart">${T('Ещё партию')}</button>` : `<span class="hint">${T('Новую партию запускает хост')}</span>`}
+        <div class="actions" style="justify-content:center">${v.kind === 'ranked' ? `<button class="btn-gold" data-act="research">${T(v.calib ? 'Дальше' : 'Новый поиск')}</button>`
+          : v.isHost ? `<button class="btn-gold" data-act="restart">${T('Ещё партию')}</button>` : `<span class="hint">${T('Новую партию запускает хост')}</span>`}
         <button class="btn-ghost" data-act="scores">${T('Таблица')}</button><button class="btn-ghost" data-act="leave">${T('В меню')}</button></div>`);
       $('#overlay').dataset.kind = 'over';
       renderOverRating(v);
@@ -2109,7 +2240,44 @@
   // ---------- действия по кнопкам ----------
   let armedCheck = null, armedT = 0;
   const actions = {
-    tab: b => { S.tab = b.dataset.tab; syncHome(); },
+    tab: b => { S.tab = b.dataset.tab; syncHome(); if (S.tab === 'casual') loadRooms(); },
+    rankedSize: b => { S.rankedSize = +b.dataset.n; syncHome(); },
+    casualSize: b => { S.casualSize = +b.dataset.n; syncHome(); },
+    listed: () => { S.listed = !S.listed; syncHome(); },
+    search: b => startSearch(b.dataset.mode),
+    cancelSearch: () => cancelSearch(),
+    botsNow: async () => {
+      // Не ждать: свой стол с ботами, старт сразу.
+      cancelSearch();
+      const name = load(STORE_KEY).name || (Auth.me && Auth.me.nick) || T('Игрок');
+      const players = S.casualSize || 4;
+      try {
+        const j = await api('/api/create', { name, players, rounds: 2 * MAX_CARDS(players) - 1, turnTime: 30, lang: I18N.lang, session: Auth.session });
+        await api('/api/action', { room: j.room, token: j.token, type: 'start' });
+        connect(j.room, j.token);
+      } catch (e) { toast(e.message); }
+    },
+    calib: async () => {
+      const name = (cur('#name') && cur('#name').value.trim()) || (Auth.me && Auth.me.nick) || '';
+      try {
+        const j = await api('/api/calib', { session: Auth.session, name, players: S.rankedSize || 4, lang: I18N.lang });
+        connect(j.room, j.token);
+      } catch (e) { toast(e.message); }
+    },
+    joinRoom: async b => {
+      const name = (cur('#name') && cur('#name').value.trim()) || (Auth.me && Auth.me.nick) || '';
+      if (!name) { const e = cur('#err'); if (e) e.textContent = T('Введите имя'); cur('#name') && cur('#name').focus(); return; }
+      save(STORE_KEY, { name });
+      try { const j = await api('/api/join', { name, room: b.dataset.code, session: Auth.session }); connect(j.room, j.token); }
+      catch (e) { toast(e.message); loadRooms(); }
+    },
+    research: () => {
+      const calib = S.view && S.view.calib;
+      leave();
+      S.tab = 'ranked'; syncHome(); renderRankedPane();
+      if (calib && Auth.me && Auth.me.games < 5) actions.calib();
+      else startSearch('ranked');
+    },
     players: b => { S.players = +b.dataset.n; syncHome(); },
     rounds: b => { S.roundsTouched = true; S.rounds = Math.max(1, Math.min(60, S.rounds + +b.dataset.d)); syncHome(); },
     timer: b => { const t = S.turnTime + +b.dataset.d; S.turnTime = clampTimer(t < 5 && +b.dataset.d < 0 ? 0 : t === 5 && +b.dataset.d > 0 && S.turnTime === 0 ? 5 : t); syncHome(); },
@@ -2119,7 +2287,7 @@
       if (!name) { $('#err').textContent = T('Введите имя'); $('#name').focus(); return; }
       const tv = $('#timer-val'); if (tv) S.turnTime = clampTimer(parseInt(tv.value, 10));
       save(STORE_KEY, { name });
-      try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, lang: I18N.lang, session: Auth.session }); connect(j.room, j.token); }
+      try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, listed: S.listed, lang: I18N.lang, session: Auth.session }); connect(j.room, j.token); }
       catch (e) { $('#err').textContent = e.message; }
     },
     join: async () => {
@@ -2215,7 +2383,7 @@
       if (seat >= 0) { Social.openAvatarMenu(seat); return; }
     }
     const b = e.target.closest('[data-act]');
-    if (!b) { if (e.target.id === 'overlay' && !['results', 'over'].includes($('#overlay').dataset.kind)) closeModal(); return; }
+    if (!b) { if (e.target.id === 'overlay' && !['results', 'over', 'search'].includes($('#overlay').dataset.kind)) closeModal(); return; }
     const fn = actions[b.dataset.act];
     if (fn) { if (!['bid', 'tab', 'check'].includes(b.dataset.act)) SFX.click(); fn(b); }
   });
@@ -2246,7 +2414,9 @@
   }, { capture: true, passive: true });
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && S.screen === 'home' && e.target.id !== 'timer-val') (S.tab === 'join' ? actions.join : actions.create)();
+    if (e.key === 'Enter' && S.screen === 'home' && e.target.id !== 'timer-val') {
+      if (S.tab === 'join') actions.join(); else if (S.tab === 'create') actions.create();
+    }
     if (e.key === 'Escape') closeModal();
   });
 

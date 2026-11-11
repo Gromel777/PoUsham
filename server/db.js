@@ -13,13 +13,14 @@ const pub = p => p && ({ id: num(p.id), nick: p.nick, rating: num(p.rating), gam
 
 // Общий расчёт партии: на входе актуальные рейтинги, на выходе новые значения.
 function compute(entries, current) {
-  const list = entries.map(e => ({ ...e, rating: current.get(e.playerId) }));
+  // Боты (калибровка) участвуют в расчёте с рейтингом 1000, но сами не меняются.
+  const list = entries.map(e => ({ ...e, rating: e.bot ? Rating.START : current.get(e.playerId) }));
   const d = Rating.deltas(list);
   const pl = Rating.places(list);
-  return list.map((e, i) => ({
+  return list.map((e, i) => (e.bot ? null : {
     playerId: e.playerId, place: e.place ?? pl[i], score: e.score, left: !!e.left,
     before: e.rating, after: e.rating + d[i], delta: d[i], win: !e.left && (e.place ?? pl[i]) === 1,
-  }));
+  })).filter(Boolean);
 }
 
 // ---------- память ----------
@@ -43,7 +44,7 @@ function memoryStore() {
     async dropSession(t) { sessions.delete(hash(t)); },
     async setNick(id, nick) { const p = players.get(id); const n = cleanNick(nick); if (p && n) p.nick = n; },
     async recordMatch(meta, entries) {
-      const current = new Map(entries.map(e => [e.playerId, players.get(e.playerId).rating]));
+      const current = new Map(entries.filter(e => !e.bot).map(e => [e.playerId, players.get(e.playerId).rating]));
       const res = compute(entries, current);
       for (const r of res) { const p = players.get(r.playerId); p.rating = r.after; p.games++; if (r.win) p.wins++; }
       matches.push({ meta, res, at: Date.now() });
@@ -145,7 +146,7 @@ function pgStore(url) {
       const c = await pool.connect();
       try {
         await c.query('BEGIN');
-        const ids = entries.map(e => e.playerId);
+        const ids = entries.filter(e => !e.bot).map(e => e.playerId);
         const { rows } = await c.query('SELECT id, rating FROM players WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE', [ids]);
         const current = new Map(rows.map(r => [Number(r.id), Number(r.rating)]));
         if (current.size !== ids.length) throw new Error('Игрок не найден в базе');

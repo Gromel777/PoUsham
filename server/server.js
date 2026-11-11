@@ -92,10 +92,16 @@ function seatOf(r, token) { return token ? r.seats.findIndex(s => s.token === to
 function requireSeat(r, token) { const s = seatOf(r, token); if (s < 0) fail('Вы не за этим столом'); return s; }
 function isOnline(r, seat) { for (const st of r.streams) if (st.seat === seat) return true; return false; }
 
-function createRoom({ name, players, rounds, turnTime, bluff, lang }, acc = null) {
+// kind: 'private' — по коду; 'public' — виден в списке столов; 'casual' — собран подбором (без рейтинга);
+// 'ranked' — собран рейтинговым подбором или калибровка с ботами (calib).
+function createRoom({ name, players, rounds, turnTime, bluff, lang, listed }, acc = null, extra = {}) {
   const size = clampInt(players, Engine.MIN_PLAYERS, Engine.MAX_PLAYERS, 4);
   const r = {
     code: newCode(),
+    kind: listed ? 'public' : 'private',
+    calib: false,
+    autoStartAt: 0,
+    created: Date.now(),
     size,
     rounds: clampInt(rounds, 1, 60, 2 * Engine.maxCards(size) - 1),
     turnTime: clampInt(turnTime, 0, 600, DEFAULT_TURN_TIME), // секунд на ход, 0 — без таймера
@@ -109,6 +115,7 @@ function createRoom({ name, players, rounds, turnTime, bluff, lang }, acc = null
     timer: null,
     touched: Date.now(),
   };
+  Object.assign(r, extra);
   const token = newToken();
   r.seats.push({ name: cleanName(name), token, bot: false, pid: newPid(), ...accSeat(acc) });
   r.hostSeat = 0;
@@ -117,7 +124,8 @@ function createRoom({ name, players, rounds, turnTime, bluff, lang }, acc = null
 }
 
 // Аккаунт игрока на месте: id для рейтинга и рейтинг на момент входа (для показа).
-const accSeat = acc => (acc ? { uid: acc.id, rating: acc.rating } : { uid: null, rating: null });
+const accSeat = acc => (acc ? { uid: acc.id, rating: acc.rating, pic: acc.picture || null } : { uid: null, rating: null, pic: null });
+const matchedRoom = r => r.kind === 'ranked' || r.kind === 'casual';
 
 // Вход в комнату. Если за столом есть отключившийся игрок с тем же именем — это он вернулся:
 // отдаём ему его место с новым ключом (старый ключ перестаёт работать).
@@ -143,6 +151,7 @@ function joinRoom(r, name, acc = null) {
     r.seats[same].token = token;
     return { token, rejoined: true };
   }
+  if (matchedRoom(r)) fail('За этот стол садятся только через поиск игроков.');
   if (r.game) {
     const offline = r.seats.filter((s, i) => !s.bot && !isOnline(r, i)).map(s => s.name);
     fail(offline.length
@@ -215,7 +224,8 @@ function startGame(r) {
 }
 
 function seatView(r, s, i) {
-  return { name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === r.hostSeat, pid: s.pid, rating: s.uid && !s.left ? s.rating : null };
+  const acc = s.uid && !s.left;
+  return { name: s.name, bot: s.bot, online: s.bot || isOnline(r, i), host: i === r.hostSeat, pid: s.pid, rating: acc ? s.rating : null, pic: acc ? s.pic : null };
 }
 
 // Что видит конкретный игрок: только свои карты, у остальных — количество.
@@ -224,6 +234,7 @@ function viewFor(r, seat) {
   const me = r.seats[seat];
   const base = {
     code: r.code, you: seat, youPid: me.pid, isHost: seat === hostSeat, size: r.size, rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff,
+    kind: r.kind, calib: r.calib, autoStartIn: !r.game && r.autoStartAt ? Math.max(0, r.autoStartAt - Date.now()) : 0,
     chat: r.chat.slice(-40), social: r.social.slice(-16),
     likeReadyIn: Math.max(0, (me.likeAt || 0) + LIKE_COOLDOWN - Date.now()),
     dislikeReadyIn: Math.max(0, (me.dislikeAt || 0) + LIKE_COOLDOWN - Date.now()),
@@ -453,12 +464,14 @@ function doAction(r, seat, body) {
   const g = r.game;
   const type = body.type;
   if (type === 'start') {
+    if (matchedRoom(r)) fail('Игра начнётся сама, когда все подключатся');
     if (seat !== r.hostSeat) fail('Начать игру может только хост');
     if (r.game) fail('Игра уже идёт');
     startGame(r);
     return;
   }
   if (type === 'restart') {
+    if (r.kind === 'ranked') fail('Рейтинговую партию не переигрывают — найдите новую игру');
     if (seat !== r.hostSeat) fail('Новую партию начинает хост');
     if (!g || g.phase !== 'gameOver') fail('Партия ещё не закончена');
     r.seenPlays = new Set();
@@ -467,6 +480,7 @@ function doAction(r, seat, body) {
     return;
   }
   if (type === 'kick') {
+    if (matchedRoom(r)) fail('За столом подбора убирать игроков нельзя');
     if (seat !== r.hostSeat) fail('Убирать игроков может только хост');
     if (r.game) fail('Во время игры — только голосованием');
     lobbyKick(r, Number(body.seat));
@@ -506,32 +520,177 @@ function doAction(r, seat, body) {
 }
 
 // ---------- рейтинг ----------
-// Партия окончена: если за столом минимум 2 игрока с аккаунтом — считаем попарное Эло и пишем в базу.
+// В рейтинг идут только рейтинговые столы: собранные подбором (минимум двое с аккаунтом)
+// и калибровка — первые партии новичка с ботами (у ботов рейтинг 1000).
 // Результат (g.rating) уходит всем в состоянии стола: { status: 'pending' | 'done' | 'skip' | 'error', ... }.
 function rateGame(r, g) {
-  const seats = r.seats.map((s, i) => ({ s, i })).filter(x => x.s.uid);
-  if (seats.length < Rating.MIN_RATED) {
+  if (r.kind !== 'ranked') { g.rating = { status: 'skip', reason: 'Обычная партия — рейтинг не меняется.' }; return; }
+  const accSeats = r.seats.map((s, i) => ({ s, i })).filter(x => x.s.uid);
+  if (!r.calib && accSeats.length < Rating.MIN_RATED) {
     g.rating = { status: 'skip', reason: 'Партия не в рейтинге: нужно минимум двое игроков, вошедших через Google.' };
     return;
   }
+  if (!accSeats.length) { g.rating = { status: 'skip', reason: 'Партия не в рейтинге.' }; return; }
   if (!DB.ready()) { g.rating = { status: 'skip', reason: 'Рейтинг сейчас недоступен (нет связи с базой).' }; return; }
   g.rating = { status: 'pending' };
-  // Места — среди всех за столом (боты и гости тоже занимают места); ушедшие — последние.
+  // Места — среди всех за столом (боты тоже занимают места); ушедшие — последние.
   const all = r.seats.map((s, i) => ({ score: g.scores[i], left: !!s.left }));
   const placeAll = Rating.places(all);
-  const entries = seats.map(({ s, i }) => ({ playerId: s.uid, score: g.scores[i], left: !!s.left, place: placeAll[i] }));
+  const inRating = r.calib ? r.seats.map((s, i) => ({ s, i })) : accSeats;
+  const entries = inRating.map(({ s, i }) => (s.uid
+    ? { playerId: s.uid, score: g.scores[i], left: !!s.left, place: placeAll[i] }
+    : { bot: true, score: g.scores[i], left: false, place: placeAll[i] }));
   DB.recordMatch({ room: r.code, seats: r.size, rounds: r.rounds, bluff: r.bluff }, entries).then(res => {
     const changes = {};
     for (const x of res) {
-      const seat = seats.find(({ s }) => s.uid === x.playerId).i;
+      const seat = accSeats.find(({ s }) => s.uid === x.playerId).i;
       changes[seat] = { before: x.before, after: x.after, delta: x.delta, place: x.place };
       if (!r.seats[seat].left) r.seats[seat].rating = x.after;
     }
-    g.rating = { status: 'done', changes };
+    g.rating = { status: 'done', changes, calib: r.calib };
   }).catch(e => {
     console.error('rating:', e.message);
     g.rating = { status: 'error', reason: 'Не удалось сохранить рейтинг — партия не засчитана.' };
   }).finally(() => { if (r.game === g) broadcast(r); });
+}
+
+// ---------- открытые столы и подбор игроков ----------
+// Список открытых столов: ещё не начались и есть свободные места.
+function openRooms() {
+  return [...rooms.values()]
+    .filter(r => r.kind === 'public' && !r.game && r.seats.length < r.size && r.seats.some((s, i) => isOnline(r, i)))
+    .sort((a, b) => b.created - a.created).slice(0, 40)
+    .map(r => ({
+      code: r.code, host: r.seats[r.hostSeat].name, players: r.seats.length, size: r.size,
+      rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff, lang: r.lang,
+    }));
+}
+
+// Очередь подбора. Записи живут, пока клиент опрашивает статус (раз в пару секунд).
+const MM = {
+  queue: new Map(),           // ticket -> запись
+  ANY: [2, 3, 4],             // «любой стол»
+  STEP_SMALLER: 10000,        // «любой»: стол на одного меньше — после каждых 10 с ожидания
+  CASUAL_BOTS_AFTER: 45000,   // обычная игра: через 45 с можно вдвоём-втроём, остальные — боты
+  RANKED_WINDOW: (waitMs) => Math.min(600, 100 + Math.floor(waitMs / 1000) * 5), // разброс рейтинга растёт с ожиданием
+  STALE: 20000,
+  AUTOSTART: 15000,           // стол подбора стартует сам: когда все подключились или через 15 с
+};
+
+function mmJoin(body, acc) {
+  const mode = body.mode === 'ranked' ? 'ranked' : 'casual';
+  if (mode === 'ranked' && !acc) fail('Рейтинговая игра — только после входа через Google');
+  let sizes = Array.isArray(body.sizes) ? body.sizes.map(Number).filter(n => n >= Engine.MIN_PLAYERS && n <= Engine.MAX_PLAYERS) : [];
+  if (mode === 'ranked') sizes = sizes.filter(n => n <= 4);
+  if (!sizes.length) sizes = MM.ANY;
+  sizes = [...new Set(sizes)].sort((a, b) => a - b);
+  // Один человек — одна заявка: повторный поиск заменяет старый.
+  for (const [t, e] of MM.queue) if (!e.result && ((acc && e.acc && e.acc.id === acc.id) || (body.prev && t === body.prev))) MM.queue.delete(t);
+  const ticket = newToken();
+  MM.queue.set(ticket, {
+    ticket, mode, sizes, acc, name: cleanName(body.name || (acc && acc.nick)), lang: body.lang === 'en' ? 'en' : 'ru',
+    rating: acc ? acc.rating : 0, since: Date.now(), seen: Date.now(), result: null,
+  });
+  mmMatch();
+  return ticket;
+}
+
+function mmStatus(ticket) {
+  const e = MM.queue.get(String(ticket || ''));
+  if (!e) return { state: 'gone' };
+  e.seen = Date.now();
+  if (e.result) { MM.queue.delete(e.ticket); return { state: 'matched', ...e.result }; }
+  const waited = Date.now() - e.since;
+  const same = [...MM.queue.values()].filter(o => o.mode === e.mode && !o.result).length;
+  return {
+    state: 'waiting', waited, inQueue: same, sizes: e.sizes,
+    window: e.mode === 'ranked' ? MM.RANKED_WINDOW(waited) : null,
+    botsIn: e.mode === 'casual' ? Math.max(0, MM.CASUAL_BOTS_AFTER - waited) : null,
+  };
+}
+
+// Подходит ли игроку стол такого размера сейчас. «Любой» сначала ищет стол побольше.
+function mmAccepts(e, size, now) {
+  if (!e.sizes.includes(size)) return false;
+  if (e.sizes.length === 1) return true;
+  return now - e.since >= (Math.max(...e.sizes) - size) * MM.STEP_SMALLER;
+}
+
+function mmMatch() {
+  const now = Date.now();
+  for (const [t, e] of MM.queue) if (now - e.seen > MM.STALE) MM.queue.delete(t); // ушёл и не отменил
+  let found = true;
+  while (found) {
+    found = false;
+    for (const mode of ['ranked', 'casual']) {
+      for (let size = Engine.MAX_PLAYERS; size >= Engine.MIN_PLAYERS && !found; size--) {
+        const pool = [...MM.queue.values()].filter(e => e.mode === mode && !e.result && mmAccepts(e, size, now));
+        let group = null;
+        if (mode === 'ranked') {
+          pool.sort((a, b) => a.rating - b.rating);
+          for (let i = 0; i + size <= pool.length && !group; i++) {
+            const g = pool.slice(i, i + size);
+            const spread = g[g.length - 1].rating - g[0].rating;
+            if (g.every(e => spread <= MM.RANKED_WINDOW(now - e.since))) group = g;
+          }
+        } else {
+          pool.sort((a, b) => a.since - b.since);
+          if (pool.length >= size) group = pool.slice(0, size);
+          // Долго ждут — сажаем тех, кто есть, остальные места займут боты.
+          else if (pool.length >= 2 && now - pool[0].since >= MM.CASUAL_BOTS_AFTER) group = pool;
+        }
+        if (group) { mmMakeRoom(group, size, mode); found = true; }
+      }
+      if (found) break;
+    }
+  }
+}
+
+function mmMakeRoom(group, size, mode) {
+  const first = group[0];
+  const { r, token } = createRoom({ name: first.name, players: size, turnTime: DEFAULT_TURN_TIME, bluff: false, lang: first.lang }, first.acc,
+    { kind: mode, autoStartAt: Date.now() + MM.AUTOSTART });
+  first.result = { room: r.code, token, kind: mode };
+  const taken = new Set([r.seats[0].name.toLowerCase()]);
+  for (const e of group.slice(1)) {
+    let nm = e.name, k = 2;
+    while (taken.has(nm.toLowerCase())) nm = `${e.name.slice(0, 17)} ${k++}`;
+    taken.add(nm.toLowerCase());
+    const t = newToken();
+    r.seats.push({ name: nm, token: t, bot: false, pid: newPid(), ...accSeat(e.acc) });
+    e.result = { room: r.code, token: t, kind: mode };
+  }
+  console.log(`подбор: ${mode} стол ${r.code} на ${size}, игроков ${group.length}`);
+}
+
+// Калибровка: первые партии новичка — рейтинговая игра с ботами.
+function calibRoom(body, acc) {
+  if (!acc) fail('Рейтинговая игра — только после входа через Google');
+  if (acc.games >= Rating.BOARD_MIN_GAMES) fail('Калибровка пройдена — ищите соперников в рейтинговой игре');
+  return createRoom({ name: body.name || acc.nick, players: clampInt(body.players, 2, 4, 4), turnTime: DEFAULT_TURN_TIME, bluff: false, lang: body.lang }, acc,
+    { kind: 'ranked', calib: true, autoStartAt: Date.now() + 3000 });
+}
+
+// Автостарт столов подбора. Кто так и не подключился — его место занимает бот (в рейтинге — последнее место).
+function autoStartTick() {
+  const now = Date.now();
+  for (const r of rooms.values()) {
+    if (r.game || !r.autoStartAt) continue;
+    const humans = humanSeats(r);
+    const allIn = humans.every(i => isOnline(r, i));
+    if (!allIn && now < r.autoStartAt) continue;
+    if (!humans.some(i => r.seats[i].everOnline)) { if (now > r.autoStartAt + 60000) r.autoStartAt = 0; continue; } // никто не пришёл
+    for (const i of humans) {
+      const s = r.seats[i];
+      if (s.everOnline) continue;
+      s.bot = true; s.token = null; s.name = `${s.name} (${r.lang === 'en' ? 'bot' : 'бот'})`;
+      if (s.uid) s.left = true;
+    }
+    if (r.seats[r.hostSeat].bot) { const h = humanSeats(r)[0]; if (h !== undefined) r.hostSeat = h; }
+    r.autoStartAt = 0;
+    startGame(r);
+    update(r);
+  }
 }
 
 // Аккаунт по ключу сессии (или null для гостя). Заодно запоминаем имя за столом — оно идёт в таблицу лидеров.
@@ -557,12 +716,15 @@ async function handleApi(req, res, url) {
     res.write('retry: 2000\n\n');
     const st = { res, seat };
     r.streams.add(st);
+    r.seats[seat].everOnline = true;
     r.touched = Date.now();
     checkVote(r);
     update(r);
+    if (r.autoStartAt) autoStartTick(); // все подключились — не ждём таймера
     req.on('close', () => { if (r.streams.delete(st)) { checkVote(r); update(r); } });
     return;
   }
+  if (url.pathname === '/api/rooms' && req.method === 'GET') return sendJson(res, 200, { rooms: openRooms() });
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return sendJson(res, 200, { googleClientId: GOOGLE_CLIENT_ID, ratings: DB.ready() });
   }
@@ -597,6 +759,23 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/create') {
     const acc = await accountOf(body.session, body.name);
     const { r, token } = createRoom(body, acc);
+    return sendJson(res, 200, { room: r.code, token });
+  }
+  if (url.pathname === '/api/mm/join') {
+    const acc = await accountOf(body.session, body.name);
+    if (body.mode === 'ranked' && !DB.ready()) fail('Рейтинг сейчас недоступен (нет связи с базой).');
+    return sendJson(res, 200, { ticket: mmJoin(body, acc) });
+  }
+  if (url.pathname === '/api/mm/status') return sendJson(res, 200, mmStatus(body.ticket));
+  if (url.pathname === '/api/mm/cancel') {
+    const e = MM.queue.get(String(body.ticket || ''));
+    if (e && !e.result) MM.queue.delete(e.ticket);
+    return sendJson(res, 200, { ok: true });
+  }
+  if (url.pathname === '/api/calib') {
+    const acc = await accountOf(body.session, body.name);
+    if (!DB.ready()) fail('Рейтинг сейчас недоступен (нет связи с базой).');
+    const { r, token } = calibRoom(body, acc);
     return sendJson(res, 200, { room: r.code, token });
   }
   if (url.pathname === '/api/join') {
@@ -642,6 +821,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 setInterval(() => { for (const r of rooms.values()) { try { botSocialTick(r); } catch (e) { console.error('bot social', e); } } }, 9000);
+setInterval(() => { try { mmMatch(); autoStartTick(); } catch (e) { console.error('matchmaking', e); } }, 1000);
 
 // Пинг держит SSE-соединения живыми за прокси; уборка старых комнат.
 setInterval(() => { for (const r of rooms.values()) for (const st of r.streams) { try { st.res.write(': ping\n\n'); } catch {} } }, 20000);
@@ -652,4 +832,4 @@ setInterval(() => {
 
 server.listen(PORT, () => console.log(`В Точку: сервер запущен на порту ${PORT}`));
 DB.init();
-module.exports = { server, rooms, DB };
+module.exports = { server, rooms, DB, MM };

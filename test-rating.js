@@ -113,7 +113,7 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; };
         lobbySeen = lobbySeen || (v.seats[0].rating === 1000 && v.seats[1].rating === 1000 && v.seats[2].rating === null);
       }
       if (v.stage !== 'game') return;
-      if (v.phase === 'gameOver') { if (v.rating && v.rating.status === 'done' && v.you === 0) resolve(v); return; }
+      if (v.phase === 'gameOver') { if (v.rating && v.rating.status !== 'pending' && v.you === 0) resolve(v); return; }
       if (v.phase === 'roundDone' && v.you === 0) return post('/api/action', { room: room.room, token: h.token, type: 'nextRound' });
       if (v.turn !== v.you) return;
       if (v.phase === 'bid') post('/api/action', { room: room.room, token: h.token, type: 'bid', value: 0 });
@@ -126,15 +126,12 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; };
   const v = await finished;
   clearTimeout(timeout);
   ok(lobbySeen, 'рейтинг виден в лобби у игроков с аккаунтом, у гостя — нет');
-  const ch = v.rating.changes;
-  ok(Object.keys(ch).sort().join() === '0,1', 'в рейтинге только игроки с аккаунтом: ' + Object.keys(ch));
-  const expectSign = Math.sign(v.scores[0] - v.scores[1]);
-  ok(Math.sign(ch[0].delta) === expectSign && ch[0].delta === -ch[1].delta, `изменения ${ch[0].delta}/${ch[1].delta} при счёте ${v.scores[0]}:${v.scores[1]}`);
-  ok(v.seats[0].rating === ch[0].after, 'рейтинг у места обновился');
+  // Стол по коду — обычная игра: рейтинг не меняется (рейтинговые партии проверяет test-lobby.js).
+  ok(v.rating.status === 'skip' && /Обычная/.test(v.rating.reason), 'стол по коду — без рейтинга');
   const me = (await post('/api/me', { session: A.session })).j.me;
-  ok(me.rating === ch[0].after && me.games === 1, 'рейтинг сохранён');
+  ok(me.rating === 1000 && me.games === 0, 'рейтинг не изменился');
   const lb2 = (await post('/api/leaderboard', { session: B.session })).j;
-  ok(lb2.me.games === 1 && lb2.minGames === 5, 'таблица лидеров по API');
+  ok(lb2.me.games === 0 && lb2.minGames === 5, 'таблица лидеров по API');
 
   console.log(`test-rating: ${passed} проверок пройдено`);
   server.close();
