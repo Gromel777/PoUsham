@@ -1000,3 +1000,19 @@ input, select { font: inherit; }
 .bm-l { font-size: 9px; letter-spacing: .08em; }
 .crown { width: 36px; height: 27px; }
 .seat .ava .crown, .me-panel .ava .crown { top: -18px; }
+
+/* ================= игровое меню: две колонки без прокрутки ================= */
+.modal.menu-modal { padding: 12px 16px 14px; overflow: visible; }
+.menu-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+.menu-head h2 { margin: 0 !important; }
+.menu-back { padding: 6px 18px !important; }
+.menu-cols { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(220px, 1fr); gap: 18px; }
+.menu-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.menu-col + .menu-col { padding-left: 18px; border-left: 1px solid rgba(232, 196, 106, .18); }
+.menu-cap { font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-dim); margin: 0 2px 1px; }
+.menu-col .btn-ghost { text-align: left; padding: 7px 12px; font-size: 13px; }
+.menu-col .music-ctl { padding: 2px 2px 3px; gap: 10px; }
+.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.menu-row .seg button { padding: 5px 9px; font-size: 12px; }
+.menu-row .lang-seg { align-self: auto; }
+.menu-fill { flex: 1; min-height: 4px; }

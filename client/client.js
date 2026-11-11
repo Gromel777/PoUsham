@@ -784,19 +784,27 @@
   }
   applyLangStatic();
   function showMenu() {
-    showModal(`<h2 class="gold-text">${T('Меню')}</h2><div class="menu-list">
-      ${musicCtlHtml()}
-      <button class="btn-ghost" data-act="sound">${T('Звук: {v}', { v: T(prefs.sound ? 'включён' : 'выключен') })}</button>
-      <button class="btn-ghost" data-act="quality">${T('Эффекты: {v}', { v: T(prefs.fx === 'high' ? 'максимум' : 'экономно') })}</button>
-      <button class="btn-ghost" data-act="log">${T('Журнал: {v}', { v: T(prefs.log ? 'показан' : 'скрыт') })}</button>
-      <div class="seg" id="seg-theme">${[['sil', 'Силуэты'], ['dark', 'Чёрные'], ['light', 'Классика']].map(([k, n]) => `<button data-act="theme" data-t="${k}" class="${prefs.cards === k ? 'on' : ''}">${T(n)}</button>`).join('')}</div>
-      ${langSeg()}
-      <button class="btn-ghost" data-act="fullscreen">${T(document.fullscreenElement ? 'Выйти из полного экрана' : 'Во весь экран')}</button>
-      <button class="btn-ghost" data-act="install">${T('Установить как приложение')}</button>
-      <button class="btn-ghost" data-act="rules">${T('Правила')}</button>
-      <button class="btn-ghost" data-act="board">${T('Таблица лидеров')}</button>
-      <button class="btn-ghost btn-crimson" data-act="leave-ask">${T('Выйти из-за стола')}</button>
-    </div><div class="actions"><button class="btn-gold" data-act="close">${T('Назад')}</button></div>`);
+    // Две колонки: слева — настройки, справа — партия. Всё помещается без прокрутки на горизонтальном экране.
+    showModal(`<div class="menu-head"><h2 class="gold-text">${T('Меню')}</h2><button class="btn-gold menu-back" data-act="close">${T('Назад')}</button></div>
+      <div class="menu-cols">
+        <div class="menu-col">
+          <div class="menu-cap">${T('Настройки')}</div>
+          ${musicCtlHtml()}
+          <button class="btn-ghost" data-act="sound">${T('Звук: {v}', { v: T(prefs.sound ? 'включён' : 'выключен') })}</button>
+          <button class="btn-ghost" data-act="quality">${T('Эффекты: {v}', { v: T(prefs.fx === 'high' ? 'максимум' : 'экономно') })}</button>
+          <button class="btn-ghost" data-act="log">${T('Журнал: {v}', { v: T(prefs.log ? 'показан' : 'скрыт') })}</button>
+          <div class="menu-row"><div class="seg" id="seg-theme">${[['sil', 'Силуэты'], ['dark', 'Чёрные'], ['light', 'Классика']].map(([k, n]) => `<button data-act="theme" data-t="${k}" class="${prefs.cards === k ? 'on' : ''}">${T(n)}</button>`).join('')}</div>${langSeg()}</div>
+        </div>
+        <div class="menu-col">
+          <div class="menu-cap">${T('Партия')}</div>
+          <button class="btn-ghost" data-act="rules">${T('Правила')}</button>
+          <button class="btn-ghost" data-act="board">${T('Таблица лидеров')}</button>
+          <button class="btn-ghost" data-act="fullscreen">${T(document.fullscreenElement ? 'Выйти из полного экрана' : 'Во весь экран')}</button>
+          <button class="btn-ghost" data-act="install">${T('Установить как приложение')}</button>
+          <span class="menu-fill"></span>
+          <button class="btn-ghost btn-crimson" data-act="leave-ask">${T('Выйти из-за стола')}</button>
+        </div>
+      </div>`, 'menu-modal');
   }
   function showScores() {
     const v = S.view;
@@ -2689,13 +2697,13 @@
       Social.syncVoice(v); Social.renderChat(v); Social.decorateAvatars(v);
       Social.openAvatarMenu(+b.dataset.seat);
     },
-    theme: b => { prefs.cards = b.dataset.t; savePrefs(); Cards.setTheme(prefs.cards); syncHome(); if (S.screen === 'home') { showHomeFanRefresh(); } Game.refreshFaces(); if ($('#overlay').classList.contains('on') && $('#overlay .menu-list')) showMenu(); },
+    theme: b => { prefs.cards = b.dataset.t; savePrefs(); Cards.setTheme(prefs.cards); syncHome(); if (S.screen === 'home') { showHomeFanRefresh(); } Game.refreshFaces(); if ($('#overlay').classList.contains('on') && $('#overlay .menu-list, #overlay .menu-modal')) showMenu(); },
     lang: b => {
       const l = b.dataset.l;
       if (l === I18N.lang) return;
       const nm = $('#name'); if (nm && nm.value.trim()) save(STORE_KEY, { name: nm.value.trim() });
       prefs.lang = l; savePrefs(); I18N.set(l); applyLangStatic(); relabelDock();
-      const menuOpen = $('#overlay').classList.contains('on') && $('#overlay .menu-list');
+      const menuOpen = $('#overlay').classList.contains('on') && $('#overlay .menu-list, #overlay .menu-modal');
       if (S.screen === 'home') { S.screen = null; showHome(); }
       else if (S.screen === 'lobby' && S.view) { S.screen = null; showLobby(S.view); }
       else if (S.screen === 'game' && S.view) enqueue({ remount: true }); // пересобрать стол в очереди, после текущей анимации
