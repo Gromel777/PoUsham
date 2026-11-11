@@ -20,6 +20,12 @@
   function load(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } }
   function save(key, patch) { try { localStorage.setItem(key, JSON.stringify({ ...load(key), ...patch })); } catch {} }
   const prefs = { sound: true, music: true, musicVol: 0.1, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang, ...load(PREF_KEY) };
+  // Оформление комнаты (стол, окружение). Прототип: ?room=cozy — «Пижамная вечеринка».
+  const ROOM = (() => { const q = new URLSearchParams(location.search).get('room'); return q || prefs.room || 'classic'; })();
+  if (ROOM === 'cozy' && window.RoomCozy) {
+    document.body.classList.add('room-cozy');
+    const bg = document.querySelector('.bg'); if (bg) bg.insertAdjacentHTML('beforeend', `<div class="cz-deco">${RoomCozy.deco()}</div>`);
+  }
   // Новая колода «Силуэты» становится основной и для тех, у кого была сохранена старая.
   if (!prefs.deckV) { prefs.cards = 'sil'; prefs.deckV = 2; }
   // Базовая громкость музыки снижена до 10% — и для тех, у кого уже сохранились прежние 20%.
@@ -555,6 +561,12 @@
 
   // ---------- стол по образцу: кожаный борт с заклёпками, лакированная дорожка, подстаканники, сукно ----------
   function tableSvg(angles) {
+    const svg = classicTableSvg(angles);
+    if (ROOM !== 'cozy' || !window.RoomCozy) return svg;
+    // Общий шар хода берём из классического стола, всё остальное — из комнаты.
+    return RoomCozy.tableBase(angles, SIDE_SPOTS) + svg.slice(svg.indexOf('<defs>\n        <radialGradient id="ballG"'));
+  }
+  function classicTableSvg(angles) {
     const cx = 500, cy = 300;
     const ell = (rx, ry, a) => [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry];
     let studs = '';
@@ -1240,7 +1252,7 @@
         const el = document.createElement('div');
         el.className = `seat spot-${spot}`;
         const fanSide = spot === 'right' || spot === 'tr' ? 'l' : 'r';
-        el.innerHTML = `<div class="chair" style="--chair-rot:${CHAIR_ROT[spot] || 0}deg">${chairSvg()}</div>
+        el.innerHTML = `<div class="chair" style="--chair-rot:${CHAIR_ROT[spot] || 0}deg">${ROOM === 'cozy' && window.RoomCozy ? RoomCozy.chair(spot) : chairSvg()}</div>
           <div class="ava"><div class="ring"></div><span class="ini"></span></div>
           <div class="plate"><div class="line1"><span class="nm"></span><span class="sc">0</span></div><div class="pips"></div></div>
           <div class="fan ${fanSide}"></div><div class="xtra"></div>`;
