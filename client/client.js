@@ -557,7 +557,7 @@
     let cups = '';
     for (const deg of angles) {
       const [x, y] = ell(408, 226, deg * Math.PI / 180);
-      cups += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><ellipse rx="27" ry="19" fill="url(#chrome)" stroke="#0a0a0c" stroke-width="1.5"/><ellipse rx="20" ry="13" fill="url(#cupIn)"/><ellipse rx="20" ry="13" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1"/></g>`;
+      cups += `<g class="cup" data-a="${deg}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><ellipse rx="27" ry="19" fill="url(#chrome)" stroke="#0a0a0c" stroke-width="1.5"/><ellipse rx="20" ry="13" fill="url(#cupIn)"/><ellipse rx="20" ry="13" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1"/></g>`;
     }
     // Боковина стола: нижняя половина эллипса столешницы, вытянутая вниз на толщину.
     const lowerArc = dy => `M ${cx - 496} ${cy + dy} A 496 296 0 0 0 ${cx + 496} ${cy + dy}`;
@@ -603,6 +603,7 @@
       <ellipse cx="${cx}" cy="${cy}" rx="444" ry="252" fill="url(#track)" stroke="#000" stroke-width="3"/>
       <ellipse cx="${cx}" cy="${cy - 4}" rx="428" ry="240" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="3"/>
       ${cups}
+      ${SIDE_SPOTS.map(([x, y], i) => `<circle class="side-spot" data-i="${i}" cx="${x}" cy="${y}" r="14" fill="none"/>`).join('')}
       <ellipse cx="${cx}" cy="${cy}" rx="376" ry="202" fill="#000"/>
       <ellipse cx="${cx}" cy="${cy}" rx="372" ry="198" fill="url(#felt)"/>
       <rect x="128" y="102" width="744" height="396" fill="#fff" filter="url(#noise)" clip-path="url(#feltClip)" opacity=".7"/>
@@ -664,6 +665,8 @@
       </g>
     </svg><div class="table-light"></div>`;
   }
+  // Запасные места для шара у себя, когда подстаканник закрыт картами руки: сначала справа, потом слева.
+  const SIDE_SPOTS = [[690, 420], [770, 394], [830, 350], [310, 420], [230, 394]];
   // Дуга неона по краю стола: центр — угол игрока (в градусах), ширина — 50°.
   function neonArcPath(deg, span = 50) {
     const cx = 500, cy = 300, rx = 492, ry = 292;
@@ -1203,7 +1206,7 @@
     buildSeats(v) {
       const tw = $('#table-wrap', this.el);
       tw.innerHTML = tableSvg(Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
-      this.neonDeg = null; this.puckDeg = null; this.puckK = null; this.puckIn = null; this.puckAnim = false; this.ballLast = null; this.ballTrail = []; cancelAnimationFrame(this.puckRaf);
+      this.neonDeg = null; this.puckDeg = null; this.puckK = null; this.puckIn = null; this.puckAnim = false; this.ballLast = null; this.ballTrail = []; this.sideCur = null; this.puckGoal = null; cancelAnimationFrame(this.puckRaf);
       this.seatsLayer.innerHTML = '';
       this.seatsLayer.className = `seats n${v.n}`;
       this.seatEls = [];
@@ -1752,8 +1755,11 @@
       const target = SPOT_ANGLE[spotOf(v, v.leader)];
       if (target == null) return;
       const mine = v.leader === v.you;
-      // У себя фишку закрывают карты руки: она крупнее, с ореолом и выезжает с подстаканника на сукно.
-      const kTo = mine ? 1.2 : 1, inTo = mine ? 1 : 0;
+      // У себя шар лежит в подстаканнике, пока его не закрывают карты руки; закрыли — отпрыгивает на свободное место рядом (сначала вправо).
+      const cs = mine ? this.cupState(tw, target) : null;
+      const kTo = mine ? 1.2 : 1, inTo = cs && cs.covered ? 1 : 0;
+      const sideTo = cs && cs.side ? cs.side : (this.sideCur || { x: SIDE_SPOTS[0][0], y: SIDE_SPOTS[0][1] });
+      if (!this.sideCur) this.sideCur = { ...sideTo };
       puck.style.display = '';
       puck.classList.toggle('mine', mine);
       if (this.puckK == null) this.puckK = kTo;
@@ -1771,9 +1777,9 @@
         if (!isFinite(this.puckK)) this.puckK = kTo;
         if (!isFinite(deg)) deg = target;
         const a = deg * Math.PI / 180, inn = Math.min(1, Math.max(0, this.puckIn));
-        // У себя: с подстаканника на сукно слева перед рукой — там его не закрывают ни карты, ни панель заявки.
-        const x = 500 + Math.cos(a) * 408 + (262 - 500 - Math.cos(a) * 408) * inn;
-        const y = 300 + Math.sin(a) * 226 + (412 - 300 - Math.sin(a) * 226) * inn;
+        const sd = this.sideCur;
+        const cx0 = 500 + Math.cos(a) * 408, cy0 = 300 + Math.sin(a) * 226;
+        const x = cx0 + (sd.x - cx0) * inn, y = cy0 + (sd.y - cy0) * inn;
         const K = this.puckK;
         puck.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(K * DS).toFixed(3)})`);
         up.setAttribute('transform', `scale(1 ${kAsp.toFixed(3)}) translate(0 -${(R * 0.72 + (this.ballHop || 0)).toFixed(1)})`);
@@ -1805,25 +1811,31 @@
           }).join('');
         }
       };
-      if (this.puckAnim && this.puckTarget === target && !fast) return; // уже едет туда
-      cancelAnimationFrame(this.puckRaf); this.puckAnim = false; this.puckTarget = target;
-      if (this.puckDeg == null || fast) { this.puckK = kTo; this.puckIn = inTo; this.puckDeg = target; place(target); return; }
+      const goal = `${target}|${inTo}|${sideTo.x},${sideTo.y}`;
+      if (this.puckAnim && this.puckGoal === goal && !fast) return; // уже едет туда
+      const sameSpot = !this.puckAnim && this.puckGoal === goal;
+      cancelAnimationFrame(this.puckRaf); this.puckAnim = false; this.puckTarget = target; this.puckGoal = goal;
+      if (this.puckDeg == null || fast) { this.puckK = kTo; this.puckIn = inTo; this.sideCur = { ...sideTo }; this.puckDeg = target; place(target); return; }
+      if (sameSpot && this.puckDeg === target) { place(target); return; }
       if (!isFinite(this.puckDeg)) this.puckDeg = target;
       if (!isFinite(this.puckIn)) this.puckIn = inTo;
       if (!isFinite(this.puckK)) this.puckK = kTo;
       let from = this.puckDeg, to = target;
       while (to <= from) to += 360; // только по часовой стрелке
       if (to - from >= 360) to -= 360;
-      const kFrom = this.puckK, inFrom = this.puckIn;
+      const kFrom = this.puckK, inFrom = this.puckIn, sideFrom = { ...this.sideCur };
       const roll = to - from >= 0.5;
+      const sideMoved = Math.hypot(sideTo.x - sideFrom.x, sideTo.y - sideFrom.y) > 1 && (inFrom > 0.01 || inTo > 0.01);
       // Одно непрерывное движение: шар катится по кругу и сразу плавно сворачивает к месту остановки
       // (съезд с сукна и выезд на сукно идут одновременно с качением, без отдельных рывков).
       const tOut = 0;
       const tRoll = roll ? 800 + (to - from) * 3 : 0;
-      const tIn = !roll && Math.abs(inTo - inFrom) > 0.01 ? 420 : 0;
+      // Без переката (у себя): прыжок из подстаканника в сторону и обратно — дугой, с подскоком.
+      const hopMove = !roll && (Math.abs(inTo - inFrom) > 0.01 || sideMoved);
+      const tIn = hopMove ? 520 : 0;
       const total = tRoll + tIn;
-      if (!total) { this.puckK = kTo; this.puckIn = inTo; place(target); return; }
-      if (roll) SFX.puck();
+      if (!total) { this.puckK = kTo; this.puckIn = inTo; this.sideCur = { ...sideTo }; place(target); return; }
+      if (roll) SFX.puck(); else if (hopMove) SFX.flick();
       const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
       const t0 = performance.now();
       this.puckAnim = true;
@@ -1835,10 +1847,14 @@
           deg = from + (to - from) * e;
           this.puckK = kFrom + (kTo - kFrom) * e;
           this.puckIn = inFrom + (inTo - inFrom) * e;
+          this.sideCur = { x: sideFrom.x + (sideTo.x - sideFrom.x) * e, y: sideFrom.y + (sideTo.y - sideFrom.y) * e };
         } else {
           deg = to;
           this.puckK = kTo;
-          this.puckIn = tIn ? inFrom + (inTo - inFrom) * ease(Math.min(1, (el - tRoll) / tIn)) : inTo;
+          const k2 = tIn ? Math.min(1, (el - tRoll) / tIn) : 1, e2 = ease(k2);
+          this.puckIn = inFrom + (inTo - inFrom) * e2;
+          this.sideCur = { x: sideFrom.x + (sideTo.x - sideFrom.x) * e2, y: sideFrom.y + (sideTo.y - sideFrom.y) * e2 };
+          this.ballHop = hopMove ? Math.sin(k2 * Math.PI) * 22 : 0;
         }
         place(deg);
         this.puckDeg = deg % 360;
@@ -1850,29 +1866,52 @@
         }
         if (el < total) this.puckRaf = requestAnimationFrame(step);
         else {
-          this.puckAnim = false; this.puckDeg = target; this.puckK = kTo; this.puckIn = inTo; place(target);
+          this.puckAnim = false; this.puckDeg = target; this.puckK = kTo; this.puckIn = inTo; this.sideCur = { ...sideTo }; this.ballHop = 0; place(target);
           puck.classList.add('landed'); setTimeout(() => puck.classList.remove('landed'), 600);
-          if (roll) {
+          if (roll || hopMove) {
             // Мягкий подскок на месте — в той же системе координат, без смещения.
             const h0 = performance.now();
             const hop = t => {
               const k = Math.min(1, (t - h0) / 520);
               this.ballHop = Math.abs(Math.sin(k * Math.PI * 2)) * 9 * (1 - k);
-              if (this.puckAnim || this.puckTarget !== target) { this.ballHop = 0; return; }
+              if (this.puckAnim || this.puckGoal !== goal) { this.ballHop = 0; return; }
               place(target);
               if (k < 1) requestAnimationFrame(hop); else this.ballHop = 0;
             };
             requestAnimationFrame(hop);
           }
           const body = puck.querySelector(".ball-body");
-          if (body && roll) {
+          if (body && (roll || hopMove)) {
             const [bx, by] = VIEW.center(body);
-            FX.ring(bx, by, { r1: 46 * kTo, color: '#f6d27a', width: 2.5, life: 0.5 });
+            FX.ring(bx, by, { r1: (roll ? 46 : 32) * kTo, color: '#f6d27a', width: 2.5, life: 0.5 });
             FX.burst(bx, by, { n: 10, speed: [60, 180], size: [1.2, 2.6], g: 160, life: [0.4, 0.8] });
           }
         }
       };
       this.puckRaf = requestAnimationFrame(step);
+    },
+
+    // Закрыт ли мой подстаканник картами руки и какое свободное место рядом (по целевым позициям карт, без ожидания анимаций).
+    cupState(tw, deg) {
+      const cup = tw.querySelector(`.cup[data-a="${deg}"]`);
+      if (!cup) return { covered: true, side: null };
+      const d = dims();
+      const cards = [...this.hand.values()].map(el => el._p).filter(Boolean);
+      const hit = (x, y, pad) => cards.some(p => {
+        const a = -(p.rot || 0) * Math.PI / 180, s = p.s == null ? 1 : p.s;
+        const dx = x - p.x, dy = y - p.y;
+        const lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a);
+        return Math.abs(lx) < d.cw * s / 2 + pad && Math.abs(ly) < d.ch * s / 2 + pad;
+      });
+      const cr = VIEW.rect(cup);
+      const covered = hit(cr.left + cr.width / 2, cr.top + cr.height / 2, Math.min(cr.width, cr.height) * 0.45);
+      let side = null;
+      for (const sp of tw.querySelectorAll('.side-spot')) {
+        const r = VIEW.rect(sp);
+        if (!hit(r.left + r.width / 2, r.top + r.height / 2, r.width * 0.5)) { const [x, y] = SIDE_SPOTS[+sp.dataset.i]; side = { x, y }; break; }
+      }
+      if (!side) side = { x: SIDE_SPOTS[0][0], y: SIDE_SPOTS[0][1] };
+      return { covered, side };
     },
 
     // Живой неон: спокойный фиолетовый, золотая дуга бежит к тому, чей ход.
