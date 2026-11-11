@@ -6,3 +6,9 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
+  # Клиент на статическом хостинге: не засыпает, поэтому игра открывается сразу (API — на сервисе pousham).
+  - type: web
+    name: vtochku
+    runtime: static
+    buildCommand: npm run build:static
+    staticPublishPath: dist

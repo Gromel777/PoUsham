@@ -9,7 +9,7 @@ const hash = t => crypto.createHash('sha256').update(String(t)).digest('hex');
 const newSessionToken = () => crypto.randomBytes(24).toString('base64url');
 const cleanNick = s => String(s || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 20);
 const num = v => (v == null ? v : Number(v));
-const pub = p => p && ({ id: num(p.id), nick: p.nick, rating: num(p.rating), games: num(p.games), wins: num(p.wins), picture: p.picture || null });
+const pub = p => p && ({ id: num(p.id), nick: p.nick, rating: num(p.rating), games: num(p.games), wins: num(p.wins), picture: p.picture || null, tutorial: !!p.tutorial || num(p.games) > 0 }); // кто уже играл на рейтинг — обучение не предлагаем
 
 // Общий расчёт партии: на входе актуальные рейтинги, на выходе новые значения.
 function compute(entries, current) {
@@ -43,6 +43,7 @@ function memoryStore() {
     async bySession(t) { const id = t && sessions.get(hash(t)); return id ? pub(players.get(id)) : null; },
     async dropSession(t) { sessions.delete(hash(t)); },
     async setNick(id, nick) { const p = players.get(id); const n = cleanNick(nick); if (p && n) p.nick = n; },
+    async setTutorial(id) { const p = players.get(id); if (p) p.tutorial = true; },
     async recordMatch(meta, entries) {
       const current = new Map(entries.filter(e => !e.bot).map(e => [e.playerId, players.get(e.playerId).rating]));
       const res = compute(entries, current);
@@ -102,10 +103,11 @@ CREATE TABLE IF NOT EXISTS match_players (
   rating_after  INTEGER NOT NULL,
   PRIMARY KEY (match_id, player_id)
 );
+ALTER TABLE players ADD COLUMN IF NOT EXISTS tutorial BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS players_rating_idx ON players (rating DESC);
 CREATE INDEX IF NOT EXISTS match_players_player_idx ON match_players (player_id);
 `;
-const COLS = 'id, nick, rating, games, wins, picture';
+const COLS = 'id, nick, rating, games, wins, picture, tutorial';
 
 function pgStore(url) {
   const { Pool } = require('pg');
@@ -142,6 +144,7 @@ function pgStore(url) {
       const n = cleanNick(nick);
       if (n) await q('UPDATE players SET nick = $2, last_seen = now() WHERE id = $1', [id, n]);
     },
+    async setTutorial(id) { await q('UPDATE players SET tutorial = true WHERE id = $1', [id]); },
     async recordMatch(meta, entries) {
       const c = await pool.connect();
       try {
@@ -204,6 +207,7 @@ function create(url = process.env.DATABASE_URL) {
     bySession: t => (store && (status === 'ok' || status === 'memory') ? store.bySession(t) : Promise.resolve(null)),
     dropSession: t => need().dropSession(t),
     setNick: (id, n) => need().setNick(id, n),
+    setTutorial: id => need().setTutorial(id),
     recordMatch: (m, e) => need().recordMatch(m, e),
     leaderboard: (l, me) => need().leaderboard(l, me),
   };

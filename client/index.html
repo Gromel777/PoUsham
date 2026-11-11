@@ -17,6 +17,16 @@
 <link rel="apple-touch-icon" href="/icons/icon-180.png">
 </head>
 <body>
+<div id="boot"><style>
+#boot{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:radial-gradient(ellipse at 50% 40%,#1a1424 0%,#07060b 70%);transition:opacity .5s}
+#boot.out{opacity:0;pointer-events:none}
+#boot img{width:120px;height:120px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(232,196,106,.35));animation:bootGlow 2.2s ease-in-out infinite}
+#boot b{font:700 30px 'Cormorant Garamond',Georgia,serif;letter-spacing:.06em;background:linear-gradient(180deg,#fff1c4,#e8c46a 55%,#a77d2c);-webkit-background-clip:text;background-clip:text;color:transparent}
+#boot i{width:150px;height:3px;border-radius:3px;background:rgba(232,196,106,.15);overflow:hidden;position:relative}
+#boot i::after{content:'';position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,#e8c46a,transparent);animation:bootRun 1.3s linear infinite}
+@keyframes bootRun{from{transform:translateX(-100%)}to{transform:translateX(260%)}}
+@keyframes bootGlow{50%{filter:drop-shadow(0 0 28px rgba(232,196,106,.6))}}
+</style><img src="/img/logo.webp?v=1" alt=""><b>В Точку</b><i></i></div>
 <div id="app">
   <div id="shake">
     <div class="bg"></div>
@@ -42,6 +52,8 @@
 <script src="/music.js"></script>
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script src="/room-cozy.js"></script>
+<script src="/engine.js"></script>
+<script src="/tutorial.js"></script>
 <script src="/client.js"></script>
 </body>
 </html>

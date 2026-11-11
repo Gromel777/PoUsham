@@ -27,7 +27,11 @@ server/server.js     Everything server-side except DB: static files, rooms, seat
 server/db.js         Store: memoryStore() and pgStore(); SCHEMA (auto-created on start); players, sessions, matches, leaderboard.
 server/rating.js     Pairwise multiplayer Elo: START 1000, K 32, MIN_RATED 2, BOARD_MIN_GAMES 5; left/kicked = last place.
 server/google.js     Google ID-token (JWT RS256) verification with built-in crypto, no libs.
-client/index.html    Shell + script load order (order matters: viewport, brand, i18n, cards-*, fx, qrcode, voice, music, GSI, room-cozy, client).
+client/index.html    Shell + script load order (order matters: viewport, brand, i18n, cards-*, fx, qrcode, voice, music, GSI, room-cozy, engine, tutorial, client).
+                     Inline `#boot` splash (shown before any JS; removed by `bootDone()` in client.js).
+client/tutorial.js   Tutorial: local table in the browser (same engine.js, no server), SCRIPT (rigged deals + bot moves for rounds 1–5),
+                     STEPS (coach hints: `when(g)`, `tap` or `expect` + `target`), coach overlay (#coach: dim strips + gold ring, bubble, hard click guard).
+                     UMD: require() in Node exports SCRIPT/STEPS for test-tutorial.js; window.Tutorial.create() in browser.
 client/client.js     Whole UI (~3200 lines, one IIFE). See section index below.
 client/style.css     All styles (~1200 lines). Room skin via body class `room-cozy`.
 client/fx.js         Canvas particle effects per suit (♠ steel, ♣ emerald, ♦ ice, ♥ flame, 7♠ storm) + synthesized SFX. window.FX / SFX.
@@ -41,11 +45,13 @@ client/voice.js      Push-to-talk voice, WebRTC P2P (STUN only), signaling via a
 client/music.js      Background music via Web Audio (menu / ranked lobby / victory), default volume 0.1.
 client/brand.js      Logo helpers; real logo image is client/img/logo.webp (animated eye glow in CSS).
 client/qrcode.js     Third-party QR generator (MIT). Don't edit.
-client/sw.js         Service worker, network-first. CACHE name 'vtochku-vNN'.
+client/sw.js         Service worker, network-first with 2.5s timeout; falls back to cache if the server is asleep or returns a non-game page
+                     (game files carry header `X-VT: 1`). CACHE name 'vtochku-vNN'.
+scripts/build-static.js  Builds dist/ (client + engine.js) for Render Static Site; `npm run build:static`.
 client/manifest.webmanifest, client/icons/, client/img/, client/music/*.mp3, client/privacy.html
 prototype/po-usham.html  First offline single-file prototype vs bots. Legacy, not served. Don't edit.
 test-*.js            Tests (plain node scripts, no framework). `npm test` runs all.
-render.yaml          Render web service (free plan, healthCheckPath /health).
+render.yaml          Render web service `pousham` (free plan, healthCheckPath /health) + optional static site `vtochku` (never sleeps).
 README.md            Human README in Russian (structure, run, deploy, env).
 ```
 
@@ -69,6 +75,7 @@ README.md            Human README in Russian (structure, run, deploy, env).
 - Scoring `scoreFor(bid, took, cards)`: exact → 20×bid; exact zero → 10 + 2×cards; under → −20 per missing; over → +1 per extra. "dark" round ×2.
 - Bluff mode (`g.bluff`): any card may be played; others may `check` a non-first, non-7♠, non-forced card while trick is on table. Caught cheat −50 to cheater, +50 to checker, card returns, `g.fix` forces an honest replacement. Wrong check −20.
 - Skills: only `reshuffle` (once per game per player, only in `pre`, max once per round). Off in matchmade/ranked tables.
+- `newGame` tutorial options: `deals` (fixed hands per round), `firstLeader`, `bluffFrom` (round index from which `g.bluff` turns on).
 - Test mode (`test`, custom tables only): 17 rounds, round 10 `notrump`, round 15 `dark` (blind bids, hands hidden).
 - `Bots`: `bid`, `play` (sometimes cheats in bluff), `suspicion` (chance to check), `wantsReshuffle`.
 
@@ -85,29 +92,33 @@ README.md            Human README in Russian (structure, run, deploy, env).
 
 ### HTTP API
 GET: `/health`, `/api/events` (SSE; events: default state, `kicked`, `rtc`), `/api/rooms` (open public tables), `/api/config` (googleClientId, ratings).
-POST: `/api/auth/google`, `/api/me`, `/api/logout`, `/api/leaderboard`, `/api/create`, `/api/join`, `/api/mm/join|status|cancel`, `/api/calib`, `/api/action`.
+POST: `/api/auth/google`, `/api/me`, `/api/logout`, `/api/tutorial` (mark tutorial done for the session's account), `/api/leaderboard`, `/api/create`, `/api/join`, `/api/mm/join|status|cancel`, `/api/calib`, `/api/action`.
 `/api/action` types: game — `start, restart, kick, voteKick, vote, pause, unpause, bid, play, nextRound, check, skill`; social — `chat, emote, phrase, like, dislike, mud` (mud only for score leader); `rtc` relay.
 Errors: throw via `fail('русский текст')` (GameError → 400 with `{error}`).
+CORS `*` on `/health` and `/api/*` (client may be served from the static site); `OPTIONS` → 204.
 
 ## Client (client/client.js) — section index
 Search by the `// ----------` headers (line numbers drift):
 `настройки и сессия` (state `S`, `prefs` in localStorage `vtochku-prefs`, session `vtochku-session`, rooms classic/cozy) ·
-`музыка` · `сеть` (`api()`) · `аккаунт Google и рейтинг` (sign-in, avatar photo, `#00042` player tag = DB id, leaderboard) ·
+`музыка` · `сеть` (`API` base: same origin on pousham.onrender.com/localhost, else `https://pousham.onrender.com`; override `?api=`; `Server.wake()` polls /health, `Server.ready` promise — `api()` and `Auth.init` wait for it) · `аккаунт Google и рейтинг` (sign-in, avatar photo, `#00042` player tag = DB id, leaderboard) ·
 `connect/leave/act` + animation queue `enqueue/pump/apply` (state snapshots are animated sequentially) ·
 `экраны` (`showHome` tabs ranked/casual/lobby/private, `showLobby`, `showGameScreen`) · `поиск игроков` ·
 `стол` (`classicTableSvg`, chairs, icons) · `модальные окна, тосты`, `rulesHtml`, `showMenu` ·
 `персонализация` (`showCustomize`: Колоды / Комнаты / Эффекты, emote wheel) · `параллакс` · `геометрия` (seat/hand positions) ·
 `карты в DOM` (`makeCard`, `fly`) · `игровой экран` (largest block: score, trick, deal, bluff checks, reshuffle, round banner, leader crown, first-move ball, neon, pause, round results) ·
-`общение` (chat, emote wheel, likes, mud, voice dock) · `действия по кнопкам` (click handlers by `data-act`) · `PWA` · `init()`.
+`общение` (chat, emote wheel, likes, mud, voice dock) · `экран загрузки` (`showWaking` while server wakes) ·
+`обучение` (`maybeWelcome`/`showWelcome` — welcome overlay #welcome; `startTutorial` sets `S.local` = local table: `act()` routes to it, `social()` is off;
+`finishTutorial`, `markTutorialDone` → `/api/tutorial` or `S.tutPending` until sign-in; flag cached in `vtochku-auth.tutorial`) · `действия по кнопкам` (click handlers by `data-act`) · `PWA` · `init()`.
 
 ## Data (Postgres, auto-created in db.js SCHEMA)
-`players` (google_sub, nick, picture, rating, games, wins) · `sessions` (token_hash sha256 → player) · `matches` · `match_players` (place, score, left_game, rating before/after).
+`players` (google_sub, nick, picture, rating, games, wins, tutorial — `pub()` reports tutorial=true also for anyone with games>0) · `sessions` (token_hash sha256 → player) · `matches` · `match_players` (place, score, left_game, rating before/after).
 
 ## Env vars (Render)
 `DATABASE_URL` (Neon pooled string), `GOOGLE_CLIENT_ID` (fallback hardcoded, not secret), `PORT`. Check `/health` → `db: "ok"`, `google: true`. Never put secret values in the repo.
 
 ## Run & test
-`npm start` → http://localhost:3000 (in-memory DB). `npm test` → engine, rating, lobby/matchmaking, test modes, online integration (port 3999), pause.
+`npm start` → http://localhost:3000 (in-memory DB). `npm test` → engine, rating, lobby/matchmaking, test modes, online integration (port 3999), pause, tutorial script (test-tutorial.js).
+Tutorial in a real browser: Playwright + /usr/bin/google-chrome works in the sandbox (Google sign-in/fonts are blocked there).
 
 ## Not implemented yet / planned (don't assume they exist)
-Tutorial for first-time players, more skins (decks/rooms/effects), native mobile apps, monetization (paid skins, paid leagues). Check git log / ask the owner for current priorities.
+More skins (decks/rooms/effects), native mobile apps, monetization (paid skins, paid leagues). Check git log / ask the owner for current priorities.

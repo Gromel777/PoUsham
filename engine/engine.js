@@ -71,13 +71,16 @@ const Engine = (() => {
 
   function log(g, msg) { g.log.push(msg); if (g.log.length > 300) g.log.shift(); }
 
-  function newGame({ players, rounds, names, bluff = false, skills = false, test = false }) {
+  // Для обучения: deals — заранее заданные руки по раундам ([раунд][место] = список id карт),
+  // firstLeader — кто ходит первым в 1-м раунде, bluffFrom — с какого раунда (индекс) включается режим обмана.
+  function newGame({ players, rounds, names, bluff = false, skills = false, test = false, deals = null, firstLeader = null, bluffFrom = null }) {
     if (players < MIN_PLAYERS || players > MAX_PLAYERS) throw new Error(`Игроков должно быть от ${MIN_PLAYERS} до ${MAX_PLAYERS}`);
     const plan = roundPlan(rounds, maxCards(players));
     const g = {
       n: players, names, plan, modes: roundModes(plan, test), test: !!test, roundIdx: 0, bluff: !!bluff,
       scores: Array(players).fill(0), history: [], log: [],
-      firstLeader: Math.floor(Math.random() * players),
+      firstLeader: Number.isInteger(firstLeader) ? firstLeader : Math.floor(Math.random() * players),
+      deals, bluffFrom,
       checkSeq: 0, lastCheck: null,
       // Умения: каждое — один раз за партию. Пока одно: «Пересдача» (reshuffle).
       skillsOn: !!skills, skills: Array.from({ length: players }, () => ({ reshuffle: !!skills })),
@@ -89,6 +92,12 @@ const Engine = (() => {
 
   function dealHands(g) {
     const k = g.plan[g.roundIdx];
+    const fixed = g.deals && g.deals[g.roundIdx];
+    if (fixed) {
+      const all = new Map(makeDeck().map(c => [c.id, c]));
+      g.hands = fixed.map(ids => ids.map(id => { const c = all.get(id); if (!c) throw new Error('Нет такой карты: ' + id); return c; }).sort(handSort));
+      return;
+    }
     const deck = shuffle(makeDeck());
     g.hands = [];
     for (let p = 0; p < g.n; p++) g.hands.push(deck.splice(0, k).sort(handSort));
@@ -97,6 +106,7 @@ const Engine = (() => {
   function startRound(g) {
     const k = g.plan[g.roundIdx];
     dealHands(g);
+    if (Number.isInteger(g.bluffFrom)) g.bluff = g.roundIdx >= g.bluffFrom;
     g.mode = g.modes[g.roundIdx];
     g.trump = g.mode === 'notrump' ? null : TRUMP;
     g.reshuffledRound = false;

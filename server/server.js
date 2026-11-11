@@ -55,6 +55,7 @@ const STATIC = {
   '/img/logo.webp': 'client/img/logo.webp',
   '/fx.js': 'client/fx.js',
   '/engine.js': 'engine/engine.js',
+  '/tutorial.js': 'client/tutorial.js',
   '/music/menu.mp3': 'client/music/menu.mp3',
   '/music/ranked.mp3': 'client/music/ranked.mp3',
   '/music/victory.mp3': 'client/music/victory.mp3',
@@ -946,6 +947,12 @@ async function handleApi(req, res, url) {
     const me = await DB.bySession(body.session).catch(() => null);
     return sendJson(res, 200, { me });
   }
+  if (url.pathname === '/api/tutorial') {
+    const me = await DB.bySession(body.session).catch(() => null);
+    if (!me) fail('Войдите через Google, чтобы сохранить прохождение');
+    await DB.setTutorial(me.id).catch(e => { console.error('tutorial db:', e.message); fail('База данных недоступна, попробуйте позже'); });
+    return sendJson(res, 200, { ok: true });
+  }
   if (url.pathname === '/api/logout') {
     if (body.session) await DB.dropSession(body.session).catch(() => {});
     return sendJson(res, 200, { ok: true });
@@ -1005,7 +1012,7 @@ function serveStatic(req, res, url) {
   if (ext === '.mp3') return serveMedia(req, res, path.join(ROOT, rel));
   fs.readFile(path.join(ROOT, rel), (err, data) => {
     if (err) { res.writeHead(500); return res.end('Ошибка сервера'); }
-    res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': (ext === '.png' || ext === '.webp') ? 'public, max-age=86400' : 'no-cache' });
+    res.writeHead(200, { 'X-VT': '1', 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': (ext === '.png' || ext === '.webp') ? 'public, max-age=86400' : 'no-cache' });
     res.end(data);
   });
 }
@@ -1031,6 +1038,13 @@ function serveMedia(req, res, file) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  // Клиент может быть открыт со статического хостинга (он не засыпает) — разрешаем ему обращаться к API.
+  if (url.pathname === '/health' || url.pathname.startsWith('/api/')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Max-Age': '86400' }); return res.end(); }
+  }
   try {
     if (url.pathname === '/health') return sendJson(res, 200, { ok: true, rooms: rooms.size, db: DB.health(), google: !!process.env.GOOGLE_CLIENT_ID });
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);

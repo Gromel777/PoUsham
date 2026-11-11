@@ -75,8 +75,34 @@
   }
 
   // ---------- сеть ----------
+  // Адрес сервера: если клиент открыт с самого сервера (или локально) — тот же адрес;
+  // если со статического хостинга (он не засыпает) — запросы идут на сервер Render.
+  const API_HOST = 'https://pousham.onrender.com';
+  const API = (() => {
+    try { const o = new URLSearchParams(location.search).get('api') || localStorage.getItem('vtochku-api'); if (o) return o.replace(/\/$/, ''); } catch {}
+    const h = location.hostname;
+    if (h === 'pousham.onrender.com' || h === 'localhost' || h === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(h) || h.endsWith('.local') || location.protocol === 'file:') return '';
+    return API_HOST;
+  })();
+  // Сервер на бесплатном Render засыпает: пока он просыпается, показываем свой экран загрузки (и можно пройти обучение).
+  const Server = { ok: false, listeners: [] };
+  Server.ready = new Promise(res => { Server.resolve = res; });
+  Server.wake = async function () {
+    for (;;) {
+      try {
+        const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
+        const r = await fetch(API + '/health?t=' + Date.now(), { cache: 'no-store', signal: ctl.signal });
+        clearTimeout(t);
+        const j = r.ok ? await r.json().catch(() => null) : null;
+        if (j && j.ok) break;
+      } catch {}
+      await wait(1500);
+    }
+    Server.ok = true; Server.resolve();
+  };
   async function api(path, body) {
-    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    await Server.ready; // сервер просыпается — запрос подождёт
+    const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     let j = {};
     try { j = await r.json(); } catch {}
     if (!r.ok) throw new Error(I18N.trServer(j.error) || T('Ошибка соединения'));
@@ -84,30 +110,36 @@
   }
   // ---------- аккаунт Google и рейтинг ----------
   const AUTH_KEY = 'vtochku-auth';
+  // Client ID входа через Google (тот же, что на сервере) — чтобы кнопка входа была видна, даже пока сервер просыпается.
+  const GOOGLE_CLIENT_ID = '626516411258-ii9eiq7dni57082mmiil8mhbdma9p8qr.apps.googleusercontent.com';
   const Auth = {
     session: load(AUTH_KEY).session || null,
     me: null, cfg: null, gisInit: false,
     async init() {
-      try { this.cfg = await fetch('/api/config').then(r => r.json()); } catch {}
+      await Server.ready;
+      try { this.cfg = await fetch(API + '/api/config').then(r => r.json()); } catch {}
       if (this.session) {
         try {
-          const r = await fetch('/api/me', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: this.session }) });
-          if (r.ok) { const j = await r.json(); if (j.me) this.me = j.me; else this.forget(); }
+          const r = await fetch(API + '/api/me', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: this.session }) });
+          if (r.ok) { const j = await r.json(); if (j.me) { this.me = j.me; save(AUTH_KEY, { tutorial: !!j.me.tutorial }); } else this.forget(); }
         } catch {}
       }
       renderAcct();
+      if (tutorialDone()) closeWelcome();
     },
-    forget() { this.session = null; this.me = null; save(AUTH_KEY, { session: null }); },
+    forget() { this.session = null; this.me = null; save(AUTH_KEY, { session: null, tutorial: false }); },
     // Скрипт Google грузится асинхронно — ждём, пока появится.
     whenGis(cb, tries = 0) {
       if (window.google && google.accounts && google.accounts.id) return cb();
       if (tries < 60) setTimeout(() => this.whenGis(cb, tries + 1), 250);
     },
     renderButton(el) {
-      if (!this.cfg || !this.cfg.googleClientId) return;
+      if (!el) return;
+      const clientId = (this.cfg && this.cfg.googleClientId) || GOOGLE_CLIENT_ID;
+      if (!clientId) return;
       this.whenGis(() => {
         if (!this.gisInit) {
-          google.accounts.id.initialize({ client_id: this.cfg.googleClientId, callback: resp => this.onCredential(resp), auto_select: false, ux_mode: 'popup' });
+          google.accounts.id.initialize({ client_id: clientId, callback: resp => this.onCredential(resp), auto_select: false, ux_mode: 'popup' });
           this.gisInit = true;
         }
         if (!el.isConnected) return;
@@ -120,9 +152,11 @@
       try {
         const j = await api('/api/auth/google', { credential: resp.credential, nick: nameEl ? nameEl.value.trim() : '' });
         this.session = j.session; this.me = j.me;
-        save(AUTH_KEY, { session: j.session });
+        save(AUTH_KEY, { session: j.session, tutorial: !!j.me.tutorial });
         if (nameEl && !nameEl.value.trim()) nameEl.value = j.me.nick;
+        if (S.tutPending) markTutorialDone();
         renderAcct();
+        if (tutorialDone() && $('#welcome.on') && !S.local) { closeWelcome(); toast(T('Обучение уже пройдено на этом аккаунте')); }
         toast(T('Вы вошли: {n} · рейтинг {r}', { n: j.me.nick, r: j.me.rating }));
       } catch (e) { toast(e.message); }
     },
@@ -151,6 +185,7 @@
   const rtTag = r => `<span class="rt">${starSvg}${r}</span>`;
   // Плашка аккаунта на главном экране: кнопка Google или «аватар · имя · рейтинг».
   function renderAcct() {
+    renderWelcomeAcct();
     const box = cur('#acct');
     if (!box) return;
     const me = Auth.me;
@@ -228,7 +263,7 @@
     S.room = room; S.token = token; S.err = ''; S.connecting = true;
     save(STORE_KEY, { room, token });
     if (S.es) S.es.close();
-    const es = new EventSource(`/api/events?room=${encodeURIComponent(room)}&token=${encodeURIComponent(token)}`);
+    const es = new EventSource(`${API}/api/events?room=${encodeURIComponent(room)}&token=${encodeURIComponent(token)}`);
     es.onmessage = e => { S.connecting = false; const v = JSON.parse(e.data); v._at = Date.now(); if (v.stage === 'game' && Game.el) Game.updatePause(v); enqueue(v); };
     es.addEventListener('rtc', e => { try { const m = JSON.parse(e.data); Voice.onSignal(m.from, m.data); } catch {} });
     es.addEventListener('kicked', e => {
@@ -249,6 +284,7 @@
     if (!S.view) showConnecting();
   }
   function leave(msg) {
+    if (S.local) { S.local.destroy(); S.local = null; }
     if (S.es) S.es.close();
     S.es = null; S.view = null; S.room = null; S.token = null; S.connecting = false;
     Q.length = 0;
@@ -261,9 +297,10 @@
     $('#emo-pick').classList.remove('on');
     $('#dock').classList.remove('on');
     S.err = msg || '';
-    showHome();
+    if (Server.ok) showHome(); else showWaking();
   }
   async function act(body) {
+    if (S.local) { try { S.local.action(body); } catch (e) { toast(e.message); } return; }
     if (S.busy) return;
     S.busy = true;
     try { await api('/api/action', { room: S.room, token: S.token, ...body }); }
@@ -413,7 +450,7 @@
     roomsTimer = setTimeout(loadRooms, 4000);
     if (S.tab !== 'join') return;
     let list;
-    try { list = (await fetch('/api/rooms').then(r => r.json())).rooms || []; } catch { return; }
+    try { list = (await fetch(API + '/api/rooms').then(r => r.json())).rooms || []; } catch { return; }
     const box = cur('#room-list');
     if (!box) return;
     const cnt = cur('#rooms-count'); if (cnt) cnt.textContent = list.length ? String(list.length) : '';
@@ -2468,7 +2505,7 @@
       showModal(`<h2 class="gold-text" style="text-align:center">${T(iWon ? 'Победа!' : 'Игра окончена')}</h2>
         <div class="podium">${arranged.join('')}</div>
         <div class="over-rating" id="over-rating"></div>
-        <div class="actions" style="justify-content:center">${v.kind === 'ranked' ? `<button class="btn-gold" data-act="research">${T(v.calib ? 'Дальше' : 'Новый поиск')}</button>`
+        <div class="actions" style="justify-content:center">${v.kind === 'tutorial' ? `<button class="btn-gold" data-act="tutDone">${T('Завершить обучение')}</button>` : v.kind === 'ranked' ? `<button class="btn-gold" data-act="research">${T(v.calib ? 'Дальше' : 'Новый поиск')}</button>`
           : v.isHost ? `<button class="btn-gold" data-act="restart">${T('Ещё партию')}</button>` : `<span class="hint">${T('Новую партию запускает хост')}</span>`}
         <button class="btn-ghost" data-act="scores">${T('Таблица')}</button><button class="btn-ghost" data-act="leave">${T('В меню')}</button></div>`);
       $('#overlay').dataset.kind = 'over';
@@ -2857,10 +2894,11 @@
   }
 
   function rtcSend(to, data) {
-    if (!S.room) return;
-    fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: S.room, token: S.token, type: 'rtc', to, data }) }).catch(() => {});
+    if (!S.room || S.local) return;
+    fetch(API + '/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: S.room, token: S.token, type: 'rtc', to, data }) }).catch(() => {});
   }
   async function social(body) {
+    if (S.local) { toast(T('В обучении это недоступно')); return; }
     try { await api('/api/action', { room: S.room, token: S.token, ...body }); }
     catch (e) { toast(e.message); }
   }
@@ -3081,7 +3119,16 @@
     vote: b => act({ type: 'vote', value: b.dataset.yes === '1' }),
     scores: () => showScores(),
     menu: () => showMenu(),
-    rules: () => showModal(rulesHtml()),
+    tutorial: () => startTutorial(),
+    welcomeSkip: () => closeWelcome(),
+    tutDone: () => finishTutorial(),
+    tutGo: b => { closeModal(); if (b.dataset.tab && S.screen === 'home') actions.tab(b); },
+    rules: () => {
+      showModal(rulesHtml());
+      // Вне стола — рядом с «Понятно» кнопка обучения: пройти его заново можно в любой момент.
+      const acts = $('#overlay .actions');
+      if (acts && !S.room && !S.local) acts.insertAdjacentHTML('afterbegin', `<button class="btn-ghost" data-act="tutorial">${T('Пройти обучение')}</button>`);
+    },
     close: () => closeModal(),
     fullscreen: () => goFullscreen(),
     sound: b => { prefs.sound = !prefs.sound; save(PREF_KEY, prefs); applyPrefs(); if (b.closest('.sound-modal')) showSoundSettings(); else showMenu(); if (prefs.sound) SFX.chip(); },
@@ -3202,6 +3249,92 @@
     });
   }
 
+
+  // ---------- экран загрузки: сервер просыпается ----------
+  function bootDone() { const b = document.getElementById('boot'); if (b && !b.classList.contains('out')) { b.classList.add('out'); setTimeout(() => b.remove(), 600); } }
+  function showWaking() {
+    setScreen('waking', `<div class="connecting waking"><div style="text-align:center">${logoHtml('style="font-size:38px"')}
+      <div class="wake-bar"><i></i></div>
+      <div class="hint">${T('Сервер просыпается — обычно это до минуты.')}</div>
+      <div class="wake-actions"><button class="btn-gold" data-act="tutorial">${T('Пройти обучение, пока ждём')}</button><button class="btn-ghost" data-act="rules">${T('Правила')}</button></div></div></div>`);
+  }
+
+  // ---------- обучение ----------
+  // Флаг «обучение пройдено» хранится в аккаунте Google. Без входа флага нет — окно приветствия появится снова (обучение можно пропустить).
+  function tutorialDone() { return !!(Auth.session && (Auth.me ? Auth.me.tutorial : load(AUTH_KEY).tutorial)); }
+  function maybeWelcome() {
+    if (S.welcomed || S.local || S.room || tutorialDone()) return;
+    S.welcomed = true;
+    showWelcome();
+  }
+  function showWelcome() {
+    let w = $('#welcome');
+    if (!w) { w = document.createElement('div'); w.id = 'welcome'; $('#app').appendChild(w); }
+    w.innerHTML = `<div class="wel-card glass">${logoHtml('style="font-size:30px"')}
+      <h2 class="gold-text">${esc(T('Добро пожаловать в игру «В Точку»')).replace('«В Точку»', '«В&nbsp;Точку»')}</h2>
+      <p class="wel-sub">${T('Короткое обучение — минут на пять — покажет правила на настоящей партии с ботами.')}</p>
+      <div class="wel-acct" id="wel-acct"></div>
+      <div class="wel-actions"><button class="btn-gold" data-act="tutorial">${T('Пройти обучение')}</button><button class="btn-ghost" data-act="welcomeSkip">${T('Пропустить')}</button></div></div>`;
+    void w.offsetWidth;
+    w.classList.add('on');
+    renderWelcomeAcct();
+  }
+  function renderWelcomeAcct() {
+    const box = $('#wel-acct');
+    if (!box) return;
+    if (Auth.me) { box.innerHTML = `<span class="hint">${T('Вы вошли: {n}', { n: esc(Auth.me.nick) })}</span>`; return; }
+    if (box.dataset.g) return; // кнопка Google уже нарисована
+    box.dataset.g = '1';
+    box.innerHTML = `<div class="gbtn" id="gbtn-wel"></div><span class="hint">${T('Войдите через Google — тогда прохождение обучения и рейтинг сохранятся. Можно и позже.')}</span>`;
+    Auth.renderButton($('#gbtn-wel', box));
+  }
+  function closeWelcome() { const w = $('#welcome'); if (w) { w.classList.remove('on'); setTimeout(() => w.remove(), 400); } }
+
+  function startTutorial() {
+    if (S.local) return;
+    if (S.room) { toast(T('Сначала выйдите из-за стола')); return; }
+    closeWelcome(); closeModal();
+    if (MMS.ticket) cancelSearch();
+    const nameEl = cur('#name');
+    const name = (nameEl && nameEl.value.trim()) || (Auth.me && Auth.me.nick) || load(STORE_KEY).name || T('Вы');
+    Q.length = 0; S.view = null; S.err = '';
+    S.local = Tutorial.create({
+      name, pic: Auth.me && Auth.me.picture, lang: I18N.lang,
+      onView: v => enqueue(v),
+      isIdle: () => !pumping && !Q.length && !Game.intro && !Game.dealing && !!Game.el,
+    });
+    S.local.onSkip(() => { leave(); if (!tutorialDone() && Server.ok) maybeWelcome(); });
+  }
+  function markTutorialDone() {
+    if (!Auth.session) { S.tutPending = true; return; }
+    S.tutPending = false;
+    if (Auth.me) Auth.me.tutorial = true;
+    save(AUTH_KEY, { tutorial: true });
+    api('/api/tutorial', { session: Auth.session }).catch(() => {});
+  }
+  function finishTutorial() {
+    markTutorialDone();
+    leave();
+    const en = I18N.lang === 'en';
+    showModal(`<h2 class="gold-text">${T('Обучение пройдено!')}</h2>
+      <ul class="rules tut-recap">${(en ? [
+        'Bid how many tricks you will take — and hit it exactly.',
+        'Follow the led suit; no suit — play anything, hearts ♥ are trumps.',
+        '7♠ is the joker: always playable; on lead — “Highest on the table!”.',
+        'Exact bid: 20 per trick; exact zero: 10 + 2 per card; short: −20 each; over: +1.',
+        'Ranked games use bluff mode: bluff and check — a caught cheater pays 50.',
+      ] : [
+        'Заявляй, сколько взяток возьмёшь, — и попадай точно.',
+        'Ходи в масть; нет масти — любую карту, черви ♥ — козырь.',
+        '7♠ — джокер: можно всегда; первым ходом — «Старшие на стол!».',
+        'Точно: 20 за взятку; точный ноль: 10 + 2 за карту; недобор: −20 за каждую; перебор: +1.',
+        'В рейтинге — режим обмана: ври и проверяй, пойманный отдаёт 50.',
+      ]).map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+      ${Auth.me ? '' : `<div class="wel-acct"><div class="gbtn" id="gbtn-fin"></div><span class="hint">${T('Войдите, чтобы прохождение сохранилось. Без входа обучение предложим снова — его можно будет пропустить.')}</span></div>`}
+      <div class="actions"><button class="btn-gold" data-act="tutGo" data-tab="casual">${T('Обычная игра')}</button><button class="btn-gold" data-act="tutGo" data-tab="ranked">${T('Рейтинг')}</button><button class="btn-ghost" data-act="tutGo">${T('В меню')}</button></div>`);
+    Auth.renderButton($('#gbtn-fin'));
+  }
+
   function init() {
     Cards.setTheme(prefs.cards);
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -3211,9 +3344,19 @@
     motes();
     const sess = load(STORE_KEY);
     const roomParam = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
-    if (sess.room && sess.token && (!roomParam || roomParam === sess.room)) connect(sess.room, sess.token);
-    else showHome();
+    const resume = sess.room && sess.token && (!roomParam || roomParam === sess.room);
+    Server.wake();
     Auth.init();
+    // Сервер ответил быстро — сразу меню. Нет — свой экран загрузки (вместо страницы Render), на нём можно начать обучение.
+    const slow = setTimeout(() => { if (Server.ok) return; bootDone(); showWaking(); if (!resume) maybeWelcome(); }, 1200);
+    Server.ready.then(() => {
+      clearTimeout(slow);
+      bootDone();
+      if (S.local) { toast(T('Сервер готов — после обучения можно играть онлайн')); return; }
+      if (resume) { connect(sess.room, sess.token); return; }
+      if (S.screen !== 'home') showHome();
+      maybeWelcome();
+    });
   }
   window.VT = { S, Game, Social, Auth, tierOf, enqueue };
   init();
