@@ -69,6 +69,7 @@ const STATIC = {
   '/cards-sil.js': 'client/cards-sil.js',
   '/room-cozy.js': 'client/room-cozy.js',
   '/room-office.js': 'client/room-office.js',
+  '/cards-royal.js': 'client/cards-royal.js',
   '/i18n.js': 'client/i18n.js',
   '/brand.js': 'client/brand.js',
   '/viewport.js': 'client/viewport.js',
@@ -88,6 +89,12 @@ const STATIC = {
   '/music/ranked.mp3': 'client/music/ranked.mp3',
   '/music/victory.mp3': 'client/music/victory.mp3',
 };
+// Колоды из картинок: все .webp из client/img/decks/<колода>/ раздаются как /img/decks/<колода>/<файл>.
+try {
+  for (const d of fs.readdirSync(path.join(__dirname, '..', 'client', 'img', 'decks'))) {
+    for (const f of fs.readdirSync(path.join(__dirname, '..', 'client', 'img', 'decks', d))) if (f.endsWith('.webp')) STATIC[`/img/decks/${d}/${f}`] = `client/img/decks/${d}/${f}`;
+  }
+} catch {}
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.webmanifest': 'application/manifest+json; charset=utf-8', '.mp3': 'audio/mpeg' };
 const EMOTES = ['😂', '😱', '🖕', '😎', '😡', '🤔', '👏', '💀'];
 // Пул смайликов, из которых игрок собирает своё колесо эмоций (такой же список в client.js).

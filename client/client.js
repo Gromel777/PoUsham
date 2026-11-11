@@ -1116,8 +1116,8 @@
   }
   // ---------- персонализация: колоды, комнаты, эффекты ----------
   // Колоды — личная настройка игрока (prefs.cards). Комнаты и эффекты — заготовки под будущие скины.
-  const DECKS = [['sil', 'Силуэты'], ['dark', 'Чёрные'], ['light', 'Классика']];
-  const deckImpl = k => (k === 'light' ? window.CardsLight : k === 'sil' ? window.CardsSil : window.CardsDark) || Cards;
+  const DECKS = [['sil', 'Силуэты'], ['dark', 'Чёрные'], ['light', 'Классика'], ['royal', 'Королевская']];
+  const deckImpl = k => (k === 'light' ? window.CardsLight : k === 'sil' ? window.CardsSil : k === 'royal' ? window.CardsRoyal : window.CardsDark) || Cards;
   // Мини-превью комнаты: стол сверху и места игроков.
   function roomPreview(k) {
     const seats = [[50, 88], [8, 50], [30, 14], [70, 14], [92, 50]];

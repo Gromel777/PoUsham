@@ -180,17 +180,17 @@
     parse(id) { const s = id.slice(-1); return { id, suit: s, rank: RANKS.indexOf(id.slice(0, -1)) }; },
   };
   // Выбор темы: 'dark' — чёрные с золотом, 'light' — классические светлые. Личная настройка игрока.
-  // 'sil' — силуэты (по умолчанию), 'dark' — чёрные с золотом, 'light' — классические светлые.
+  // 'sil' — силуэты (по умолчанию), 'dark' — чёрные с золотом, 'light' — классические светлые, 'royal' — «Королевская» (картинки).
   const Dark = Cards;
   root.CardsDark = Dark;
-  const THEMES = ['sil', 'dark', 'light'];
+  const THEMES = ['sil', 'dark', 'light', 'royal'];
   let theme = 'sil';
   try { const t = (JSON.parse(localStorage.getItem('vtochku-prefs')) || {}).cards; if (THEMES.includes(t)) theme = t; } catch {}
-  const pickDeck = () => (theme === 'light' && root.CardsLight ? root.CardsLight : theme === 'sil' && root.CardsSil ? root.CardsSil : Dark);
+  const pickDeck = () => (theme === 'light' && root.CardsLight ? root.CardsLight : theme === 'sil' && root.CardsSil ? root.CardsSil : theme === 'royal' && root.CardsRoyal ? root.CardsRoyal : Dark);
   const Facade = {
     RANKS,
     get theme() { return theme; },
-    setTheme(t) { theme = THEMES.includes(t) ? t : 'sil'; },
+    setTheme(t) { theme = THEMES.includes(t) ? t : 'sil'; if (theme === 'royal' && root.CardsRoyal) root.CardsRoyal.preload(); },
     svg: c => pickDeck().svg(c),
     url: c => pickDeck().url(c),
     backUrl: () => pickDeck().backUrl(),
