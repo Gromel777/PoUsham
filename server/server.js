@@ -37,6 +37,8 @@ function botNames(r, count) {
   return pool.map(n => `${BOT_WORD[reg]} ${n}`).filter(n => !taken.has(n)).slice(0, count);
 }
 const BOT_DELAY = 1000;
+// Заявка бота — реже: объявление заявки на экране держится ~2,1 с, чтобы оно успевало показаться целиком.
+const BOT_BID_DELAY = 2300;
 const TRICK_PAUSE = 2100; // время на эффекты последней карты и показ, кто взял
 const TRICK_PAUSE_BLUFF = 5000; // в режиме обмана — время, чтобы успеть проверить
 const DEFAULT_TURN_TIME = 30;
@@ -468,7 +470,7 @@ function schedule(r) {
         else if (g.phase === 'play') { const m = Bots.play(g, p); Engine.playCard(g, p, m.cardId, m.mode); }
       } catch (e) { console.error('bot error', e); }
       update(r);
-    }, BOT_DELAY);
+    }, g.phase === 'bid' ? BOT_BID_DELAY : BOT_DELAY);
   }
 }
 // Таймер хода для живых игроков: по истечении — автоматическая заявка или случайная честная карта.

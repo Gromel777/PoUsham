@@ -289,7 +289,7 @@
     closeModal();
     if (Game.el) Game.destroy();
     Voice.stopAll();
-    Social.lastSeq = null; Social.toggleChat(false); Social.closeAvatarMenu(); Social.setDm(null);
+    Social.lastSeq = null; Social.toggleChat(false); Social.closeAvatarMenu(); Social.setDm(null); bannerClear();
     $('#emo-pick').classList.remove('on');
     $('#dock').classList.remove('on');
     S.err = msg || '';
@@ -1217,11 +1217,14 @@
   }
   const SPOT_ANGLE = { me: 90, left: 180, right: 0, top: -90, tl: -128, tr: -52 };
   const CHAIR_ROT = { left: -90, right: 90, top: 0, tl: -28, tr: 28 };
-  function slotXY(spot, d, n) {
+  function slotXY(spot, d, n, lead) {
     const a = SPOT_ANGLE[spot] * Math.PI / 180;
-    const rx = d.cw * (n >= 5 ? 1.6 : 1.15), ry = d.ch * (n >= 5 ? 0.28 : 0.3);
+    // Карта первого хода — на своём месте, но отодвинута от центра (зазор от остальных) и крупнее.
+    const k = lead ? 1.32 : 1;
+    const rx = d.cw * (n >= 5 ? 1.6 : 1.15) * k, ry = d.ch * (n >= 5 ? 0.28 : 0.3) * k;
     return [d.cx + Math.cos(a) * rx, d.cy + Math.sin(a) * ry];
   }
+  const LEAD_SCALE = 1.16;
   function handXY(i, m, d, sel, focus = -1, hover = false) {
     const c = (m - 1) / 2, off = i - c;
     const avail = Math.min(d.W * 0.6, d.cw * 0.8 * m + d.cw);
@@ -1746,7 +1749,7 @@
       if (!box) { box = document.createElement('div'); box.id = 'lead-suit'; box.className = 'lead-suit'; $('.table-wrap', this.el).insertAdjacentElement('afterend', box); }
       const suit = first ? first.card.suit : null;
       const key = suit ? `${suit}|${v.trick.command ? 'c' : ''}|${v.trump || ''}` : '';
-      if (box.dataset.key === key) return;
+      if (box.dataset.key === key) { this.placeLeadBox(); return; }
       box.dataset.key = key;
       if (!suit) { box.classList.remove('on'); return; }
       const name = { '♠': 'пики', '♣': 'трефы', '♦': 'бубны', '♥': 'червы' }[suit];
@@ -1754,13 +1757,30 @@
       box.className = `lead-suit on s-${{ '♠': 's', '♣': 'c', '♦': 'd', '♥': 'h' }[suit]}`;
       box.innerHTML = cmd ? `<span class="ls-l">${T('Ход')}</span><b>${T('Старшие на стол!')}</b>`
         : `<span class="ls-l">${T('Ход')}</span><i>${suit}</i><b>${T(name)}</b>${suit === v.trump ? `<span class="ls-t">${T('козырь')}</span>` : ''}`;
-      box.animate([{ transform: 'translate(-50%,-50%) scale(.7)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 }], { duration: 300, easing: 'cubic-bezier(.3,1.5,.5,1)' });
+      this.placeLeadBox();
+      const ty = box.dataset.ty;
+      box.animate([{ transform: `translate(-50%,${ty}) scale(.7)`, opacity: 0 }, { transform: `translate(-50%,${ty}) scale(1)`, opacity: 1 }], { duration: 300, easing: 'cubic-bezier(.3,1.5,.5,1)' });
+    },
+    // Плашка «Ход: ♠ пики» висит над картой первого хода (под ней — если карта в верхней половине стола, чтобы не залезать на соперника).
+    placeLeadBox() {
+      const box = $('#lead-suit', this.el);
+      if (!box) return;
+      let o = null;
+      for (const t of this.table.values()) if (t.lead) { o = t; break; }
+      if (!o || !o.el._p) return;
+      const d = dims(), p = o.el._p, h = d.ch * p.s / 2 + 8;
+      const below = p.y < d.cy - d.ch * 0.05;
+      box.dataset.ty = below ? '0%' : '-100%';
+      box.style.left = p.x + 'px';
+      box.style.top = (below ? p.y + h : p.y - h) + 'px';
+      box.style.transform = `translate(-50%,${box.dataset.ty})`;
     },
 
     async playIn(pl, v, fast) {
       const d = dims();
       const spot = spotOf(v, pl.p);
-      const [sx, sy] = slotXY(spot, d, v.n);
+      const lead = !!(v.trick && v.trick.plays[0] && v.trick.plays[0].card.id === pl.card.id);
+      const [sx, sy] = slotXY(spot, d, v.n, lead);
       const rot = rnd(-10, 10);
       const info = tierOf(pl.card, pl.mode);
       let el = this.hand.get(pl.card.id);
@@ -1775,13 +1795,13 @@
         if (fan && fan.lastElementChild) { fan.lastElementChild.remove(); fan.dataset.n = fan.children.length; }
       }
       const order = this.table.size;
-      this.table.set(pl.card.id, { el, p: pl.p, spot });
+      this.table.set(pl.card.id, { el, p: pl.p, spot, lead });
       el.style.zIndex = 40 + order;
       el.dataset.spot = spot;
-      const target = { x: sx, y: sy, rot, s: TABLE_SCALE };
+      const target = { x: sx, y: sy, rot: lead ? rot * 0.4 : rot, s: TABLE_SCALE * (lead ? LEAD_SCALE : 1) };
       if (fast) {
         el.classList.remove('down'); el.className += ' ' + auraCls(info);
-        place(el, target); el.style.zIndex = 10 + order;
+        place(el, target); el.style.zIndex = lead ? 30 : 10 + order;
         return;
       }
       SFX.flick();
@@ -1807,7 +1827,7 @@
         await fly(el, target, { dur: 440, via: { x: (from.x + sx) / 2, y: Math.min(from.y, sy) - d.ch * 0.22, rot: rot / 2, s: TABLE_SCALE * 1.18, offset: 0.55 } });
         el.className += ' ' + auraCls(info);
       }
-      el.style.zIndex = 10 + order;
+      el.style.zIndex = lead ? 30 : 10 + order;
       this.impact(el, sx, sy, info, pl.mode);
     },
 
@@ -1858,7 +1878,8 @@
 
     relayout(v) {
       const d = dims();
-      for (const o of this.table.values()) { const [x, y] = slotXY(o.spot, d, v.n); place(o.el, { ...o.el._p, x, y }); }
+      for (const o of this.table.values()) { const [x, y] = slotXY(o.spot, d, v.n, o.lead); place(o.el, { ...o.el._p, x, y }); }
+      this.placeLeadBox();
       this.syncHand(v);
       this.updateChecks(v);
     },
@@ -1900,7 +1921,7 @@
       if (fast || v.paused) return;
       const mine = v.skills && v.skills.reshuffle.can;
       if (mine) {
-        banner(T('ПЕРЕСДАЧА?'), 'violet', true, T('Не нравятся карты? Есть {s} секунд', { s: Math.round(((v.pre && v.pre.window) || 5000) / 1000) }));
+        banner(T('ПЕРЕСДАЧА?'), 'violet', true, T('Не нравятся карты? Есть {s} секунд', { s: Math.round(((v.pre && v.pre.window) || 5000) / 1000) }), { hold: 1500 });
         this.neonFlash('neon-legend', 1600);
         SFX.chip(); vibrate([20, 30, 20]);
         const b = $('#skills-bar .skill-btn', this.el);
@@ -1942,7 +1963,7 @@
       this.closeSpecial();
       const box = $('#action', this.el); if (box.dataset.kind) { box.dataset.kind = ''; box.innerHTML = ''; }
       const who = rs.by === v.you ? T('Вы') : v.names[rs.by];
-      banner(T('ПЕРЕСДАЧА!'), 'violet', false, who);
+      banner(T('ПЕРЕСДАЧА!'), 'violet', false, who, { hold: 1500 });
       SFX.reshuffle(); vibrate([30, 40, 30, 40, 60]);
       this.neonFlash('neon-legend', 2200);
       // Вспышка у того, кто применил.
@@ -2010,7 +2031,7 @@
         SFX.chip && SFX.chip();
         const pop = box.animate([{ transform: 'translate(-50%,-50%) scale(.4)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1.08)', opacity: 1, offset: 0.6 }, { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 }], { duration: 300, easing: 'ease-out', fill: 'forwards' });
         await pop.finished.catch(() => {});
-        await wait(rush ? 120 : 420);
+        await wait(rush ? 120 : 1420); // держим на секунду дольше; если копится очередь — быстрее
         const [ax, ay] = this.seatCenter(p);
         const go = box.animate([{ transform: 'translate(-50%,-50%) scale(1)', opacity: 1, left: cx + 'px', top: cy + 'px' },
           { transform: 'translate(-50%,-50%) scale(.18)', opacity: 0.2, left: ax + 'px', top: ay + 'px' }], { duration: rush ? 300 : 420, easing: 'cubic-bezier(.5,0,.8,.4)', fill: 'forwards' });
@@ -2386,7 +2407,7 @@
       const mine = (v.phase === 'bid' || v.phase === 'play') && v.turn === v.you;
       const was = prev && (prev.phase === 'bid' || prev.phase === 'play') && prev.turn === prev.you && prev.phase === v.phase && !prev.paused;
       if (!mine || was) return;
-      banner(T(v.fix ? 'ЗАМЕНИ КАРТУ!' : v.phase === 'bid' ? 'ТВОЯ ЗАЯВКА' : 'ТВОЙ ХОД'), v.fix ? 'crimson' : 'gold', true);
+      banner(T(v.fix ? 'ЗАМЕНИ КАРТУ!' : v.phase === 'bid' ? 'ТВОЯ ЗАЯВКА' : 'ТВОЙ ХОД'), v.fix ? 'crimson' : 'gold', true, '', { now: true });
       SFX.yourTurn(); vibrate(40);
       [...this.hand.values()].forEach((el, i) => setTimeout(() => { el.classList.remove('boom'); void el.offsetWidth; el.classList.add('boom'); }, i * 45));
     },
@@ -2844,13 +2865,38 @@
   function popEl(el, cls = 'bump') { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
   function nope(el) { if (!el) return; el.classList.remove('nope'); void el.offsetWidth; el.classList.add('nope'); vibrate(15); }
   function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch {} }
-  function banner(text, cls, quick, sub) {
-    const b = $('#banner');
-    b.innerHTML = `<div class="t ${cls}">${esc(text)}</div>${sub ? `<div class="bsub">${esc(sub)}</div>` : ''}`;
-    b.className = 'banner';
-    void b.offsetWidth;
-    b.classList.add('show'); if (quick) b.classList.add('quick');
+  // Большие надписи по центру идут очередью: новая не обрывает старую. Если накопилось несколько — следующие
+  // показываются короче, чтобы не отставать от игры. opt.now (ТВОЙ ХОД / ЗАМЕНИ КАРТУ) сбрасывает очередь и выходит сразу.
+  // opt.hold — сколько мс держать дольше обычного.
+  const BQ = { list: [], t: 0, cur: null };
+  function banner(text, cls, quick, sub, opt = {}) {
+    if (opt.now) { BQ.list.length = 0; clearTimeout(BQ.t); BQ.cur = null; }
+    else if ((BQ.cur && BQ.cur.text === text && BQ.cur.sub === sub) || BQ.list.some(x => x.text === text && x.sub === sub)) return;
+    BQ.list.push({ text, cls, sub, dur: (quick ? 1100 : 1800) + (opt.hold || 0) });
+    if (!BQ.cur) bannerNext();
   }
+  function bannerNext() {
+    const it = BQ.list.shift();
+    BQ.cur = it || null;
+    if (!it) return;
+    const b = $('#banner');
+    if (!b) { BQ.list.length = 0; BQ.cur = null; return; }
+    const dur = BQ.list.length ? Math.min(it.dur, 1000) : it.dur;
+    b.innerHTML = `<div class="t ${it.cls}">${esc(it.text)}</div>${it.sub ? `<div class="bsub">${esc(it.sub)}</div>` : ''}`;
+    b.className = 'banner on';
+    // Вход и уход фиксированной длины, всё добавочное время — удержание.
+    const inn = Math.min(330, dur * 0.2), out = Math.min(420, dur * 0.25);
+    const kf = [
+      { opacity: 0, transform: 'scale(2.2)', letterSpacing: '.5em', easing: 'cubic-bezier(.2,.9,.3,1)' },
+      { opacity: 1, transform: 'scale(1)', letterSpacing: '.04em', offset: inn / dur, easing: 'linear' },
+      { opacity: 1, transform: 'scale(1.04)', letterSpacing: '.04em', offset: 1 - out / dur, easing: 'ease-in' },
+      { opacity: 0, transform: 'scale(.9) translateY(-20px)', letterSpacing: '.04em' },
+    ];
+    b.querySelectorAll('.t, .bsub').forEach((el, i) => el.animate(kf, { duration: dur, delay: i * 80, fill: 'both' }));
+    clearTimeout(BQ.t);
+    BQ.t = setTimeout(() => { BQ.cur = null; bannerNext(); }, dur);
+  }
+  function bannerClear() { BQ.list.length = 0; clearTimeout(BQ.t); BQ.cur = null; const b = $('#banner'); if (b) { b.className = 'banner'; b.innerHTML = ''; } }
   function floater(x, y, val) {
     const f = document.createElement('div');
     f.className = `floater ${val >= 0 ? 'pos' : 'neg'}`;
@@ -3961,6 +4007,6 @@
       maybeWelcome();
     });
   }
-  window.VT = { S, Game, Social, Auth, World, tierOf, enqueue };
+  window.VT = { S, Game, Social, Auth, World, tierOf, enqueue, banner };
   init();
 })();

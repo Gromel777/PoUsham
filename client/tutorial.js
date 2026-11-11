@@ -156,7 +156,7 @@
 
   // ===================== браузер =====================
   const BOT_NAMES = { ru: ['Бот Аня', 'Бот Борис', 'Бот Вика', 'Бот Гоша'], en: ['Bot Anna', 'Bot Boris', 'Bot Vika', 'Bot Gosha'] };
-  const BOT_DELAY = 1150, TRICK_PAUSE = 2100, TRICK_PAUSE_BLUFF = 3800;
+  const BOT_DELAY = 1150, BOT_BID_DELAY = 2300, TRICK_PAUSE = 2100, TRICK_PAUSE_BLUFF = 3800;
   const clone = o => JSON.parse(JSON.stringify(o));
   const pubTrick = t => (t ? { ...t, plays: t.plays.map(pl => ({ p: pl.p, card: pl.card, mode: pl.mode, absolute: pl.absolute, checked: pl.checked, forced: pl.forced })) } : null);
 
@@ -202,7 +202,7 @@
             else { const m = botMove(g, p, queues); E.playCard(g, p, m.cardId, m.mode); }
           } catch (e) { console.error('tutorial bot', e); }
           push();
-        }, BOT_DELAY);
+        }, g.phase === 'bid' ? BOT_BID_DELAY : BOT_DELAY);
       }
     }
     // Свободные раунды: боты иногда проверяют подозрительные карты (как на сервере).
