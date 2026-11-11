@@ -571,7 +571,7 @@ input, select { font: inherit; }
 @media all { /* компактная раскладка под расчётную высоту 390 */
   .home-panel { gap: 5px; padding: 9px 14px; }
   .logo-row .logo { font-size: 32px; }
-  .logo-hood { width: 40px; height: 40px; }
+  .logo-hood { width: 60px; height: 60px; margin: -5px 0 -5px -5px; }
   .opt-label { min-width: 54px; font-size: 12px; }
   .switch span { font-size: 13px; }
 }
