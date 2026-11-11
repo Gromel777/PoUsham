@@ -1,4 +1,8 @@
 /* «В Точку» — тёмный премиум с золотом. Рассчитано на телефон в горизонтальной ориентации. */
+/* Параллакс: --px/--py НЕ наследуются — их пишет JS прямо в двигающиеся слои (см. Parallax в client.js).
+   Если бы они наследовались, каждое движение телефона пересчитывало бы стили всей страницы. */
+@property --px { syntax: '<number>'; inherits: false; initial-value: 0; }
+@property --py { syntax: '<number>'; inherits: false; initial-value: 0; }
 :root {
   color-scheme: dark;
   --gold: #e8c46a;
@@ -67,8 +71,8 @@ input, select { font: inherit; }
 }
 .btn-gold:hover { background-position: 100% 0; box-shadow: 0 8px 26px rgba(232, 196, 106, .4); }
 .btn-gold:active { transform: scale(.96); }
-.btn-gold::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .55), transparent); animation: shine 3.2s ease-in-out infinite; }
-@keyframes shine { 0%, 60% { left: -60% } 100% { left: 130% } }
+.btn-gold::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: 0; transform: translateX(-150%); background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .55), transparent); animation: shine 3.2s ease-in-out infinite; }
+@keyframes shine { 0%, 60% { transform: translateX(-150%) } 100% { transform: translateX(325%) } }
 .btn-ghost { padding: 9px 16px; border-radius: 12px; border: 1px solid var(--line); color: var(--gold-2); background: rgba(255, 255, 255, .03); font-weight: 700; transition: background .2s, transform .15s; }
 .btn-ghost:hover { background: rgba(232, 196, 106, .1); }
 .btn-ghost:active { transform: scale(.96); }
@@ -158,9 +162,18 @@ input, select { font: inherit; }
 .scene { position: absolute; inset: 0; perspective: 1100px; perspective-origin: 50% 28%; }
 .table-wrap { position: absolute; left: 50%; top: 51%; width: min(calc(var(--VW) * 80), calc(var(--VH) * 158)); height: min(calc(var(--VH) * 66), calc(var(--VW) * 56)); transform-style: preserve-3d;
   transform: translate(-50%, -50%) translate3d(calc(var(--px) * -8px), calc(var(--py) * -5px), 0) rotateX(calc(28deg + var(--py) * 3deg)) rotateY(calc(var(--px) * 4deg)); }
-.table-wrap svg.tbl { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 30px 40px rgba(0, 0, 0, .85)); }
+.table-wrap svg.tbl { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+/* Стол — стопка слоёв (renderTable в client.js). Тень под столом — только у нижнего слоя;
+   неподвижные слои с тяжёлыми фильтрами держим отдельными готовыми картинками (will-change). */
+.table-wrap { --tbl-shadow: rgba(0, 0, 0, .85); } /* тень под столом (запекается в нижний слой, см. renderTable) */
+.table-wrap svg.tbl-heavy, .table-wrap svg.tbl-first { will-change: transform; }
+/* Слои, которые двигает параллакс, — отдельные готовые картинки: иначе на каждое движение телефона браузер
+   растеризует их заново (особенно фон и наклонённый стол). На низкой графике гироскоп выключен — память не тратим. */
+body:not(.gfx-low) .bg, body:not(.gfx-low) .motes, body:not(.gfx-low) .table-wrap, body:not(.gfx-low) .cards,
+body:not(.gfx-low) .checks, body:not(.gfx-low) .seats { will-change: transform; }
 .table-light { position: absolute; inset: 8%; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(ellipse 38% 34% at calc(50% + var(--px) * 12%) calc(38% + var(--py) * 10%), rgba(200, 215, 255, .12), transparent 70%); }
+  background: radial-gradient(ellipse 38% 34% at 50% 38%, rgba(200, 215, 255, .12), transparent 70%);
+  transform: translate(calc(var(--px) * 12%), calc(var(--py) * 10%)); }
 
 /* кресла */
 .chair { position: absolute; left: 50%; top: calc(var(--ava) / 2); width: calc(var(--ava) * 2.3); height: calc(var(--ava) * 2.1); z-index: -1; pointer-events: none;
@@ -217,7 +230,11 @@ input, select { font: inherit; }
 .check-btn { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; min-width: 30px; height: 30px; padding: 0 9px; border-radius: 15px; font-size: 15px; font-weight: 900; white-space: nowrap;
   background: rgba(70, 8, 20, .92); color: #ffd0d6; border: 1.5px solid var(--crimson); box-shadow: 0 0 14px rgba(255, 45, 85, .5); animation: chipIn .35s cubic-bezier(.3, 1.6, .5, 1) both; z-index: 1; }
 .check-btn::before { content: ''; position: absolute; inset: -9px; }
-.check-btn.armed { background: var(--crimson); color: #fff; font-size: 12px; z-index: 2; animation: armed .6s ease-in-out infinite alternate; }
+.check-btn.armed { background: var(--crimson); color: #fff; font-size: 12px; z-index: 2; }
+.check-btn.armed::after, .status .tm.low::after, .log-jump.fresh::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 26px rgba(255, 45, 85, .9); opacity: 0; animation: glowAlt .6s ease-in-out infinite alternate; }
+.status .tm.low::after { animation-duration: .5s; }
+@keyframes glowAlt { to { opacity: 1; } }
 @keyframes armed { to { box-shadow: 0 0 26px rgba(255, 45, 85, .9) } }
 
 /* ---------- места соперников ---------- */
@@ -303,7 +320,7 @@ input, select { font: inherit; }
 .status.warn { border-color: var(--crimson); color: #ffd0d6; box-shadow: 0 0 20px rgba(255, 45, 85, .4); }
 .status:empty { opacity: 0; }
 .status .tm { display: inline-block; min-width: 2.2em; margin-left: 8px; padding: 0 6px; border-radius: 8px; background: rgba(255, 255, 255, .08); text-align: center; font-variant-numeric: tabular-nums; }
-.status .tm.low { background: var(--crimson); color: #fff; animation: armed .5s ease-in-out infinite alternate; }
+.status .tm.low { position: relative; background: var(--crimson); color: #fff; }
 
 .action { position: absolute; left: 50%; top: 48%; transform: translate(-50%, -50%); z-index: 30; pointer-events: none; }
 .action > * { pointer-events: auto; }
@@ -473,15 +490,19 @@ input, select { font: inherit; }
 .me-panel .status { position: static; transform: none; bottom: auto; left: auto; padding: 0; border: 0; background: none; box-shadow: none; font-size: 14px; max-width: calc(var(--VW) * 38); z-index: auto; }
 .me-panel .status.mine { color: var(--gold-2); box-shadow: none; }
 .me-panel .status.warn { color: #ff9aa5; box-shadow: none; }
-.me-panel.turn { animation: meTurn 1.6s ease-in-out infinite; }
-@keyframes meTurn { 50% { box-shadow: 0 0 0 1px var(--gold), 0 0 42px rgba(232, 196, 106, .7); } }
+.me-panel::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+  box-shadow: 0 0 0 1px var(--gold), 0 0 42px rgba(232, 196, 106, .7); transition: opacity .3s; }
+.me-panel.turn::after { animation: glowPulse 1.6s ease-in-out infinite; }
+@keyframes glowPulse { 50% { opacity: 1; } }
 
 /* «БУМ — твой ход» на 25% сильнее */
 @keyframes boomCard { 0% { transform: none } 35% { transform: translateY(-26%) scale(1.45) } 100% { transform: none } }
 
 /* живой неон по краю стола */
 .table-wrap .neon-glow, .table-wrap .neon-line { stroke: #8c5bff; transition: stroke .6s, opacity .6s; }
-.table-wrap .neon-glow { opacity: .55; animation: neonBreath 3.2s ease-in-out infinite; }
+.table-wrap .neon-glow { opacity: .55; }
+.table-wrap svg.tbl-glow { will-change: opacity; animation: glowBreath 3.2s ease-in-out infinite; }
+@keyframes glowBreath { 50% { opacity: .55; } }
 .table-wrap .neon-line { opacity: .9; }
 .table-wrap .neon-arc { stroke: #f6d27a; opacity: .95; }
 .table-wrap .neon-arc-core { stroke: #fff3c4; opacity: .9; }
@@ -489,7 +510,6 @@ input, select { font: inherit; }
 .table-wrap.neon-bluff .neon-glow, .table-wrap.neon-bluff .neon-line { stroke: #ff4d5e; }
 .table-wrap.neon-red .neon-glow, .table-wrap.neon-red .neon-line { stroke: #ff2d55; animation: neonFlash .25s ease-in-out 4 alternate; }
 .table-wrap.neon-legend .neon-glow, .table-wrap.neon-legend .neon-line { animation: neonLegend .5s linear 4; }
-@keyframes neonBreath { 50% { opacity: .3; } }
 @keyframes neonFlash { to { opacity: .2; } }
 @keyframes neonLegend { 0% { stroke: #8c5bff; opacity: 1 } 50% { stroke: #f6d27a; opacity: 1 } 100% { stroke: #8c5bff; opacity: .9 } }
 
@@ -888,7 +908,7 @@ input, select { font: inherit; }
 .log-jump { position: absolute; right: 8px; bottom: 6px; width: 26px; height: 26px; border-radius: 50%; display: none; place-items: center; font-size: 14px; font-weight: 900;
   color: #241a06; background: var(--gold-grad); box-shadow: 0 3px 10px rgba(0, 0, 0, .6); z-index: 2; }
 .log-jump.on { display: grid; animation: chipIn .35s cubic-bezier(.3, 1.6, .5, 1) both; }
-.log-jump.fresh { animation: chipIn .35s cubic-bezier(.3, 1.6, .5, 1) both, armed .6s ease-in-out infinite alternate; }
+.log-jump.fresh { animation: chipIn .35s cubic-bezier(.3, 1.6, .5, 1) both; }
 .log-panel.closed .log-jump { display: none; }
 .log-panel:not(.closed) .log-body { max-height: calc(var(--VH) * 30); }
 
@@ -1139,8 +1159,8 @@ body.room-cozy .bg::after {
 .cz-bulb { animation: czTwinkle 3.2s ease-in-out infinite alternate; }
 @keyframes czTwinkle { 0% { opacity: 1 } 60% { opacity: .82 } 100% { opacity: .55 } }
 body.room-cozy .mote { width: 7px; height: 7px; background: #ffd29a; box-shadow: 0 0 12px 5px rgba(255, 190, 110, .35); filter: blur(.6px); }
-body.room-cozy .table-wrap svg.tbl { filter: drop-shadow(0 26px 34px rgba(30, 12, 4, .7)); }
-body.room-cozy .table-light { background: radial-gradient(ellipse 40% 36% at calc(50% + var(--px) * 12%) calc(40% + var(--py) * 10%), rgba(255, 214, 150, .2), transparent 70%); }
+body.room-cozy .table-wrap { --tbl-shadow: rgba(30, 12, 4, .7); }
+body.room-cozy .table-light { background: radial-gradient(ellipse 40% 36% at 50% 40%, rgba(255, 214, 150, .2), transparent 70%); }
 /* «неон» хода в уютной комнате — мягкий тёплый свет, без неоновой линии */
 body.room-cozy .table-wrap .neon-glow { stroke: #ffc27a; opacity: .45; }
 body.room-cozy .table-wrap .neon-line { stroke: #ffe3b8; opacity: .35; }
@@ -1478,8 +1498,8 @@ body.room-office .bg::after {
 .of-led { animation: ofLed 2.4s ease-in-out infinite; }
 @keyframes ofLed { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }
 body.room-office .mote { background: #dfe9ff; opacity: .35; }
-body.room-office .table-wrap svg.tbl { filter: drop-shadow(0 26px 34px rgba(5, 8, 14, .75)); }
-body.room-office .table-light { background: radial-gradient(ellipse 42% 36% at calc(50% + var(--px) * 12%) calc(40% + var(--py) * 10%), rgba(225, 236, 255, .14), transparent 70%); }
+body.room-office .table-wrap { --tbl-shadow: rgba(5, 8, 14, .75); }
+body.room-office .table-light { background: radial-gradient(ellipse 42% 36% at 50% 40%, rgba(225, 236, 255, .14), transparent 70%); }
 body.room-office .table-wrap .neon-glow { stroke: #9fc8ff; opacity: .4; }
 body.room-office .table-wrap .neon-line { stroke: #dbe9ff; opacity: .3; }
 body.room-office .table-wrap .neon-arc { stroke: #a9d0ff; }
@@ -1487,3 +1507,35 @@ body.room-office .table-wrap .neon-arc-core { stroke: #f2f8ff; }
 body.room-office .table-wrap.neon-bluff .neon-glow, body.room-office .table-wrap.neon-bluff .neon-line { stroke: #ff7a7a; }
 body.room-office .chair { width: calc(var(--ava) * 3); height: calc(var(--ava) * 3); transform: translate(-50%, -50%) rotate(var(--chair-rot, 0deg)) translateY(-8%); filter: drop-shadow(0 8px 10px rgba(5, 8, 14, .6)); }
 body.room-office .seat .plate { background: linear-gradient(160deg, rgba(48, 54, 66, .95), rgba(28, 32, 40, .96)); border-color: rgba(200, 214, 235, .25); }
+
+/* ================= Графика: низкая (Настройки → «Графика»; по умолчанию на телефонах) =================
+   Никакого размытия фона — вместо него плотный тёмный фон; постоянные анимации стола и украшений выключены,
+   свечения остаются неподвижными. Игровые эффекты карт (fx.js) — облегчённые. */
+body.gfx-low .glass, body.gfx-low .log-panel, body.gfx-low .me-panel, body.gfx-low .w-panel,
+body.gfx-low #overlay, body.gfx-low #welcome, body.gfx-low .pause-veil { backdrop-filter: none; -webkit-backdrop-filter: none; }
+body.gfx-low .glass { background: linear-gradient(160deg, rgba(30, 23, 41, .97), rgba(12, 10, 18, .98)); }
+body.gfx-low .log-panel { background: rgba(10, 8, 15, .88); }
+body.gfx-low .me-panel { background: linear-gradient(160deg, rgba(34, 26, 46, .93), rgba(10, 8, 14, .94)); }
+body.gfx-low .w-panel { background: rgba(16, 13, 10, .93); }
+body.gfx-low #overlay { background: rgba(3, 2, 6, .76); }
+body.gfx-low #welcome { background: rgba(4, 3, 8, .8); }
+body.gfx-low .pause-veil { background: radial-gradient(ellipse at center, rgba(6, 5, 10, .55), rgba(6, 5, 10, .86)); }
+/* стол: неон, дуга хода, шар и глаза логотипа — без постоянной анимации */
+body.gfx-low .table-wrap svg.tbl-glow, body.gfx-low .table-wrap .neon-arc, body.gfx-low .table-wrap .neon-arc-core,
+body.gfx-low .table-wrap .puck-halo, body.gfx-low .table-wrap .puck-glow, body.gfx-low .table-wrap .ball-corona,
+body.gfx-low .table-wrap .ball-twinkle, body.gfx-low .tbl-eyes { animation: none !important; }
+body.gfx-low .table-wrap .neon-arc { opacity: .9; stroke-width: 9px; }
+body.gfx-low .table-wrap .neon-arc-core { stroke-dasharray: none; }
+body.gfx-low .table-wrap .ball-tex, body.gfx-low .table-wrap .ball-twinkle { display: none; }
+body.gfx-low .tbl-eyes { opacity: .3; }
+/* украшения интерфейса */
+body.gfx-low .motes, body.gfx-low .btn-gold::after { display: none; }
+body.gfx-low .logo, body.gfx-low .logo-hood .eye, body.gfx-low .crown, body.gfx-low .crown .crown-glint, body.gfx-low .pz-title,
+body.gfx-low .cz-bulb, body.gfx-low .of-led, body.gfx-low .hsb-main, body.gfx-low #next-btn.waiting,
+body.gfx-low .skill-btn, body.gfx-low .dock-btn.ptt.active, body.gfx-low .card.inhand.queued { animation: none !important; }
+body.gfx-low .logo-hood .eye { opacity: .35; }
+/* смена экранов — без размытия */
+body.gfx-low .screen.enter { animation-name: screenInLite; }
+body.gfx-low .screen.leave { animation-name: screenOutLite; }
+@keyframes screenInLite { from { opacity: 0; transform: scale(1.04) } to { opacity: 1; transform: none } }
+@keyframes screenOutLite { to { opacity: 0; transform: scale(.97) } }

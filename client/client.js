@@ -40,7 +40,23 @@
   if (!prefs.musicV) { if (prefs.musicVol === 0.2) prefs.musicVol = 0.1; prefs.musicV = 1; }
   I18N.set(prefs.lang);
   const savePrefs = () => save(PREF_KEY, prefs);
-  function applyPrefs() { SFX.setMuted(!prefs.sound); FX.setQuality(prefs.fx === 'high' ? 1 : 0.4); Music.setVolume(prefs.musicVol); Music.setOn(prefs.music); }
+  // Качество графики (Настройки → «Графика»): high — все эффекты; low — для телефонов: без размытия фона,
+  // без наклона от гироскопа и постоянных анимаций стола, частиц меньше и в меньшем разрешении.
+  // Пока игрок сам не выбрал — на телефонах low, на компьютере high. Старая настройка «Эффекты: экономно» переходит в low.
+  if (prefs.fx === 'low' && !prefs.gfx) prefs.gfx = 'low';
+  delete prefs.fx;
+  const isPhone = () => (window.matchMedia && matchMedia('(pointer: coarse)').matches) || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  const gfx = () => (prefs.gfx === 'low' || prefs.gfx === 'high' ? prefs.gfx : isPhone() ? 'low' : 'high');
+  function applyGfx() {
+    const low = gfx() === 'low';
+    document.body.classList.toggle('gfx-low', low);
+    FX.setQuality(low ? 0.4 : 1);
+    if (FX.setDprCap) FX.setDprCap(low ? 1.25 : 2);
+  }
+  function gfxSeg(extra = '') {
+    return `<div class="seg seg-sm gfx-seg ${extra}">${[['high', 'Высокая'], ['low', 'Низкая']].map(([k, n]) => `<button data-act="gfx" data-g="${k}" class="${gfx() === k ? 'on' : ''}">${T(n)}</button>`).join('')}</div>`;
+  }
+  function applyPrefs() { SFX.setMuted(!prefs.sound); applyGfx(); Music.setVolume(prefs.musicVol); Music.setOn(prefs.music); }
 
   // ---------- музыка: какой трек нужен на текущем экране ----------
   // Меню — «menu»; поиск рейтинговой игры и рейтинговое лобби — «ranked»; за столом тихо; своя победа — «victory».
@@ -560,6 +576,7 @@
     box.innerHTML = `<label class="switch ${prefs.sound ? 'on' : ''}" data-act="sound"><i></i><span>${T('Звуки игры')}</span></label>
       ${musicCtlHtml()}
       <div class="row"><span class="opt-label">${T('Язык')}</span>${langSeg()}</div>
+      <div class="row"><span class="opt-label">${T('Графика')}</span>${gfxSeg()}</div>
       <button class="btn-ghost" data-act="install">⤓ ${T('Установить приложение')}</button>
       <button class="btn-ghost cust-btn" data-act="customize">✦ ${T('Персонализация')}</button>`;
   }
@@ -780,6 +797,51 @@
     if (!skin) return svg;
     // Общий шар хода берём из классического стола, всё остальное — из комнаты.
     return skin.tableBase(angles, SIDE_SPOTS) + svg.slice(svg.indexOf('<defs>\n        <radialGradient id="ballG"'));
+  }
+  // Стол разбивается на стопку SVG-слоёв с одинаковой разметкой координат (viewBox 1000×600).
+  // Неподвижные части с тяжёлыми фильтрами (шум сукна/дерева, размытые тени) браузер рисует один раз и держит готовой картинкой;
+  // всё, что мигает или двигается (неон, дуга хода, шар, глаза логотипа), живёт в отдельных лёгких слоях.
+  // Раньше любая такая анимация заставляла перерисовывать весь стол со всеми фильтрами в каждом кадре — на телефонах это главные фризы.
+  const TABLE_LIVE = ['.neon-glow', '.neon-line', '.neon-arc', '.neon-arc-core', '.ball-trail', '.puck', '.tbl-eyes'];
+  function renderTable(tw, angles) {
+    tw.innerHTML = tableSvg(angles);
+    const src = tw.querySelector('svg.tbl');
+    if (!src) return;
+    const NS = 'http://www.w3.org/2000/svg';
+    const isLive = el => TABLE_LIVE.some(q => el.matches(q));
+    const defs = [...src.children].filter(c => c.tagName.toLowerCase() === 'defs').map(d => d.outerHTML).join('');
+    const items = []; // { kind: 'static' | 'live' | 'glow', html }
+    const push = (kind, html) => {
+      const last = items[items.length - 1];
+      if (last && last.kind === kind && kind !== 'glow') last.html += html; else items.push({ kind, html });
+    };
+    for (const ch of [...src.children]) {
+      if (ch.tagName.toLowerCase() === 'defs') continue;
+      if (isLive(ch)) { push(ch.matches('.neon-glow') ? 'glow' : 'live', ch.outerHTML); continue; }
+      const inner = [...ch.querySelectorAll(TABLE_LIVE.join(','))].filter(el => !el.parentElement.closest(TABLE_LIVE.join(',')));
+      if (!inner.length) { push('static', ch.outerHTML); continue; }
+      // Живой элемент внутри неподвижной группы: выносим его в свой слой, сохранив трансформации родителей.
+      const moved = inner.map(el => {
+        let html = el.outerHTML;
+        for (let a = el.parentElement; a && a !== src; a = a.parentElement) { const t = a.getAttribute('transform'); if (t) html = `<g transform="${t}">${html}</g>`; }
+        el.remove();
+        return { kind: el.matches('.neon-glow') ? 'glow' : 'live', html };
+      });
+      push('static', ch.outerHTML);
+      for (const m of moved) push(m.kind, m.html);
+    }
+    // Тень под столом запекаем в нижний слой SVG-фильтром (рисуется один раз). CSS drop-shadow на слое
+    // пересчитывался бы в каждом кадре, пока на экране хоть что-то анимируется. Цвет тени — CSS-переменная комнаты.
+    const W = tw.offsetWidth || 760, H = tw.offsetHeight || 380;
+    const shadow = (getComputedStyle(tw).getPropertyValue('--tbl-shadow') || '').trim() || 'rgba(0, 0, 0, .85)';
+    const drop = `<defs><filter id="tblDrop" x="-15%" y="-15%" width="130%" height="150%"><feDropShadow dx="0" dy="${(30 * 600 / H).toFixed(1)}" stdDeviation="${(20 * 1000 / W).toFixed(1)} ${(20 * 600 / H).toFixed(1)}" flood-color="${shadow}"/></filter></defs>`;
+    if (items[0] && items[0].kind === 'static') items[0].html = `${drop}<g filter="url(#tblDrop)">${items[0].html}</g>`;
+    const layers = items.map((it, i) => {
+      const heavy = it.kind === 'static' && /filter="url\(/.test(it.html);
+      const cls = ['tbl', 'tbl-' + it.kind, i === 0 ? 'tbl-first' : '', heavy ? 'tbl-heavy' : ''].filter(Boolean).join(' ');
+      return `<svg class="${cls}" xmlns="${NS}" viewBox="0 0 1000 600" preserveAspectRatio="none">${defs}${it.html}</svg>`;
+    }).join('');
+    src.outerHTML = layers;
   }
   function classicTableSvg(angles) {
     const cx = 500, cy = 300;
@@ -1037,7 +1099,7 @@
           <div class="menu-cap">${T('Настройки')}</div>
           ${musicCtlHtml()}
           <button class="btn-ghost" data-act="sound">${T('Звук: {v}', { v: T(prefs.sound ? 'включён' : 'выключен') })}</button>
-          <button class="btn-ghost" data-act="quality">${T('Эффекты: {v}', { v: T(prefs.fx === 'high' ? 'максимум' : 'экономно') })}</button>
+          <div class="menu-row"><span class="opt-label">${T('Графика')}</span>${gfxSeg()}</div>
           <button class="btn-ghost" data-act="log">${T('Журнал: {v}', { v: T(prefs.log ? 'показан' : 'скрыт') })}</button>
           <div class="menu-row"><button class="btn-ghost cust-btn" data-act="customize">✦ ${T('Персонализация')}</button>${langSeg()}</div>
         </div>
@@ -1173,26 +1235,38 @@
 
   // ---------- параллакс: мышь и наклон телефона ----------
   const Parallax = (() => {
+    // --px/--py объявлены в style.css через @property как НЕнаследуемые и пишутся только в слои, которые двигаются.
+    // Раньше они писались в корень документа: на телефоне гироскоп дёргает их постоянно, и браузер
+    // пересчитывал стили всей страницы (включая сотни элементов SVG-стола) — FPS падал в разы.
+    const TARGETS = '.bg, .motes, .home-fan-inner, .table-wrap, .table-light, .cards, .checks, .seats';
     let tx = 0, ty = 0, x = 0, y = 0, base = null, raf = 0, gyroAsked = false;
+    function write() {
+      const px = x.toFixed(4), py = y.toFixed(4);
+      for (const el of document.querySelectorAll(TARGETS)) { el.style.setProperty('--px', px); el.style.setProperty('--py', py); }
+    }
     function frame() {
       x += (tx - x) * 0.08; y += (ty - y) * 0.08;
-      document.documentElement.style.setProperty('--px', x.toFixed(4));
-      document.documentElement.style.setProperty('--py', y.toFixed(4));
+      write();
       raf = Math.abs(tx - x) > 0.001 || Math.abs(ty - y) > 0.001 ? requestAnimationFrame(frame) : 0;
     }
     const go = () => { if (!raf) raf = requestAnimationFrame(frame); };
+    // Новые экраны появляются со сдвигом 0 — дописываем текущий сдвиг, чтобы слои не «прыгали».
+    { const scr = document.getElementById('screen'); if (scr) new MutationObserver(() => { if (x || y) write(); }).observe(scr, { childList: true }); }
     addEventListener('pointermove', e => {
       if (e.pointerType !== 'mouse') return;
       tx = (e.clientX / window.innerWidth - 0.5) * 2; ty = (e.clientY / window.innerHeight - 0.5) * 2; go();
     });
     function onOrient(e) {
-      if (e.beta == null) return;
+      if (e.beta == null || gfx() === 'low') return; // на низкой графике наклон телефона не двигает сцену
       const ang = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
       let gx, gy;
       if (ang === 90) { gx = e.beta; gy = -e.gamma; } else if (ang === -90 || ang === 270) { gx = -e.beta; gy = e.gamma; } else { gx = e.gamma; gy = e.beta; }
       if (!base) base = { gx, gy };
       base.gx += (gx - base.gx) * 0.01; base.gy += (gy - base.gy) * 0.01;
-      tx = Math.max(-1, Math.min(1, (gx - base.gx) / 14)); ty = Math.max(-1, Math.min(1, (gy - base.gy) / 14)); go();
+      const nx = Math.max(-1, Math.min(1, (gx - base.gx) / 14)), ny = Math.max(-1, Math.min(1, (gy - base.gy) / 14));
+      // Дрожание руки меньше 0.4% не двигаем — иначе сцена перерисовывается без видимой разницы.
+      if (Math.abs(nx - tx) < 0.004 && Math.abs(ny - ty) < 0.004) return;
+      tx = nx; ty = ny; go();
     }
     function enableGyro() {
       if (gyroAsked || typeof DeviceOrientationEvent === 'undefined') return;
@@ -1201,7 +1275,9 @@
         DeviceOrientationEvent.requestPermission().then(r => { if (r === 'granted') addEventListener('deviceorientation', onOrient); }).catch(() => {});
       } else addEventListener('deviceorientation', onOrient);
     }
-    return { enableGyro };
+    // Смена качества графики: на low возвращаем сцену в центр.
+    function reset() { if (gfx() === 'low') { tx = 0; ty = 0; base = null; go(); } }
+    return { enableGyro, reset };
   })();
 
   // #app никогда не должен прокручиваться (фокус/скролл к элементу сдвигал весь стол).
@@ -1518,7 +1594,7 @@
 
     buildSeats(v) {
       const tw = $('#table-wrap', this.el);
-      tw.innerHTML = tableSvg(Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
+      renderTable(tw, Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
       this.neonDeg = null; this.puckDeg = null; this.puckK = null; this.puckIn = null; this.puckAnim = false; this.ballLast = null; this.ballTrail = []; this.sideCur = null; this.puckGoal = null; cancelAnimationFrame(this.puckRaf);
       this.seatsLayer.innerHTML = '';
       this.seatsLayer.className = `seats n${v.n}`;
@@ -2400,7 +2476,7 @@
     refreshRoom() {
       const v = S.view, tw = this.el && $('#table-wrap', this.el);
       if (!v || !tw || !this.seatEls || this.seatEls.length !== v.n) return;
-      tw.innerHTML = tableSvg(Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
+      renderTable(tw, Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
       this.neonDeg = null; this.puckDeg = null; this.puckK = null; this.puckIn = null; this.puckAnim = false; this.ballLast = null; this.ballTrail = []; this.sideCur = null; this.puckGoal = null; cancelAnimationFrame(this.puckRaf);
       this.seatEls.forEach((el, p) => { const ch = el && el.querySelector('.chair'); if (ch) ch.innerHTML = roomSkin() ? roomSkin().chair(spotOf(v, p)) : chairSvg(); });
       try { this.updateNeon(v); this.updatePuck(v, true); } catch (e) { console.error(e); }
@@ -3792,7 +3868,10 @@
       if (prefs.music && prefs.musicVol === 0) prefs.musicVol = 0.1;
       save(PREF_KEY, prefs); applyPrefs(); syncMusicCtl();
     },
-    quality: () => { prefs.fx = prefs.fx === 'high' ? 'low' : 'high'; save(PREF_KEY, prefs); applyPrefs(); showMenu(); },
+    gfx: b => {
+      prefs.gfx = b.dataset.g === 'low' ? 'low' : 'high'; savePrefs(); applyGfx(); Parallax.reset();
+      for (const seg of document.querySelectorAll('.gfx-seg')) for (const x of seg.querySelectorAll('button')) x.classList.toggle('on', x.dataset.g === gfx());
+    },
     log: b => {
       prefs.log = !prefs.log; save(PREF_KEY, prefs);
       const lp = $('#log'); if (lp) { lp.classList.toggle('closed', !prefs.log); lp.querySelector('.tg').textContent = prefs.log ? '−' : '+'; }

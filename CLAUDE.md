@@ -115,6 +115,13 @@ Search by the `// ----------` headers (line numbers drift):
 `обучение` (`maybeWelcome`/`showWelcome` — welcome overlay #welcome; `startTutorial` sets `S.local` = local table: `act()` routes to it, `social()` is off;
 `finishTutorial`, `markTutorialDone` → `/api/tutorial` or `S.tutPending` until sign-in; flag cached in `vtochku-auth.tutorial`) · `действия по кнопкам` (click handlers by `data-act`) · `PWA` · `init()`.
 
+## Performance rules (phones!)
+- **Graphics setting** `prefs.gfx` = `high` | `low` (Настройки → «Графика», also in-game menu; unset → `low` on phones, `high` on desktop). `applyGfx()` toggles `body.gfx-low` + FX quality/DPR cap. Low = no backdrop-filter (solid backgrounds), no gyro parallax, table/decoration infinite animations off (CSS block at the end of style.css).
+- **Table = stack of SVG layers** (`renderTable()` in client.js splits `tableSvg()` output): static parts with heavy filters → `svg.tbl-static` (`tbl-heavy` = will-change), animated parts listed in `TABLE_LIVE` → `svg.tbl-live` / `svg.tbl-glow`. A new animated element on the table must get a class from `TABLE_LIVE`, otherwise it forces a full re-raster of the static table every frame. Table drop shadow is baked into the first layer (`#tblDrop`, color from CSS var `--tbl-shadow`), never a CSS `filter` on a layer.
+- **Parallax** `--px/--py` are `@property inherits:false` and are written only into the moving layers (`Parallax.TARGETS`), never into `:root` (that recalculated the whole page's styles on every gyro event — FPS ~6 on phones).
+- Don't animate `box-shadow`/`filter`/`left` in infinite animations — use opacity of a pseudo-element with a fixed shadow (`glowPulse`/`glowAlt`) or transform.
+- Perf check: Playwright + /usr/bin/google-chrome, mobile emulation (DPR 3, CPU ×4 throttle), FPS via rAF, gyro simulated by dispatching `deviceorientation` each frame.
+
 ## Data (Postgres, auto-created in db.js SCHEMA)
 `players` (google_sub, nick, picture, rating, games, wins, tutorial — `pub()` reports tutorial=true also for anyone with games>0) · `sessions` (token_hash sha256 → player) · `matches` · `match_players` (place, score, left_game, rating before/after).
 

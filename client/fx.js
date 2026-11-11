@@ -13,7 +13,7 @@
   const EMERALD = ['#b8ffcf', '#46e08a', '#1fa860', '#eaffb0'];
   const ICE = ['#ffffff', '#e6fbff', '#9ae8ff', '#4cc3ff'];
 
-  let cv, ctx, W = 0, H = 0, dpr = 1, running = false, last = 0;
+  let cv, ctx, W = 0, H = 0, dpr = 1, dprCap = 2, running = false, last = 0;
   let quality = 1;
   let shakeEl = null, shakeT = 0, shakeDur = 0, shakeAmp = 0, shakeRunning = false;
   const parts = [], rings = [], rays = [], bolts = [], flashes = [];
@@ -42,7 +42,7 @@
     if (!cv) return;
     // Канвас живёт в виртуальных координатах сцены (см. viewport.js), но рисуется в реальном разрешении.
     const V = root.VIEW || { w: innerWidth, h: innerHeight, s: 1 };
-    dpr = Math.min(2, devicePixelRatio || 1);
+    dpr = Math.min(dprCap, devicePixelRatio || 1);
     W = V.w; H = V.h;
     const k = dpr * V.s;
     cv.width = Math.round(W * k); cv.height = Math.round(H * k);
@@ -664,6 +664,8 @@
   root.FX = {
     init, resize, burst, ring, raysAt, bolt, flash, shake, dust, cardImpact, charge, aura, trail, sparkleAt, confetti, floatText, stamp, slash, vortex, thunder,
     setQuality(q) { quality = q; },
+    // Предел плотности пикселей холста эффектов: на низкой графике частицы рисуются в меньшем разрешении (их всё равно не разглядеть).
+    setDprCap(c) { if (c !== dprCap) { dprCap = c; resize(); } },
     getQuality: () => quality,
     GOLD, CRIMSON, VIOLET, STEEL, EMERALD, ICE,
   };
