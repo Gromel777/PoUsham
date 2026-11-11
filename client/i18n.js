@@ -48,7 +48,7 @@
     'Ждём, когда хост начнёт игру…': 'Waiting for the host to start…', 'Выйти': 'Leave', 'Ссылка скопирована': 'Link copied',
     'Позовите друзей: QR-код или ссылка': 'Invite friends: QR code or link',
     // игра
-    'Журнал': 'Log', 'Счёт': 'Score', 'Меню': 'Menu', 'козырь': 'trump', 'Раунд {a}/{b}': 'Round {a}/{b}', 'обман': 'bluff',
+    'Журнал': 'Log', 'К новым': 'To latest', 'Счёт': 'Score', 'Меню': 'Menu', 'козырь': 'trump', 'Раунд {a}/{b}': 'Round {a}/{b}', 'обман': 'bluff',
     'думает…': 'thinking…', 'заявка —': 'bid —', '{a} из {b}': '{a} of {b}', 'вылетел': 'dropped', 'Заменить ботом': 'Replace with bot',
     'заявка': 'bid', 'взял': 'took', 'ВРЁШЬ!': 'LIAR!', 'ЧЕСТНО!': 'HONEST!', 'СТАРШИЕ НА СТОЛ!': 'HIGHEST ON THE TABLE!', 'САМАЯ СТАРШАЯ!': 'THE TOP CARD!',
     'ТУЗ КОЗЫРЕЙ!': 'ACE OF TRUMPS!', 'ФИНАЛЬНЫЙ РАУНД': 'FINAL ROUND', 'ИГРА НАЧИНАЕТСЯ': 'GAME ON', 'ПИК ПАРТИИ': 'PEAK OF THE GAME', 'РАУНД': 'ROUND',

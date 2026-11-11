@@ -362,7 +362,7 @@
         <div class="seats" id="seats"></div>
         <div class="cards" id="cards"></div>
         <div class="checks" id="checks"></div>
-        <div class="log-panel ${prefs.log ? '' : 'closed'}" id="log"><div class="log-head" data-act="log"><span>${T('Журнал')}</span><span class="tg">${prefs.log ? '−' : '+'}</span></div><div class="log-body" id="log-body"></div></div>
+        <div class="log-panel ${prefs.log ? '' : 'closed'}" id="log"><div class="log-head" data-act="log"><span>${T('Журнал')}</span><span class="tg">${prefs.log ? '−' : '+'}</span></div><div class="log-body" id="log-body"></div><button class="log-jump" id="log-jump" data-act="log-jump" title="${T('К новым')}">↓</button></div>
         <div class="hud-right">
           <div class="hud-icons">
             <button class="icon-btn" data-act="fullscreen" title="${T('Во весь экран')}">${iconSvg('full')}</button>
@@ -390,8 +390,17 @@
       const [x, y] = ell(408, 226, deg * Math.PI / 180);
       cups += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><ellipse rx="27" ry="19" fill="url(#chrome)" stroke="#0a0a0c" stroke-width="1.5"/><ellipse rx="20" ry="13" fill="url(#cupIn)"/><ellipse rx="20" ry="13" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1"/></g>`;
     }
+    // Боковина стола: нижняя половина эллипса столешницы, вытянутая вниз на толщину.
+    const lowerArc = dy => `M ${cx - 496} ${cy + dy} A 496 296 0 0 0 ${cx + 496} ${cy + dy}`;
+    const sideBand = (y0, y1) => `M ${cx - 496} ${cy + y0} A 496 296 0 0 0 ${cx + 496} ${cy + y0} L ${cx + 496} ${cy + y1} A 496 296 0 0 1 ${cx - 496} ${cy + y1} Z`;
     return `<svg class="tbl" viewBox="0 0 1000 600" preserveAspectRatio="none">
       <defs>
+        <linearGradient id="sideG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#030304"/><stop offset=".12" stop-color="#141418"/><stop offset=".38" stop-color="#2c2c33"/><stop offset=".5" stop-color="#3a3a42"/><stop offset=".62" stop-color="#2c2c33"/><stop offset=".88" stop-color="#141418"/><stop offset="1" stop-color="#030304"/></linearGradient>
+        <linearGradient id="sideV" x1="0" y1="0" x2="0" y2="1"><stop offset=".78" stop-color="#000" stop-opacity=".75"/><stop offset=".86" stop-color="#000" stop-opacity="0"/><stop offset=".93" stop-color="#fff" stop-opacity=".07"/><stop offset="1" stop-color="#000" stop-opacity=".55"/></linearGradient>
+        <linearGradient id="rimBevel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".35" stop-color="#fff" stop-opacity=".04"/><stop offset=".7" stop-color="#000" stop-opacity=".1"/><stop offset="1" stop-color="#000" stop-opacity=".55"/></linearGradient>
+        <linearGradient id="wallG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".9"/><stop offset=".12" stop-color="#000" stop-opacity=".55"/><stop offset=".3" stop-color="#000" stop-opacity="0"/></linearGradient>
+        <filter id="floorBlur" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur stdDeviation="14"/></filter>
+        <filter id="softBlur" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="6"/></filter>
         <radialGradient id="leather" cx=".5" cy=".35" r=".7"><stop offset="0" stop-color="#3a3a40"/><stop offset=".6" stop-color="#1c1c20"/><stop offset="1" stop-color="#0a0a0c"/></radialGradient>
         <linearGradient id="track" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2a2f"/><stop offset=".25" stop-color="#050507"/><stop offset=".75" stop-color="#0d0d10"/><stop offset="1" stop-color="#202025"/></linearGradient>
         <radialGradient id="felt" cx=".5" cy=".45" r=".6"><stop offset="0" stop-color="#26304f"/><stop offset=".55" stop-color="#161d33"/><stop offset="1" stop-color="#0a0e1c"/></radialGradient>
@@ -402,12 +411,20 @@
         <filter id="neonBlur" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="9"/></filter>
         <clipPath id="feltClip"><ellipse cx="${cx}" cy="${cy}" rx="372" ry="198"/></clipPath>
       </defs>
-      <ellipse cx="${cx}" cy="${cy + 26}" rx="478" ry="282" fill="#000" opacity=".55"/>
+      <ellipse cx="${cx}" cy="${cy + 48 + 22}" rx="520" ry="306" fill="#000" opacity=".7" filter="url(#floorBlur)"/>
+      <path d="${sideBand(0, 48)}" fill="url(#sideG)"/>
+      <path d="${sideBand(0, 48)}" fill="url(#sideV)"/>
+      <path d="${lowerArc(25)}" fill="none" stroke="url(#gold)" stroke-width="2.2" stroke-opacity=".75"/>
+      <path d="${lowerArc(29)}" fill="none" stroke="#000" stroke-width="1.2" stroke-opacity=".5"/>
+      <path d="${lowerArc(48)}" fill="none" stroke="url(#gold)" stroke-width="3" stroke-opacity=".55"/>
+      <path d="${lowerArc(2)}" fill="none" stroke="#000" stroke-width="6" stroke-opacity=".6"/>
       <g class="neon">
         <ellipse class="neon-glow" cx="${cx}" cy="${cy}" rx="500" ry="300" fill="none" stroke-width="22" filter="url(#neonBlur)"/>
         <ellipse class="neon-line" cx="${cx}" cy="${cy}" rx="500" ry="300" fill="none" stroke-width="3"/>
       </g>
       <ellipse cx="${cx}" cy="${cy}" rx="496" ry="296" fill="url(#leather)"/>
+      <ellipse cx="${cx}" cy="${cy}" rx="484" ry="284" fill="none" stroke="url(#rimBevel)" stroke-width="24"/>
+      <ellipse cx="${cx}" cy="${cy}" rx="495" ry="295" fill="none" stroke="url(#rimBevel)" stroke-width="3"/>
       <ellipse cx="${cx}" cy="${cy - 6}" rx="478" ry="276" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="10"/>
       <path d="M ${cx - 440} ${cy - 120} Q ${cx} ${cy - 330} ${cx + 440} ${cy - 120}" fill="none" stroke="#fff" stroke-opacity=".10" stroke-width="16" stroke-linecap="round"/>
       <ellipse cx="${cx}" cy="${cy}" rx="466" ry="268" fill="none" stroke="#000" stroke-opacity=".55" stroke-width="1.5" stroke-dasharray="5 4"/>
@@ -421,26 +438,45 @@
       <ellipse cx="${cx}" cy="${cy}" rx="372" ry="198" fill="url(#felt)"/>
       <rect x="128" y="102" width="744" height="396" fill="#fff" filter="url(#noise)" clip-path="url(#feltClip)" opacity=".7"/>
       <ellipse cx="${cx}" cy="${cy}" rx="372" ry="198" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="18"/>
+      <g clip-path="url(#feltClip)">
+        <path d="M ${cx - 372} ${cy} A 372 198 0 1 1 ${cx + 372} ${cy} A 372 198 0 1 1 ${cx - 372} ${cy} Z M ${cx - 372} ${cy + 26} A 372 198 0 1 0 ${cx + 372} ${cy + 26} A 372 198 0 1 0 ${cx - 372} ${cy + 26} Z" fill="#000" fill-opacity=".55" fill-rule="evenodd" filter="url(#softBlur)"/>
+        <rect x="128" y="102" width="744" height="396" fill="url(#wallG)"/>
+        <ellipse cx="${cx}" cy="${cy + 180}" rx="300" ry="40" fill="#fff" opacity=".035" filter="url(#softBlur)"/>
+      </g>
       <ellipse cx="${cx}" cy="${cy}" rx="330" ry="170" fill="none" stroke="url(#gold)" stroke-opacity=".35" stroke-width="1.5"/>
       <g opacity=".2" transform="translate(${cx - 70} ${cy - 112}) scale(1.4 1)">${Brand.hood({ id: 'tbl' }).replace(/<svg[^>]*>|<\/svg>/g, '')}</g>
       <text x="${cx}" y="${cy + 128}" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="30" letter-spacing="12" fill="#e8c46a" opacity=".22">${T('В ТОЧКУ')}</text>
       <defs>
-        <radialGradient id="puckG" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#fff6d0"/><stop offset=".45" stop-color="#e8c46a"/><stop offset="1" stop-color="#8a6420"/></radialGradient>
+        <radialGradient id="ballG" cx=".36" cy=".3" r=".78"><stop offset="0" stop-color="#fffbe8"/><stop offset=".16" stop-color="#ffe9a8"/><stop offset=".42" stop-color="#e6b552"/><stop offset=".74" stop-color="#9c6b1d"/><stop offset="1" stop-color="#3e2808"/></radialGradient>
+        <radialGradient id="ballLimb" cx=".5" cy=".5" r=".5"><stop offset=".62" stop-color="#2a1700" stop-opacity="0"/><stop offset="1" stop-color="#2a1700" stop-opacity=".55"/></radialGradient>
+        <radialGradient id="ballSpec" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".5" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+        <radialGradient id="ballTrailG" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff3c4" stop-opacity=".9"/><stop offset=".5" stop-color="#f6d27a" stop-opacity=".45"/><stop offset="1" stop-color="#f6d27a" stop-opacity="0"/></radialGradient>
         <filter id="puckGlow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="6"/></filter>
         <filter id="puckHalo" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="16"/></filter>
-        <linearGradient id="puckShine" x1="0" y1="0" x2="1" y2=".35">
-          <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".42" stop-color="#fff" stop-opacity="0"/>
-          <stop offset=".5" stop-color="#fffbe6" stop-opacity=".85"/><stop offset=".58" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
-          <animateTransform attributeName="gradientTransform" type="translate" values="-1 0; 1 0; 1 0" keyTimes="0; .6; 1" dur="2.4s" repeatCount="indefinite"/>
-        </linearGradient>
+        <filter id="ballShadow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="4"/></filter>
+        <clipPath id="ballClip"><circle r="25"/></clipPath>
       </defs>
+      <g class="ball-trail"></g>
       <g class="puck" style="display:none">
-        <ellipse class="puck-halo" rx="70" ry="52" fill="#ffd25e" filter="url(#puckHalo)"/>
-        <ellipse class="puck-glow" rx="40" ry="30" fill="#f6d27a" opacity=".55" filter="url(#puckGlow)"/>
-        <ellipse rx="30" ry="22" fill="url(#puckG)" stroke="#5a4012" stroke-width="2"/>
-        <ellipse class="puck-shine" rx="30" ry="22" fill="url(#puckShine)"/>
-        <ellipse rx="23" ry="16" fill="none" stroke="#5a4012" stroke-width="1.5" stroke-dasharray="3 3" opacity=".7"/>
-        <g class="puck-arrow"><path d="M-9 -8 L12 0 L-9 8 Z" fill="#241a06"/></g>
+        <ellipse class="ball-shadow" cx="7" cy="6" rx="27" ry="17" fill="#000" opacity=".6" filter="url(#ballShadow)"/>
+        <ellipse class="ball-contact" cx="2" cy="2" rx="14" ry="7" fill="#000" opacity=".55"/>
+        <g class="ball-up">
+          <circle class="puck-halo" r="62" fill="#ffd25e" filter="url(#puckHalo)"/>
+          <circle class="puck-glow" r="36" fill="#f6d27a" opacity=".55" filter="url(#puckGlow)"/>
+          <circle class="ball-body" r="25" fill="url(#ballG)"/>
+          <g clip-path="url(#ballClip)"><g class="ball-spin">
+            <path class="ball-eq" d="M -25 0 L 25 0" stroke="#5a3a0c" stroke-width="1.6" stroke-opacity=".55"/>
+            <path class="ball-m" d="" fill="none" stroke="#5a3a0c" stroke-width="1.6" stroke-opacity=".6"/>
+            <path class="ball-m" d="" fill="none" stroke="#5a3a0c" stroke-width="1.6" stroke-opacity=".6"/>
+            <path class="ball-m" d="" fill="none" stroke="#5a3a0c" stroke-width="1.6" stroke-opacity=".6"/>
+            <g class="ball-star"><path d="M0 -8 L2.2 -2.2 L8 0 L2.2 2.2 L0 8 L-2.2 2.2 L-8 0 L-2.2 -2.2 Z" fill="#fff4cc" stroke="#6b4510" stroke-width="1"/></g>
+          </g></g>
+          <circle r="25" fill="url(#ballLimb)"/>
+          <path d="M 19 12 A 23 23 0 0 1 6 22.5" fill="none" stroke="#ffe7a8" stroke-width="1.6" stroke-linecap="round" opacity=".32"/>
+          <ellipse cx="-9" cy="-11" rx="10" ry="6.5" fill="url(#ballSpec)" transform="rotate(-35 -9 -11)"/>
+          <circle cx="-11" cy="-13" r="2.4" fill="#fff"/>
+          <g class="ball-twinkle" transform="translate(-11 -13)"><path d="M0 -11 L1.3 -1.3 L11 0 L1.3 1.3 L0 11 L-1.3 1.3 L-11 0 L-1.3 -1.3 Z" fill="#fff"/></g>
+        </g>
       </g>
     </svg><div class="table-light"></div>`;
   }
@@ -499,7 +535,7 @@
     if (I18N.lang === 'en') return `<h2 class="gold-text">Rules of “Spot On”</h2><ul class="rules">
       <li>36-card deck, 2–6 players. Hearts <b style="color:var(--crimson)">♥</b> are trumps.</li>
       <li>Rounds go up and down: 1, 2, 3… cards up to the maximum and back. The maximum is 36 ÷ players, but no more than 9 (5 players — 7 cards, 6 — 6). Extra rounds are added at the peak.</li>
-      <li><b>First lead</b> in round one goes to a random player, then passes clockwise (the gold puck on the table).</li>
+      <li><b>First lead</b> in round one goes to a random player, then passes clockwise (the gold ball on the table).</li>
       <li><b>Bidding</b> starts with the player after the leader. Bid from 0 up to the number of cards; the total may be anything.</li>
       <li><b>Play:</b> if you have the suit of the first card, you must play it (no trump then). No such suit — any card, trumps included. <b>7♠</b> can always be played. The strongest card takes the trick and its owner leads next.</li>
       <li><b>Scoring:</b> exactly your bid — +20 per trick; bid 0 and took 0 — +5; short — −20 per missing trick; over — +2.</li>
@@ -510,7 +546,7 @@
     return `<h2 class="gold-text">Правила «В Точку»</h2><ul class="rules">
       <li>Колода 36 карт, 2–6 игроков. Козыри — черви <b style="color:var(--crimson)">♥</b>.</li>
       <li>Раунды идут «горкой»: по 1, 2, 3… карт до максимума и обратно. Максимум — 36 ÷ число игроков, но не больше 9 (5 игроков — 7 карт, 6 — 6). Лишние раунды добавляются на пике.</li>
-      <li><b>Первый ход</b> в первом раунде у случайного игрока, дальше переходит по часовой стрелке (золотая фишка на столе).</li>
+      <li><b>Первый ход</b> в первом раунде у случайного игрока, дальше переходит по часовой стрелке (золотой шар на столе).</li>
       <li><b>Заявка:</b> начинает следующий после ходящего. Можно заявить от 0 до числа карт; сумма заявок может быть любой.</li>
       <li><b>Ходы:</b> есть масть первой карты — кладёте только её (козырь в этом случае нельзя). Масти нет — любую карту, в том числе козырь. <b>7♠</b> можно положить всегда. Взятку забирает сильнейшая карта, её владелец ходит следующим.</li>
       <li><b>Очки:</b> взял ровно заявленное — +20 за карту; заявил 0 и взял 0 — +5; недобор — −20 за каждую; перебор — +2.</li>
@@ -794,18 +830,39 @@
     updateLog(v) {
       const body = $('#log-body', this.el);
       if (!body) return;
-      const lines = v.log.slice(-14);
+      const lines = v.log.slice(-100);
       const key = lines.join('\n');
       if (body.dataset.key === key) return;
       body.dataset.key = key;
+      if (!body.dataset.wired) {
+        body.dataset.wired = '1';
+        const sync = () => {
+          const away = body.scrollTop < -6; // column-reverse: 0 — самый низ (новые записи)
+          body.classList.toggle('away', away);
+          const j = $('#log-jump', this.el); if (j) j.classList.toggle('on', away);
+          if (!away && j) j.classList.remove('fresh');
+        };
+        body.addEventListener('scroll', sync, { passive: true });
+        this.logSync = sync;
+      }
+      // Сколько записей новых: ищем прошлую последнюю строку с конца.
+      const prevLast = this.logLast, prevLen = this.logLen || 0;
+      let fresh = lines.length;
+      if (prevLast != null) { const i = lines.lastIndexOf(prevLast); fresh = i >= 0 ? lines.length - 1 - i : Math.min(lines.length, Math.max(1, lines.length - prevLen)); }
+      this.logLast = lines[lines.length - 1]; this.logLen = lines.length;
+      const away = body.scrollTop < -6, oldTop = body.scrollTop, oldH = body.scrollHeight;
       const myName = v.names[v.you];
-      body.innerHTML = lines.slice().reverse().map(l => `<div class="${/ОБМАН|проверяет|время вышло/.test(l) ? 'hot' : l.startsWith(myName) ? 'mine' : ''}">${colorNames(I18N.trLog(l), v.names)}</div>`).join('');
+      body.innerHTML = lines.slice().reverse().map((l, i) => `<div class="${/ОБМАН|проверяет|время вышло/.test(l) ? 'hot' : l.startsWith(myName) ? 'mine' : ''}${i < fresh ? ' new' : ''}">${colorNames(I18N.trLog(l), v.names)}</div>`).join('');
+      // Если игрок листает историю — не сбиваем ему место, а только подсвечиваем кнопку «к новым».
+      if (away) { body.scrollTop = oldTop - (body.scrollHeight - oldH); const j = $('#log-jump', this.el); if (j && fresh) j.classList.add('fresh'); }
+      else body.scrollTop = 0;
+      if (this.logSync) this.logSync();
     },
 
     buildSeats(v) {
       const tw = $('#table-wrap', this.el);
       tw.innerHTML = tableSvg(Array.from({ length: v.n }, (_, p) => SPOT_ANGLE[spotOf(v, p)]));
-      this.neonDeg = null; this.puckDeg = null; this.puckK = null; this.puckIn = null; this.puckAnim = false; cancelAnimationFrame(this.puckRaf);
+      this.neonDeg = null; this.puckDeg = null; this.puckK = null; this.puckIn = null; this.puckAnim = false; this.ballLast = null; this.ballTrail = []; cancelAnimationFrame(this.puckRaf);
       this.seatsLayer.innerHTML = '';
       this.seatsLayer.className = `seats n${v.n}`;
       this.seatEls = [];
@@ -1268,6 +1325,14 @@
       puck.classList.toggle('mine', mine);
       if (this.puckK == null) this.puckK = kTo;
       if (this.puckIn == null) this.puckIn = inTo;
+      // Шар рисуется в плоскости стола (она сжата по вертикали): компенсируем, чтобы он оставался круглым.
+      const svgEl = tw.querySelector('svg.tbl');
+      const br = svgEl && svgEl.getBoundingClientRect();
+      const kAsp = br && br.width && br.height ? Math.min(2, Math.max(0.5, (br.width / 1000) / (br.height / 600))) : 1;
+      const up = puck.querySelector('.ball-up'), spin = puck.querySelector('.ball-spin');
+      const mers = puck.querySelectorAll('.ball-m'), star = puck.querySelector('.ball-star');
+      const trail = tw.querySelector('.ball-trail');
+      const R = 25;
       const place = deg => {
         if (!isFinite(this.puckIn)) this.puckIn = inTo;
         if (!isFinite(this.puckK)) this.puckK = kTo;
@@ -1276,8 +1341,36 @@
         // У себя: с подстаканника на сукно слева перед рукой — там его не закрывают ни карты, ни панель заявки.
         const x = 500 + Math.cos(a) * 408 + (262 - 500 - Math.cos(a) * 408) * inn;
         const y = 300 + Math.sin(a) * 226 + (412 - 300 - Math.sin(a) * 226) * inn;
-        puck.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${this.puckK.toFixed(3)})`);
-        puck.querySelector('.puck-arrow').setAttribute('transform', `rotate(${deg.toFixed(1)})`);
+        const K = this.puckK;
+        puck.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(K * 1.18).toFixed(3)})`);
+        up.setAttribute('transform', `scale(1 ${kAsp.toFixed(3)}) translate(0 -${(R * 0.72).toFixed(1)})`);
+        // Качение: поворот рисунка шара на пройденный путь, ось — поперёк движения.
+        const last = this.ballLast;
+        if (last) {
+          const dx = x - last.x, dy = (y - last.y) / kAsp, dist = Math.hypot(dx, dy);
+          if (dist > 0.01) { this.ballDir = Math.atan2(dy, dx); this.ballRoll = (this.ballRoll || 0) + dist / (K * R); }
+        }
+        this.ballLast = { x, y };
+        const ph = this.ballRoll || 0;
+        spin.setAttribute('transform', `rotate(${((this.ballDir || 0) * 180 / Math.PI).toFixed(1)})`);
+        mers.forEach((m, i) => {
+          let psi = ph + i * Math.PI / 3; psi = ((psi + Math.PI / 2) % Math.PI + Math.PI) % Math.PI - Math.PI / 2; // в [-90°, 90°)
+          const rx = Math.abs(Math.sin(psi)) * R;
+          m.setAttribute('d', rx < 0.4 ? `M 0 -${R} L 0 ${R}` : `M 0 -${R} A ${rx.toFixed(2)} ${R} 0 0 ${Math.sin(psi) > 0 ? 1 : 0} 0 ${R}`);
+        });
+        const sp = ((ph % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI / 2; // звезда на «экваторе»
+        const vis = Math.cos(sp);
+        star.setAttribute('transform', `translate(${(Math.sin(sp) * R * 0.92).toFixed(2)} 0) scale(${Math.max(0.01, vis).toFixed(3)} 1)`);
+        star.style.opacity = vis > 0.05 ? Math.min(1, vis * 1.6).toFixed(2) : '0';
+        // Светящийся след за катящимся шаром.
+        if (trail) {
+          const tr = this.ballTrail || (this.ballTrail = []);
+          if (this.puckAnim) { tr.push({ x, y }); if (tr.length > 9) tr.shift(); } else tr.length = 0;
+          trail.innerHTML = tr.slice(0, -1).map((p, i, arr) => {
+            const t = (i + 1) / (arr.length + 1), r = R * K * (0.45 + t * 0.5);
+            return `<ellipse cx="${p.x.toFixed(1)}" cy="${(p.y - R * 0.72 * K * kAsp).toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * kAsp).toFixed(1)}" fill="url(#ballTrailG)" opacity="${(t * 0.55).toFixed(2)}"/>`;
+          }).join('');
+        }
       };
       if (this.puckAnim && this.puckTarget === target && !fast) return; // уже едет туда
       cancelAnimationFrame(this.puckRaf); this.puckAnim = false; this.puckTarget = target;
@@ -1318,8 +1411,22 @@
         place(deg);
         this.puckDeg = deg % 360;
         puck.classList.toggle('moving', el < total);
+        if (el < total && el > tOut && el < tOut + tRoll && now - (this.ballSparkT || 0) > 70 && FX.getQuality() > 0.6) {
+          this.ballSparkT = now;
+          const body = puck.querySelector(".ball-body");
+          if (body) { const [bx, by] = VIEW.center(body); FX.burst(bx, by, { n: 2, speed: [20, 70], size: [1, 2.2], g: 60, life: [0.3, 0.6] }); }
+        }
         if (el < total) this.puckRaf = requestAnimationFrame(step);
-        else { this.puckAnim = false; this.puckDeg = target; this.puckK = kTo; this.puckIn = inTo; place(target); puck.classList.add('landed'); setTimeout(() => puck.classList.remove('landed'), 600); }
+        else {
+          this.puckAnim = false; this.puckDeg = target; this.puckK = kTo; this.puckIn = inTo; place(target);
+          puck.classList.add('landed'); setTimeout(() => puck.classList.remove('landed'), 600);
+          const body = puck.querySelector(".ball-body");
+          if (body && roll) {
+            const [bx, by] = VIEW.center(body);
+            FX.ring(bx, by, { r1: 46 * kTo, color: '#f6d27a', width: 2.5, life: 0.5 });
+            FX.burst(bx, by, { n: 10, speed: [60, 180], size: [1.2, 2.6], g: 160, life: [0.4, 0.8] });
+          }
+        }
       };
       this.puckRaf = requestAnimationFrame(step);
     },
@@ -1504,7 +1611,7 @@
         if (box.dataset.kind === 'bid' + v.roundIdx) return;
         box.dataset.kind = 'bid' + v.roundIdx;
         box.innerHTML = `<div class="bid-panel glass"><h3 class="gold-text">${T('Ваша заявка')}</h3>
-          <div class="chips">${Array.from({ length: k + 1 }, (_, b) => `<button class="chip" style="animation-delay:${b * 35}ms" data-act="bid" data-b="${b}">${b}</button>`).join('')}</div>
+          <div class="chips" style="--n:${k + 1}">${Array.from({ length: k + 1 }, (_, b) => `<button class="chip" style="animation-delay:${b * 35}ms" data-act="bid" data-b="${b}">${b}</button>`).join('')}</div>
           <span class="hint">${T('Заявлено другими: {a} из {b}', { a: sum, b: k })}</span></div>`;
       } else if (box.dataset.kind) { box.dataset.kind = ''; box.innerHTML = ''; }
     },
@@ -2092,6 +2199,7 @@
     'leave-ask': () => showModal(`<h2 class="gold-text">${T('Выйти из-за стола?')}</h2><p class="hint">${T('Ваше место останется, вернуться можно по коду и тому же имени.')}</p>
       <div class="actions"><button class="btn-ghost" data-act="close">${T('Остаться')}</button><button class="btn-gold btn-crimson" data-act="leave">${T('Выйти')}</button></div>`),
     leave: () => leave(),
+    'log-jump': () => { const b = $('#log-body'); if (b) b.scrollTo({ top: 0, behavior: 'smooth' }); },
     board: () => showBoard(),
     logout: () => Auth.logout(),
   };
@@ -2111,6 +2219,32 @@
     const fn = actions[b.dataset.act];
     if (fn) { if (!['bid', 'tab', 'check'].includes(b.dataset.act)) SFX.click(); fn(b); }
   });
+  // ---------- отклик на нажатие: волна от пальца, вспышка рамки, искры у золотых кнопок ----------
+  const TAP_SEL = 'button, [data-act], .switch, .chip, .wheel-item';
+  document.addEventListener('pointerdown', e => {
+    if (e.button > 0) return;
+    const b = e.target.closest(TAP_SEL);
+    if (!b || b.disabled || b.closest('.inhand') || b.classList.contains('ptt')) return;
+    const app = $('#app');
+    if (!app) return;
+    const r = VIEW.rect(b), ar = VIEW.rect(app), raw = b.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    // Точка нажатия внутри кнопки — в долях, чтобы не зависеть от масштаба экрана.
+    const fx = raw.width ? (e.clientX - raw.left) / raw.width : 0.5, fy = raw.height ? (e.clientY - raw.top) / raw.height : 0.5;
+    const px = Math.min(1, Math.max(0, fx)) * r.width, py = Math.min(1, Math.max(0, fy)) * r.height;
+    const cs = getComputedStyle(b);
+    const gold = b.matches('.btn-gold, .chip, .btn-violet, .am-act.like');
+    const box = document.createElement('div');
+    box.className = 'tap-fx' + (gold ? ' gold' : '');
+    box.style.cssText = `left:${(r.left - ar.left).toFixed(1)}px;top:${(r.top - ar.top).toFixed(1)}px;width:${r.width.toFixed(1)}px;height:${r.height.toFixed(1)}px;border-radius:${cs.borderRadius}`;
+    const d = Math.hypot(Math.max(px, r.width - px), Math.max(py, r.height - py)) * 2;
+    box.innerHTML = `<i style="left:${px.toFixed(1)}px;top:${py.toFixed(1)}px;width:${d.toFixed(1)}px;height:${d.toFixed(1)}px"></i>`;
+    app.appendChild(box);
+    setTimeout(() => box.remove(), 650);
+    if (gold && FX.getQuality() > 0.3) FX.burst(r.left + px, r.top + py, { n: 9, speed: [80, 220], size: [1.2, 2.6], g: 200, life: [0.35, 0.7] });
+    else if (FX.getQuality() > 0.6) FX.burst(r.left + px, r.top + py, { n: 4, speed: [50, 140], size: [1, 2], g: 120, life: [0.25, 0.5] });
+  }, { capture: true, passive: true });
+
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && S.screen === 'home' && e.target.id !== 'timer-val') (S.tab === 'join' ? actions.join : actions.create)();
     if (e.key === 'Escape') closeModal();

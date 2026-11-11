@@ -248,7 +248,7 @@ function viewFor(r, seat) {
     handCounts: g.hands.map(h => h.length),
     hand: g.hands[seat],
     trick: publicTrick(g.trick), lastTrick: publicTrick(g.lastTrick), trickWinner: g.trickWinner,
-    history: g.history, log: g.log.slice(-60),
+    history: g.history, log: g.log.slice(-100),
     legal: myTurn && g.phase === 'play' ? Engine.legalPlays(g, seat).map(c => c.id) : [],
     honest: myTurn && g.phase === 'play' ? Engine.strictLegal(g, seat).map(c => c.id) : [],
     fix: g.fix ? { p: g.fix.p } : null,

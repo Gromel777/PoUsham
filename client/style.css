@@ -814,3 +814,49 @@ input, select { font: inherit; }
 .board-t tr.me td:first-child { box-shadow: inset 2px 0 0 var(--gold); }
 .board-t tr.gap td { text-align: center; color: var(--ink-dim); padding: 2px; border: 0; }
 .board-note { margin: 8px 2px 0; font-size: 12px; }
+
+/* ================= отклик на нажатие кнопок ================= */
+.tap-fx { position: absolute; z-index: 95; pointer-events: none; overflow: hidden; animation: tapRim .55s ease-out forwards; }
+.tap-fx i { position: absolute; border-radius: 50%; transform: translate(-50%, -50%) scale(0); opacity: .55;
+  background: radial-gradient(circle, rgba(255, 244, 205, .75) 0%, rgba(246, 210, 122, .35) 45%, rgba(246, 210, 122, 0) 70%);
+  animation: tapWave .55s cubic-bezier(.2, .8, .3, 1) forwards; }
+.tap-fx.gold i { background: radial-gradient(circle, rgba(255, 255, 255, .95) 0%, rgba(255, 246, 210, .5) 40%, rgba(255, 255, 255, 0) 70%); mix-blend-mode: screen; opacity: .8; }
+@keyframes tapWave { to { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+@keyframes tapRim { 0% { box-shadow: inset 0 0 0 1.5px rgba(255, 236, 170, .9), 0 0 0 0 rgba(246, 210, 122, .6); } 100% { box-shadow: inset 0 0 0 1px rgba(255, 236, 170, 0), 0 0 0 10px rgba(246, 210, 122, 0); } }
+.seg button:active, .tabs button:active, .stepper button:active, .phrase:active, .am-act:active, .am-tg:active, .check-btn:active { transform: scale(.93); transition-duration: .08s; }
+.chip:active { transform: scale(.88) !important; filter: brightness(1.25); transition-duration: .06s; }
+.wheel-item:active { transform: translate(var(--x), var(--y)) scale(.9); }
+.btn-gold:active { filter: brightness(1.2); }
+@media (prefers-reduced-motion: reduce) { .tap-fx { display: none; } }
+
+/* ================= журнал: прокрутка ================= */
+.log-panel { display: flex; flex-direction: column; }
+.log-body { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: thin; scrollbar-color: rgba(232, 196, 106, .45) transparent;
+  user-select: text; -webkit-user-select: text; -webkit-overflow-scrolling: touch; padding-right: 6px; }
+.log-body::-webkit-scrollbar { width: 4px; }
+.log-body::-webkit-scrollbar-thumb { background: rgba(232, 196, 106, .45); border-radius: 2px; }
+.log-body::-webkit-scrollbar-track { background: transparent; }
+.log-body div { animation: none; }
+.log-body div.new { animation: logIn .35s ease both; }
+.log-body.away { mask-image: linear-gradient(to top, transparent 0, #000 18%, #000 80%, transparent); -webkit-mask-image: linear-gradient(to top, transparent 0, #000 18%, #000 80%, transparent); }
+.log-jump { position: absolute; right: 8px; bottom: 6px; width: 26px; height: 26px; border-radius: 50%; display: none; place-items: center; font-size: 14px; font-weight: 900;
+  color: #241a06; background: var(--gold-grad); box-shadow: 0 3px 10px rgba(0, 0, 0, .6); z-index: 2; }
+.log-jump.on { display: grid; animation: chipIn .35s cubic-bezier(.3, 1.6, .5, 1) both; }
+.log-jump.fresh { animation: chipIn .35s cubic-bezier(.3, 1.6, .5, 1) both, armed .6s ease-in-out infinite alternate; }
+.log-panel.closed .log-jump { display: none; }
+.log-panel:not(.closed) .log-body { max-height: calc(var(--VH) * 30); }
+
+/* ================= заявка: фишки всегда в одну строку ================= */
+.action { width: max-content; max-width: calc(var(--VW) * 94); }
+.bid-panel { padding: 10px 14px; gap: 7px; }
+.chips { --n: 10; flex-wrap: nowrap; gap: 6px; max-width: calc(var(--VW) * 90); }
+.chip { --cs: min(46px, calc((var(--VW) * 86 - (var(--n) - 1) * 6px) / var(--n))); width: var(--cs); height: var(--cs); flex: none; font-size: calc(var(--cs) * .4); }
+
+/* ================= шар первого хода ================= */
+.table-wrap .ball-twinkle { transform-box: fill-box; transform-origin: center; animation: twinkle 2.6s ease-in-out infinite; }
+@keyframes twinkle { 0%, 70%, 100% { opacity: 0; scale: .2; rotate: 0deg; } 80% { opacity: 1; scale: 1; rotate: 45deg; } 90% { opacity: 0; scale: .4; rotate: 90deg; } }
+.table-wrap .puck.moving .ball-twinkle { animation: none; opacity: 0; }
+.table-wrap .puck.moving .ball-contact { opacity: .35; }
+.table-wrap .puck.landed .ball-up { animation: ballBounce .6s cubic-bezier(.3, 1.5, .5, 1); transform-box: fill-box; }
+@keyframes ballBounce { 0% { translate: 0 0 } 30% { translate: 0 -10px } 60% { translate: 0 0 } 80% { translate: 0 -3px } 100% { translate: 0 0 } }
+.table-wrap .ball-trail ellipse { mix-blend-mode: screen; }
