@@ -901,7 +901,9 @@ input, select { font: inherit; }
 .me-panel { background: linear-gradient(160deg, rgba(34, 26, 46, .74), rgba(10, 8, 14, .76)); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 
 /* умения: кнопка «Пересдача» справа внизу */
-.skills-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+.round-dock .round-row { display: flex; align-items: flex-end; gap: 12px; }
+.skills-bar { display: flex; gap: 8px; padding-bottom: 14px; transition: opacity .35s, transform .35s; }
+.skills-bar.off { opacity: 0; transform: translateY(14px) scale(.8); pointer-events: none; }
 .skills-bar:empty { display: none; }
 .skill-btn { position: relative; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; color: #f6d27a;
   background: radial-gradient(circle at 35% 30%, #3a2a5c, #120c1c 70%); border: 2px solid rgba(232, 196, 106, .55);
@@ -917,7 +919,7 @@ input, select { font: inherit; }
 .skill-btn[data-state="ready"] { animation: skReady 1.6s ease-in-out infinite; }
 .skill-btn[data-state="ready"] .sk-ring { border-color: rgba(185, 140, 255, .8); border-top-color: #f6d27a; animation: spin 2.4s linear infinite; }
 .skill-btn[data-state="idle"] { filter: saturate(.4) brightness(.75); }
-.skill-btn[data-state="used"] { filter: grayscale(1) brightness(.5); opacity: .7; }
+.skill-btn[data-state="used"] { filter: grayscale(1) brightness(.55); }
 .skill-btn[data-state="used"] .sk-lock { display: block; }
 .skill-btn.armed { transform: scale(1.1); border-color: #f6d27a; box-shadow: 0 0 26px rgba(185, 140, 255, .9), inset 0 0 18px rgba(246, 210, 122, .5); }
 .skill-btn.armed .sk-ico { transform: rotate(180deg) scale(1.1); }

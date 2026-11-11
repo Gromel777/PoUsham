@@ -539,7 +539,7 @@
             <button class="icon-btn" data-act="menu" title="${T('Меню')}">${iconSvg('menu')}</button>
           </div>
         </div>
-        <div class="round-dock"><div class="skills-bar" id="skills-bar"></div><div class="status" id="status"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="bids-meter" id="bids-meter"></div><div class="tags"><span class="trump-box"><span>♥</span> ${T('козырь')}</span><span id="hud-mode"></span></div></div></div>
+        <div class="round-dock"><div class="status" id="status"></div><div class="round-row"><div class="skills-bar" id="skills-bar"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="bids-meter" id="bids-meter"></div><div class="tags"><span class="trump-box"><span>♥</span> ${T('козырь')}</span><span id="hud-mode"></span></div></div></div></div>
         <div class="me-panel" id="me-panel"></div>
         <div class="action" id="action"></div>
         <div id="vote"></div>
@@ -1501,6 +1501,8 @@
         b = bar.querySelector('.skill-btn');
       }
       const state = !sk.left ? 'used' : sk.can ? 'ready' : 'idle';
+      // Во время розыгрыша пересдача невозможна — кнопка прячется и не закрывает край руки.
+      bar.classList.toggle('off', v.phase !== 'bid');
       if (b.dataset.state !== state) {
         const wasReady = b.dataset.state === 'idle' && state === 'ready';
         b.dataset.state = state;
