@@ -1180,3 +1180,8 @@ body.room-cozy .seat .plate { background: linear-gradient(160deg, rgba(74, 44, 2
 .pod-name { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
 .pod-name .pid { margin-left: 0; }
 .rt-others .pid { margin-left: 3px; }
+
+/* Ряд «умения + блок раунда» не должен ловить нажатия пустым местом: иначе крайняя правая карта руки
+   (при 8–9 картах она заходит под этот ряд) не нажимается. Кликабельны только сами элементы. */
+.round-dock, .round-dock .round-row, .round-dock .skills-bar { pointer-events: none; }
+.round-dock .status, .round-dock .round-box, .round-dock .skills-bar:not(.off) .skill-btn { pointer-events: auto; }
