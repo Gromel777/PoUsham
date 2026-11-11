@@ -351,7 +351,7 @@
           </div>
           </div>
           <div class="err" id="err">${esc(S.err)}</div>
-          <div class="home-foot"><div class="seg seg-sm" id="seg-theme"><button data-act="theme" data-t="sil">${T('Силуэты')}</button><button data-act="theme" data-t="dark">${T('Чёрные')}</button><button data-act="theme" data-t="light">${T('Классика')}</button></div>
+          <div class="home-foot"><button class="btn-ghost cust-btn" data-act="customize">✦ ${T('Персонализация')}</button>
             <button class="btn-ghost" data-act="rules">${T('Правила')}</button><button class="btn-ghost fs-btn" data-act="soundcfg" title="${T('Звук')}">♪</button><button class="btn-ghost fs-btn" data-act="fullscreen" title="${T('Во весь экран')}">⛶</button><button class="btn-ghost" data-act="install">${T('Установить')}</button></div>
         </div>
       </div>`);
@@ -793,7 +793,7 @@
           <button class="btn-ghost" data-act="sound">${T('Звук: {v}', { v: T(prefs.sound ? 'включён' : 'выключен') })}</button>
           <button class="btn-ghost" data-act="quality">${T('Эффекты: {v}', { v: T(prefs.fx === 'high' ? 'максимум' : 'экономно') })}</button>
           <button class="btn-ghost" data-act="log">${T('Журнал: {v}', { v: T(prefs.log ? 'показан' : 'скрыт') })}</button>
-          <div class="menu-row"><div class="seg" id="seg-theme">${[['sil', 'Силуэты'], ['dark', 'Чёрные'], ['light', 'Классика']].map(([k, n]) => `<button data-act="theme" data-t="${k}" class="${prefs.cards === k ? 'on' : ''}">${T(n)}</button>`).join('')}</div>${langSeg()}</div>
+          <div class="menu-row"><button class="btn-ghost cust-btn" data-act="customize">✦ ${T('Персонализация')}</button>${langSeg()}</div>
         </div>
         <div class="menu-col">
           <div class="menu-cap">${T('Партия')}</div>
@@ -805,6 +805,31 @@
           <button class="btn-ghost btn-crimson" data-act="leave-ask">${T('Выйти из-за стола')}</button>
         </div>
       </div>`, 'menu-modal');
+  }
+  // ---------- персонализация: колоды, комнаты, эффекты ----------
+  // Колоды — личная настройка игрока (prefs.cards). Комнаты и эффекты — заготовки под будущие скины.
+  const DECKS = [['sil', 'Силуэты'], ['dark', 'Чёрные'], ['light', 'Классика']];
+  const deckImpl = k => (k === 'light' ? window.CardsLight : k === 'sil' ? window.CardsSil : window.CardsDark) || Cards;
+  function showCustomize(tab = S.custTab || 'decks', from) {
+    if (from !== undefined) S.custFrom = from;
+    S.custTab = tab;
+    const tabs = [['decks', 'Колоды'], ['rooms', 'Комнаты'], ['fx', 'Эффекты']];
+    let body;
+    if (tab === 'decks') {
+      body = `<div class="deck-grid">${DECKS.map(([k, n]) => {
+        const D = deckImpl(k), on = prefs.cards === k;
+        const faces = ['Т♥', '7♠', 'Д♦'].map(id => `<span class="dk-card" style="background-image:${D.url(Cards.parse(id))}"></span>`).join('');
+        return `<button class="deck-item ${on ? 'on' : ''}" data-act="theme" data-t="${k}">
+          <div class="dk-fan"><span class="dk-card dk-back" style="background-image:${D.backUrl()}"></span>${faces}</div>
+          <div class="dk-name">${T(n)}</div><div class="dk-state">${T(on ? 'Выбрана' : 'Выбрать')}</div></button>`;
+      }).join('')}</div>`;
+    } else {
+      const txt = tab === 'rooms' ? 'Скоро здесь появятся оформления столов и комнат.' : 'Скоро здесь появятся эффекты розыгрыша карт.';
+      body = `<div class="cust-empty"><div class="cust-empty-ic">✦</div><div>${T(txt)}</div></div>`;
+    }
+    showModal(`<div class="menu-head"><h2 class="gold-text">${T('Персонализация')}</h2><button class="btn-gold menu-back" data-act="custBack">${T('Назад')}</button></div>
+      <div class="tabs cust-tabs">${tabs.map(([k, n]) => `<button data-act="custTab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${T(n)}</button>`).join('')}</div>
+      <div class="cust-body">${body}</div>`, 'cust-modal');
   }
   function showScores() {
     const v = S.view;
@@ -2697,7 +2722,10 @@
       Social.syncVoice(v); Social.renderChat(v); Social.decorateAvatars(v);
       Social.openAvatarMenu(+b.dataset.seat);
     },
-    theme: b => { prefs.cards = b.dataset.t; savePrefs(); Cards.setTheme(prefs.cards); syncHome(); if (S.screen === 'home') { showHomeFanRefresh(); } Game.refreshFaces(); if ($('#overlay').classList.contains('on') && $('#overlay .menu-list, #overlay .menu-modal')) showMenu(); },
+    theme: b => { prefs.cards = b.dataset.t; savePrefs(); Cards.setTheme(prefs.cards); syncHome(); if (S.screen === 'home') { showHomeFanRefresh(); } Game.refreshFaces(); if ($('#overlay .cust-modal')) showCustomize(); else if ($('#overlay').classList.contains('on') && $('#overlay .menu-list, #overlay .menu-modal')) showMenu(); },
+    customize: b => showCustomize('decks', b.closest('.menu-modal') ? 'menu' : 'home'),
+    custTab: b => showCustomize(b.dataset.tab),
+    custBack: () => { if (S.custFrom === 'menu') showMenu(); else closeModal(); },
     lang: b => {
       const l = b.dataset.l;
       if (l === I18N.lang) return;

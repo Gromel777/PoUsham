@@ -27,6 +27,9 @@
     'до {m} карт · {s} с на ход': 'up to {m} cards · {s} s per move', 'до {m} карт · без таймера': 'up to {m} cards · no timer',
     'секунд на ход (0 — без таймера)': 'seconds per move (0 — no timer)', 'Введите имя': 'Enter your name', 'Код комнаты — 4 символа': 'Room code is 4 characters',
     'Язык': 'Language',
+    'Персонализация': 'Customize', 'Колоды': 'Decks', 'Комнаты': 'Rooms', 'Эффекты': 'Effects', 'Выбрана': 'Selected', 'Выбрать': 'Select',
+    'Скоро здесь появятся оформления столов и комнат.': 'Table and room styles are coming soon.',
+    'Скоро здесь появятся эффекты розыгрыша карт.': 'Card play effects are coming soon.',
     // умения
     'Умения': 'Skills', 'умения': 'skills', '«Пересдача» — раз за партию': '“Reshuffle” — once per game', 'Пересдача': 'Reshuffle', 'ПЕРЕСДАЧА!': 'RESHUFFLE!',
     'Нажмите ещё раз': 'Tap again', 'Вы': 'You',
