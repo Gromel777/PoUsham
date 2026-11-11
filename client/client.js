@@ -289,6 +289,7 @@
           <div class="home-head"><div>${logoHtml()}<div class="logo-sub">${T('заяви и попади')}</div></div>${langSeg()}</div>
           <label class="field">${T('Ваше имя')}<input id="name" maxlength="20" autocomplete="nickname" value="${esc(sess.name || (Auth.me && Auth.me.nick) || '')}" placeholder="${T('Как вас зовут?')}"></label>
           <div class="tabs tabs4">${[['ranked', 'Рейтинг'], ['casual', 'Обычная'], ['create', 'Свой стол'], ['join', 'По коду']].map(([k, n]) => `<button data-act="tab" data-tab="${k}">${T(n)}</button>`).join('')}</div>
+          <div class="panes">
           <div class="pane" data-pane="ranked" id="pane-ranked"></div>
           <div class="pane" data-pane="casual">
             <div class="row"><span class="opt-label">${T('Стол')}</span><div class="seg" id="seg-casual">${[2, 3, 4, 5, 6, 0].map(n => `<button data-act="casualSize" data-n="${n}">${n || T('Любой')}</button>`).join('')}</div></div>
@@ -310,6 +311,7 @@
             <label class="field code-input">${T('Код комнаты')}<input id="code" maxlength="4" value="${esc(roomParam)}" placeholder="····" autocapitalize="characters"></label>
             <button class="btn-gold" data-act="join">${T('Войти')}</button>
             <span class="hint">${T('Вылетели из игры? Введите код и то же имя — вернётесь на своё место.')}</span>
+          </div>
           </div>
           <div class="err" id="err">${esc(S.err)}</div>
           <div class="home-foot"><div class="seg seg-sm" id="seg-theme"><button data-act="theme" data-t="sil">${T('Силуэты')}</button><button data-act="theme" data-t="dark">${T('Чёрные')}</button><button data-act="theme" data-t="light">${T('Классика')}</button></div>
@@ -585,6 +587,8 @@
         <filter id="puckHalo" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="16"/></filter>
         <filter id="ballShadow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="4"/></filter>
         <clipPath id="ballClip"><circle r="25"/></clipPath>
+        <filter id="ballGrain" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="3" seed="7" result="n"/><feColorMatrix in="n" values="0 0 0 0 .5  0 0 0 0 .38  0 0 0 0 .15  0 0 0 1.4 -.55"/><feComposite in2="SourceGraphic" operator="in"/></filter>
+        <filter id="ballHammer" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="turbulence" baseFrequency=".32" numOctaves="1" seed="3" result="t"/><feColorMatrix in="t" values="0 0 0 0 1  0 0 0 0 .95  0 0 0 0 .8  0 0 0 .9 -.35"/><feComposite in2="SourceGraphic" operator="in"/></filter>
       </defs>
       <g class="ball-trail"></g>
       <g class="puck" style="display:none">
@@ -594,12 +598,17 @@
           <circle class="puck-halo" r="62" fill="#ffd25e" filter="url(#puckHalo)"/>
           <circle class="puck-glow" r="36" fill="#f6d27a" opacity=".55" filter="url(#puckGlow)"/>
           <circle class="ball-body" r="25" fill="url(#ballG)"/>
-          <g clip-path="url(#ballClip)"><g class="ball-spin">
-            <path class="ball-eq" d="M -25 0 L 25 0" stroke="#5a3a0c" stroke-width="1.6" stroke-opacity=".55"/>
-            <path class="ball-m" d="" fill="none" stroke="#5a3a0c" stroke-width="1.6" stroke-opacity=".6"/>
-            <path class="ball-m" d="" fill="none" stroke="#5a3a0c" stroke-width="1.6" stroke-opacity=".6"/>
-            <path class="ball-m" d="" fill="none" stroke="#5a3a0c" stroke-width="1.6" stroke-opacity=".6"/>
-            <g class="ball-star"><path d="M0 -8 L2.2 -2.2 L8 0 L2.2 2.2 L0 8 L-2.2 2.2 L-8 0 L-2.2 -2.2 Z" fill="#fff4cc" stroke="#6b4510" stroke-width="1"/></g>
+          <g clip-path="url(#ballClip)">
+            <circle r="25" fill="#fff" filter="url(#ballHammer)" opacity=".42" class="ball-tex"/>
+            <circle r="25" fill="#000" filter="url(#ballGrain)" opacity=".32" class="ball-tex"/>
+            <g class="ball-spin">
+            <g class="ball-lat" fill="#5a3a0c" fill-opacity=".55"><circle cx="-21.60" cy="-12.5" r=".75"/><circle cx="-17.28" cy="-12.5" r=".75"/><circle cx="-12.96" cy="-12.5" r=".75"/><circle cx="-8.64" cy="-12.5" r=".75"/><circle cx="-4.32" cy="-12.5" r=".75"/><circle cx="0.00" cy="-12.5" r=".75"/><circle cx="4.32" cy="-12.5" r=".75"/><circle cx="8.64" cy="-12.5" r=".75"/><circle cx="12.96" cy="-12.5" r=".75"/><circle cx="17.28" cy="-12.5" r=".75"/><circle cx="21.60" cy="-12.5" r=".75"/><circle cx="-21.60" cy="12.5" r=".75"/><circle cx="-17.28" cy="12.5" r=".75"/><circle cx="-12.96" cy="12.5" r=".75"/><circle cx="-8.64" cy="12.5" r=".75"/><circle cx="-4.32" cy="12.5" r=".75"/><circle cx="0.00" cy="12.5" r=".75"/><circle cx="4.32" cy="12.5" r=".75"/><circle cx="8.64" cy="12.5" r=".75"/><circle cx="12.96" cy="12.5" r=".75"/><circle cx="17.28" cy="12.5" r=".75"/><circle cx="21.60" cy="12.5" r=".75"/></g>
+            <path d="M -25 0 L 25 0" stroke="#fff3c4" stroke-width=".7" stroke-opacity=".5" transform="translate(0 .8)"/>
+            <path class="ball-eq" d="M -25 0 L 25 0" stroke="#5a3a0c" stroke-width="1.1" stroke-opacity=".7"/>
+            <path class="ball-m" d="" fill="none" stroke="#5a3a0c" stroke-width="1.1" stroke-opacity=".65"/>
+            <path class="ball-m" d="" fill="none" stroke="#5a3a0c" stroke-width="1.1" stroke-opacity=".65"/>
+            <path class="ball-m" d="" fill="none" stroke="#5a3a0c" stroke-width="1.1" stroke-opacity=".65"/>
+            <g class="ball-star"><circle r="9.5" fill="none" stroke="#6b4510" stroke-width=".9" stroke-opacity=".8"/><circle r="9.5" fill="none" stroke="#fff3c4" stroke-width=".5" stroke-opacity=".5" stroke-dasharray="1 1.4"/><path d="M0 -7 L1.9 -1.9 L7 0 L1.9 1.9 L0 7 L-1.9 1.9 L-7 0 L-1.9 -1.9 Z" fill="#fff4cc" stroke="#6b4510" stroke-width=".8"/><circle r="1.3" fill="#8a5a14"/></g>
           </g></g>
           <circle r="25" fill="url(#ballLimb)"/>
           <path d="M 19 12 A 23 23 0 0 1 6 22.5" fill="none" stroke="#ffe7a8" stroke-width="1.6" stroke-linecap="round" opacity=".32"/>
@@ -1599,7 +1608,7 @@
       if (target == null) return;
       const mine = v.leader === v.you;
       // У себя фишку закрывают карты руки: она крупнее, с ореолом и выезжает с подстаканника на сукно.
-      const kTo = mine ? 1.6 : 1, inTo = mine ? 1 : 0;
+      const kTo = mine ? 1.2 : 1, inTo = mine ? 1 : 0;
       puck.style.display = '';
       puck.classList.toggle('mine', mine);
       if (this.puckK == null) this.puckK = kTo;
@@ -2642,7 +2651,17 @@
     const d = Math.hypot(Math.max(px, r.width - px), Math.max(py, r.height - py)) * 2;
     box.innerHTML = `<i style="left:${px.toFixed(1)}px;top:${py.toFixed(1)}px;width:${d.toFixed(1)}px;height:${d.toFixed(1)}px"></i>`;
     app.appendChild(box);
-    setTimeout(() => box.remove(), 650);
+    // Вспышка едет вместе с кнопкой, если раскладка сдвинулась (смена вкладки и т. п.).
+    const t0 = performance.now();
+    const follow = () => {
+      if (!box.isConnected) return;
+      if (!b.isConnected || performance.now() - t0 > 650) { box.remove(); return; }
+      const nr = VIEW.rect(b), na = VIEW.rect(app);
+      box.style.left = (nr.left - na.left).toFixed(1) + 'px'; box.style.top = (nr.top - na.top).toFixed(1) + 'px';
+      box.style.width = nr.width.toFixed(1) + 'px'; box.style.height = nr.height.toFixed(1) + 'px';
+      requestAnimationFrame(follow);
+    };
+    requestAnimationFrame(follow);
     if (gold && FX.getQuality() > 0.3) FX.burst(r.left + px, r.top + py, { n: 9, speed: [80, 220], size: [1.2, 2.6], g: 200, life: [0.35, 0.7] });
     else if (FX.getQuality() > 0.6) FX.burst(r.left + px, r.top + py, { n: 4, speed: [50, 140], size: [1, 2], g: 120, life: [0.25, 0.5] });
   }, { capture: true, passive: true });
