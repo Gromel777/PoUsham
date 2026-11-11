@@ -947,3 +947,10 @@ input, select { font: inherit; }
 @keyframes sunPulse { from { scale: .88; opacity: .7 } to { scale: 1.12; opacity: 1 } }
 @keyframes sunSpin { to { rotate: 360deg } }
 @keyframes sunFlicker { from { opacity: .75 } to { opacity: 1 } }
+
+/* ---------- лобби: список столов + вход по коду ---------- */
+.code-row { display: flex; gap: 8px; align-items: stretch; }
+.code-row input { width: 92px; flex: none; text-align: center; font-size: 18px; font-weight: 800; letter-spacing: .25em; text-transform: uppercase; padding: 6px 8px; border-radius: 12px;
+  background: rgba(0, 0, 0, .35); border: 1px solid var(--line); color: var(--ink); }
+.code-row input::placeholder { letter-spacing: .05em; font-weight: 600; font-size: 14px; color: var(--ink-dim); }
+.code-row .btn-gold { flex: 1; }

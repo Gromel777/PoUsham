@@ -322,14 +322,13 @@
         <div class="home-panel glass">
           <div class="home-head"><div>${logoHtml()}<div class="logo-sub">${T('заяви и попади')}</div></div>${langSeg()}</div>
           <label class="field">${T('Ваше имя')}<input id="name" maxlength="20" autocomplete="nickname" value="${esc(sess.name || (Auth.me && Auth.me.nick) || '')}" placeholder="${T('Как вас зовут?')}"></label>
-          <div class="tabs tabs4">${[['ranked', 'Рейтинг'], ['casual', 'Обычная'], ['create', 'Свой стол'], ['join', 'По коду']].map(([k, n]) => `<button data-act="tab" data-tab="${k}">${T(n)}</button>`).join('')}</div>
+          <div class="tabs tabs4">${[['ranked', 'Рейтинг'], ['casual', 'Обычная'], ['create', 'Свой стол'], ['join', 'Лобби']].map(([k, n]) => `<button data-act="tab" data-tab="${k}">${T(n)}</button>`).join('')}</div>
           <div class="panes">
           <div class="pane" data-pane="ranked" id="pane-ranked"></div>
           <div class="pane" data-pane="casual">
             <div class="row"><span class="opt-label">${T('Стол')}</span><div class="seg" id="seg-casual">${[2, 3, 4, 5, 6, 0].map(n => `<button data-act="casualSize" data-n="${n}">${n || T('Любой')}</button>`).join('')}</div></div>
             <button class="btn-gold" data-act="search" data-mode="casual">${T('Быстрая игра')}</button>
-            <div class="rooms-head"><span>${T('Открытые столы')}</span><span class="hint" id="rooms-count"></span></div>
-            <div class="room-list" id="room-list"><div class="hint">${T('Загружаем…')}</div></div>
+            <span class="hint">${T('Подберём игроков без рейтинга. Не набралось за 45 с — свободные места займут боты.')}</span>
           </div>
           <div class="pane" data-pane="create">
             <div class="row"><span class="opt-label">${T('Игроков')}</span><div class="seg" id="seg-players">${[2, 3, 4, 5, 6].map(n => `<button data-act="players" data-n="${n}">${n}</button>`).join('')}</div></div>
@@ -338,13 +337,15 @@
               <div class="stepper"><button data-act="timer" data-d="-5">−</button><input class="num-input" id="timer-val" inputmode="numeric" maxlength="3"><button data-act="timer" data-d="5">+</button></div></div>
             <div class="row"><label class="switch" data-act="bluff" id="bluff-sw"><i></i><span>${T('Режим обмана')}</span></label><span class="hint" id="timer-hint"></span></div>
             <div class="row"><label class="switch" data-act="skills" id="skills-sw"><i></i><span>${T('Умения')}</span></label><span class="hint">${T('«Пересдача» — раз за партию')}</span></div>
-            <div class="row"><label class="switch" data-act="listed" id="listed-sw"><i></i><span>${T('Открытый стол')}</span></label><span class="hint">${T('виден всем в списке столов')}</span></div>
+            <div class="row"><label class="switch" data-act="listed" id="listed-sw"><i></i><span>${T('Приватная игра')}</span></label><span class="hint">${T('только по коду, в лобби не видна')}</span></div>
             <button class="btn-gold" data-act="create">${T('Создать стол')}</button>
           </div>
           <div class="pane" data-pane="join">
-            <label class="field code-input">${T('Код комнаты')}<input id="code" maxlength="4" value="${esc(roomParam)}" placeholder="····" autocapitalize="characters"></label>
-            <button class="btn-gold" data-act="join">${T('Войти')}</button>
-            <span class="hint">${T('Вылетели из игры? Введите код и то же имя — вернётесь на своё место.')}</span>
+            <div class="rooms-head"><span>${T('Открытые столы')}</span><span class="hint" id="rooms-count"></span></div>
+            <div class="room-list" id="room-list"><div class="hint">${T('Загружаем…')}</div></div>
+            <div class="code-row"><input id="code" maxlength="4" value="${esc(roomParam)}" placeholder="${T('Код')}" autocapitalize="characters" title="${T('Код комнаты')}">
+              <button class="btn-gold" data-act="join">${T('Войти по коду')}</button></div>
+            <span class="hint">${T('Приватный стол или вылетели из игры? Введите код и то же имя.')}</span>
           </div>
           </div>
           <div class="err" id="err">${esc(S.err)}</div>
@@ -392,7 +393,7 @@
     clearTimeout(roomsTimer);
     if (S.screen !== 'home') return;
     roomsTimer = setTimeout(loadRooms, 4000);
-    if (S.tab !== 'casual') return;
+    if (S.tab !== 'join') return;
     let list;
     try { list = (await fetch('/api/rooms').then(r => r.json())).rooms || []; } catch { return; }
     const box = cur('#room-list');
@@ -402,7 +403,7 @@
         <div class="rr-main"><b>${esc(r.host)}</b><span class="hint">${T('{n} раундов', { n: r.rounds })} · ${r.turnTime ? T('таймер {s} с', { s: r.turnTime }) : T('без таймера')}${r.bluff ? ' · ' + T('обман') : ''}${r.skills ? ' · ' + T('умения') : ''}</span></div>
         <span class="rr-seats">${r.players}/${r.size}</span>
         <button class="btn-ghost" data-act="joinRoom" data-code="${esc(r.code)}">${T('Сесть')}</button></div>`).join('')
-      : `<div class="hint room-empty">${T('Открытых столов пока нет — нажмите «Быстрая игра» или создайте свой стол.')}</div>`;
+      : `<div class="hint room-empty">${T('Открытых столов пока нет — создайте свой во вкладке «Свой стол» или попробуйте «Быстрая игра».')}</div>`;
   }
 
   // ---------- поиск игроков ----------
@@ -460,7 +461,7 @@
     el.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
     el.querySelectorAll('#seg-ranked button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.rankedSize));
     el.querySelectorAll('#seg-casual button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.casualSize));
-    const ls = $('#listed-sw', el); if (ls) ls.classList.toggle('on', S.listed);
+    const ls = $('#listed-sw', el); if (ls) ls.classList.toggle('on', !S.listed); // переключатель — «приватная»
     el.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === S.tab));
     el.querySelectorAll('#seg-players button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.players));
     const rv = $('#rounds-val', el); if (rv) rv.textContent = S.rounds;
@@ -2519,7 +2520,7 @@
   // ---------- действия по кнопкам ----------
   let armedCheck = null, armedT = 0;
   const actions = {
-    tab: b => { S.tab = b.dataset.tab; syncHome(); if (S.tab === 'casual') loadRooms(); },
+    tab: b => { S.tab = b.dataset.tab; syncHome(); if (S.tab === 'join') loadRooms(); },
     rankedSize: b => { S.rankedSize = +b.dataset.n; syncHome(); },
     casualSize: b => { S.casualSize = +b.dataset.n; syncHome(); },
     listed: () => { S.listed = !S.listed; syncHome(); },
