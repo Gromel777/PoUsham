@@ -35,8 +35,14 @@
     // умения
     'Умения': 'Skills', 'умения': 'skills', '«Пересдача» — раз за партию': '“Reshuffle” — once per game', 'Пересдача': 'Reshuffle', 'ПЕРЕСДАЧА!': 'RESHUFFLE!',
     'Нажмите ещё раз': 'Tap again', 'Вы': 'You',
-    'Пересдача: все карты всех игроков перетасовать и раздать заново. Только пока идут заявки, один раз за партию.': 'Reshuffle: collect everyone’s cards, shuffle and deal again. Only during bidding, once per game.',
-    'Пересдача уже использована': 'Reshuffle already used', 'Пересдача — только пока идут заявки': 'Reshuffle — only during bidding',
+    'Пересдача уже использована': 'Reshuffle already used', 'Пересдача — только до заявок': 'Reshuffle — only before bidding',
+    'Пересдача: все карты всех игроков перетасовать и раздать заново. Только перед заявками, один раз за партию.': 'Reshuffle: collect everyone’s cards, shuffle and deal again. Only before bidding, once per game.',
+    'ПЕРЕСДАЧА?': 'RESHUFFLE?', 'Не нравятся карты? Есть 3 секунды': 'Don’t like your cards? You have 3 seconds',
+    'Окно пересдачи · заявки через {s} с': 'Reshuffle window · bidding in {s} s', 'Пересдача — карты раздаются заново': 'Reshuffle — dealing again', 'Раздача…': 'Dealing…',
+    'Тестовый режим': 'Test mode', 'тестовый режим': 'test mode', 'тестовый': 'test', '17 раундов: 10-й — «Бескозырка», 15-й — «Тёмная»': '17 rounds: 10th — “No trumps”, 15th — “Dark”',
+    'без козыря': 'no trumps', 'тёмная ×2': 'dark ×2', 'БЕСКОЗЫРКА': 'NO TRUMPS', 'ТЁМНАЯ': 'DARK ROUND', 'КАРТЫ ОТКРЫТЫ': 'CARDS REVEALED',
+    'Червы — не козырь. Берёт старшая карта масти': 'Hearts are not trumps. The highest card of the suit wins',
+    'Заявка вслепую — карты откроются после заявок. Очки ×2': 'Blind bid — cards are revealed after bidding. Points ×2',
     'В этом раунде уже была пересдача': 'There was already a reshuffle this round', 'Умения за этим столом выключены': 'Skills are off at this table',
     // аккаунт и рейтинг
     'Вы вошли: {n} · рейтинг {r}': 'Signed in: {n} · rating {r}', 'Лидеры': 'Leaders', 'Выйти из аккаунта': 'Sign out', 'Выход': 'Sign out',
@@ -175,7 +181,7 @@
 
   const NOTE = s => s.replace(' — «СТАРШИЕ НА СТОЛ!»', ' — “HIGHEST ON THE TABLE!”').replace(' — как самая старшая!', ' — as the top card!');
   const LOG_RE = [
-    [/^— Раунд (\d+)\/(\d+): по (\d+) карт\. Первый ход у (.+), заявки начинает (.+)\.$/, (m, a, b, k, l, f) => `— Round ${a}/${b}: ${k} card${k === '1' ? '' : 's'} each. ${l} leads, ${f} bids first.`],
+    [/^— Раунд (\d+)\/(\d+): по (\d+) карт\.( БЕСКОЗЫРКА!| ТЁМНАЯ: заявки вслепую, очки ×2!)? Первый ход у (.+), заявки начинает (.+)\.$/, (m, a, b, k, sp, l, f) => `— Round ${a}/${b}: ${k} card${k === '1' ? '' : 's'} each.${!sp ? '' : sp.includes('БЕСК') ? ' NO TRUMPS!' : ' DARK: blind bids, points ×2!'} ${l} leads, ${f} bids first.`],
     [/^Заявлено всего (\d+) из (\d+)\. Первым ходит (.+)\.$/, (m, s, k, l) => `Total bid ${s} of ${k}. ${l} leads.`],
     [/^Итог раунда: (.*)$/, (m, r) => `Round result: ${r}`],
     [/^Взятку забирает (.+)$/, (m, n) => `${n} takes the trick`],
@@ -189,7 +195,7 @@
     [/^(.+): время вышло — ход сделан автоматически$/, (m, n) => `${n}: time’s up — auto move`],
     [/^(.+) предлагает заменить ботом игрока (.+)\. Игра на паузе\.$/, (m, a, b) => `${a} proposes replacing ${b} with a bot. Game paused.`],
     [/^(.+) заменяет карту: (10|[6-9]|[ВДКТ])([♠♣♦♥])(.*)$/, (m, n, r, s, note) => `${n} swaps the card: ${cardEn(r + s)}${NOTE(note)}`],
-    [/^(.+) применяет «Пересдачу»: карты перетасованы и розданы заново\. Заявки сначала — начинает (.+)\.$/, (m, n, b) => `${n} uses “Reshuffle”: cards shuffled and dealt again. Bids start over — ${b} first.`],
+    [/^(.+) применяет «Пересдачу»: карты перетасованы и розданы заново\.$/, (m, n) => `${n} uses “Reshuffle”: cards shuffled and dealt again.`],
     [/^(.+) заявляет (\d+)$/, (m, n, b) => `${n} bids ${b}`],
     [/^(.+): (10|[6-9]|[ВДКТ])([♠♣♦♥])(.*)$/, (m, n, r, s, note) => `${n}: ${cardEn(r + s)}${NOTE(note)}`],
   ];

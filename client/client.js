@@ -12,7 +12,7 @@
 
   const S = {
     view: null, es: null, room: null, token: null, err: '', connecting: false, prefillCode: '', screen: null, busy: false,
-    tab: 'ranked', players: 4, rounds: 17, roundsTouched: false, turnTime: 30, bluff: false, skills: true, listed: true,
+    tab: 'ranked', players: 4, rounds: 17, roundsTouched: false, turnTime: 30, bluff: false, skills: true, test: false, listed: true,
     rankedSize: 0, casualSize: 0, // 0 — «любой стол»
   };
 
@@ -338,7 +338,8 @@
               <span class="opt-label" style="min-width:0;margin-left:6px">${T('Таймер')}</span>
               <div class="stepper"><button data-act="timer" data-d="-5">−</button><input class="num-input" id="timer-val" inputmode="numeric" maxlength="3"><button data-act="timer" data-d="5">+</button></div></div>
             <div class="row"><label class="switch" data-act="bluff" id="bluff-sw"><i></i><span>${T('Режим обмана')}</span></label><span class="hint" id="timer-hint"></span></div>
-            <div class="row"><label class="switch" data-act="skills" id="skills-sw"><i></i><span>${T('Умения')}</span></label><span class="hint">${T('«Пересдача» — раз за партию')}</span></div>
+            <div class="row"><label class="switch" data-act="skills" id="skills-sw" title="${T('«Пересдача» — раз за партию')}"><i></i><span>${T('Умения')}</span></label>
+              <label class="switch" data-act="test" id="test-sw" title="${T('17 раундов: 10-й — «Бескозырка», 15-й — «Тёмная»')}"><i></i><span>${T('Тестовый режим')}</span></label></div>
             <div class="row"><label class="switch" data-act="listed" id="listed-sw"><i></i><span>${T('Приватная игра')}</span></label><span class="hint">${T('только по коду, в лобби не видна')}</span></div>
             <button class="btn-gold" data-act="create">${T('Создать стол')}</button>
           </div>
@@ -402,7 +403,7 @@
     if (!box) return;
     const cnt = cur('#rooms-count'); if (cnt) cnt.textContent = list.length ? String(list.length) : '';
     box.innerHTML = list.length ? list.map(r => `<div class="room-row">
-        <div class="rr-main"><b>${esc(r.host)}</b><span class="hint">${T('{n} раундов', { n: r.rounds })} · ${r.turnTime ? T('таймер {s} с', { s: r.turnTime }) : T('без таймера')}${r.bluff ? ' · ' + T('обман') : ''}${r.skills ? ' · ' + T('умения') : ''}</span></div>
+        <div class="rr-main"><b>${esc(r.host)}</b><span class="hint">${T('{n} раундов', { n: r.rounds })} · ${r.turnTime ? T('таймер {s} с', { s: r.turnTime }) : T('без таймера')}${r.bluff ? ' · ' + T('обман') : ''}${r.skills ? ' · ' + T('умения') : ''}${r.test ? ' · ' + T('тестовый') : ''}</span></div>
         <span class="rr-seats">${r.players}/${r.size}</span>
         <button class="btn-ghost" data-act="joinRoom" data-code="${esc(r.code)}">${T('Сесть')}</button></div>`).join('')
       : `<div class="hint room-empty">${T('Открытых столов пока нет — создайте свой во вкладке «Свой стол» или попробуйте «Быстрая игра».')}</div>`;
@@ -460,6 +461,7 @@
   function clampTimer(t) { return Number.isFinite(t) ? Math.max(0, Math.min(600, t)) : 30; }
   function syncHome(el = screenEl().querySelector('.screen:not(.leave)') || screenEl()) {
     if (!S.roundsTouched) S.rounds = 2 * MAX_CARDS(S.players) - 1;
+    if (S.test) S.rounds = 17;
     el.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
     el.querySelectorAll('#seg-ranked button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.rankedSize));
     el.querySelectorAll('#seg-casual button').forEach(b => b.classList.toggle('on', +b.dataset.n === S.casualSize));
@@ -472,12 +474,14 @@
     const tv2 = $('#timer-val', el); if (tv2) tv2.title = T('секунд на ход (0 — без таймера)');
     const sw = $('#bluff-sw', el); if (sw) sw.classList.toggle('on', S.bluff);
     const ks = $('#skills-sw', el); if (ks) ks.classList.toggle('on', S.skills);
+    const ts = $('#test-sw', el); if (ts) ts.classList.toggle('on', S.test);
+    el.querySelectorAll('[data-act="rounds"]').forEach(b => { b.disabled = S.test; });
     el.querySelectorAll('#seg-theme button').forEach(b => b.classList.toggle('on', b.dataset.t === prefs.cards));
   }
 
   function joinLink(code) { return `${location.origin}/?room=${code}`; }
   function settingsLine(v) {
-    return `<div class="settings-line"><span>${T('{n} игроков', { n: v.size })}</span><span>${T('{n} раундов', { n: v.rounds })}</span><span>${v.turnTime ? T('таймер {s} с', { s: v.turnTime }) : T('без таймера')}</span>${v.bluff ? `<span class="bluff">${T('режим обмана')}</span>` : ''}${v.skillsOn ? `<span class="skills">${T('умения')}</span>` : ''}</div>`;
+    return `<div class="settings-line"><span>${T('{n} игроков', { n: v.size })}</span><span>${T('{n} раундов', { n: v.rounds })}</span><span>${v.turnTime ? T('таймер {s} с', { s: v.turnTime }) : T('без таймера')}</span>${v.bluff ? `<span class="bluff">${T('режим обмана')}</span>` : ''}${v.skillsOn ? `<span class="skills">${T('умения')}</span>` : ''}${v.test ? `<span class="skills">${T('тестовый режим')}</span>` : ''}</div>`;
   }
   const matchedKind = v => v.kind === 'ranked' || v.kind === 'casual';
   function lobbyTitle(v) {
@@ -539,7 +543,7 @@
             <button class="icon-btn" data-act="menu" title="${T('Меню')}">${iconSvg('menu')}</button>
           </div>
         </div>
-        <div class="round-dock"><div class="status" id="status"></div><div class="round-row"><div class="skills-bar" id="skills-bar"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="bids-meter" id="bids-meter"></div><div class="tags"><span class="trump-box"><span>♥</span> ${T('козырь')}</span><span id="hud-mode"></span></div></div></div></div>
+        <div class="round-dock"><div class="status" id="status"></div><div class="round-row"><div class="skills-bar" id="skills-bar"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="bids-meter" id="bids-meter"></div><div class="tags"><span class="trump-box" id="trump-box"><span>♥</span> ${T('козырь')}</span><span id="hud-mode"></span></div></div></div></div>
         <div class="me-panel" id="me-panel"></div>
         <div class="action" id="action"></div>
         <div id="vote"></div>
@@ -756,24 +760,26 @@
       <li>Rounds go up and down: 1, 2, 3… cards up to the maximum and back. The maximum is 36 ÷ players, but no more than 9 (5 players — 7 cards, 6 — 6). Extra rounds are added at the peak.</li>
       <li><b>First lead</b> in round one goes to a random player, then passes clockwise (the gold ball on the table).</li>
       <li><b>Bidding</b> starts with the player after the leader. Bid from 0 up to the number of cards; the total may be anything.</li>
-      <li><b>Play:</b> if you have the suit of the first card, you must play it (no trump then). No such suit — any card, trumps included. <b>7♠</b> can always be played. The strongest card takes the trick and its owner leads next.</li>
-      <li><b>Scoring:</b> exactly your bid — +20 per trick; bid 0 and took 0 — +5; short — −20 per missing trick; over — +2.</li>
+      <li><b>Play:</b> if you have the suit of the first card, you must play it (no trump then). No such suit — any card, trumps included. <b>7♠</b> is a joker: it can always be played and never has to follow spades. The strongest card takes the trick and its owner leads next.</li>
+      <li><b>Scoring:</b> exactly your bid — +20 per trick; bid 0 and took 0 — +10 plus 2 per card in hand; short — −20 per missing trick; over — +1 per extra trick.</li>
       <li><b>7♠:</b> a normal card; when leading — “Highest on the table!” (everyone plays their strongest card, the trick is yours); when following — the top card (takes the trick).</li>
       <li><b>Timer:</b> when time runs out, a random honest card is played for you (for bids — an automatic estimate of your hand).</li>
       <li><b>Bluff mode:</b> any card may be played, breaking the suit rule and “Highest on the table!”. While the trick is on the table anyone can tap “?” on someone else’s card (except the first card of the trick, 7♠ and a move with only one card in hand). Caught — the cheater gives the checker 50 points, the card goes back and an honest card must be played. Wrong — the checker loses 20 points.</li>
-      <li><b>Skills</b> (table option): <b>Reshuffle</b> — once per game, while bids are being made, all players’ cards are collected, shuffled and dealt again. Bids start over. At most one reshuffle per round.</li>
+      <li><b>Skills</b> (table option): <b>Reshuffle</b> — once per game, in the 3-second window after the deal and before bidding, all players’ cards are collected, shuffled and dealt again. At most one reshuffle per round.</li>
+      <li><b>Test mode</b> (table option): 17 rounds; round 10 is <b>No trumps</b> (hearts are an ordinary suit), round 15 is <b>Dark</b> (bid blind, cards are revealed after bidding, round points ×2).</li>
     </ul><div class="actions"><button class="btn-gold" data-act="close">Got it</button></div>`;
     return `<h2 class="gold-text">Правила «В Точку»</h2><ul class="rules">
       <li>Колода 36 карт, 2–6 игроков. Козыри — черви <b style="color:var(--crimson)">♥</b>.</li>
       <li>Раунды идут «горкой»: по 1, 2, 3… карт до максимума и обратно. Максимум — 36 ÷ число игроков, но не больше 9 (5 игроков — 7 карт, 6 — 6). Лишние раунды добавляются на пике.</li>
       <li><b>Первый ход</b> в первом раунде у случайного игрока, дальше переходит по часовой стрелке (золотой шар на столе).</li>
       <li><b>Заявка:</b> начинает следующий после ходящего. Можно заявить от 0 до числа карт; сумма заявок может быть любой.</li>
-      <li><b>Ходы:</b> есть масть первой карты — кладёте только её (козырь в этом случае нельзя). Масти нет — любую карту, в том числе козырь. <b>7♠</b> можно положить всегда. Взятку забирает сильнейшая карта, её владелец ходит следующим.</li>
-      <li><b>Очки:</b> взял ровно заявленное — +20 за карту; заявил 0 и взял 0 — +5; недобор — −20 за каждую; перебор — +2.</li>
+      <li><b>Ходы:</b> есть масть первой карты — кладёте только её (козырь в этом случае нельзя). Масти нет — любую карту, в том числе козырь. <b>7♠</b> — джокер: её можно положить всегда, и под пики класть её не обязательно. Взятку забирает сильнейшая карта, её владелец ходит следующим.</li>
+      <li><b>Очки:</b> взял ровно заявленное — +20 за взятку; заявил 0 и взял 0 — +10 и ещё +2 за каждую карту на руке; недобор — −20 за каждую; перебор — +1 за каждую лишнюю взятку.</li>
       <li><b>7♠:</b> как обычная карта; первым ходом — «Старшие на стол!» (все кладут самую сильную карту, взятка ваша); в ответ — как самая старшая (забирает взятку).</li>
       <li><b>Таймер:</b> если время на ход вышло, за игрока кладётся случайная честная карта (на заявку — автоматическая оценка руки).</li>
       <li><b>Режим обмана:</b> можно класть любую карту, нарушая правила масти и «Старшие на стол!». Пока взятка на столе, любой может нажать «?» на чужой карте (кроме первой карты взятки, 7♠ и хода, когда у игрока была одна карта). Поймал — обманщик отдаёт проверившему ${50} очков, карта возвращается, и он обязан положить честную. Ошибся — проверивший теряет 20 очков.</li>
-      <li><b>Умения</b> (настройка стола): <b>«Пересдача»</b> — один раз за партию, пока идут заявки, карты всех игроков собираются, тасуются и раздаются заново. Заявки начинаются сначала. Не больше одной пересдачи за раунд.</li>
+      <li><b>Умения</b> (настройка стола): <b>«Пересдача»</b> — один раз за партию, в окне 3 секунды после раздачи (до заявок), карты всех игроков собираются, тасуются и раздаются заново. Не больше одной пересдачи за раунд.</li>
+      <li><b>Тестовый режим</b> (настройка стола): 17 раундов; 10-й — <b>«Бескозырка»</b> (червы — обычная масть), 15-й — <b>«Тёмная»</b> (заявка вслепую, карты открываются после заявок, очки раунда ×2).</li>
     </ul><div class="actions"><button class="btn-gold" data-act="close">Понятно</button></div>`;
   }
   function langSeg(extra = '') {
@@ -985,7 +991,7 @@
     el.className = 'card' + (faceUp ? '' : ' down');
     if (card) el.dataset.id = card.id;
     el.innerHTML = '<div class="aura"></div><div class="ci"><div class="face front"></div><div class="face back"></div></div>';
-    if (card) el.querySelector('.front').style.backgroundImage = Cards.url(card);
+    if (card && !card.hidden) el.querySelector('.front').style.backgroundImage = Cards.url(card);
     el.querySelector('.back').style.backgroundImage = Cards.backUrl();
     layer.appendChild(el);
     return el;
@@ -1071,17 +1077,22 @@
       if (newRound) {
         closeModalIf('results'); closeModalIf('over');
         this.overShown = false;
-        await this.collectStale(v, true);
-        this.updateSeats(v, prev, true);
-        this.updateMe(v, null);
-        if (!fast) await this.announceRound(v);
-        await this.deal(v, fast);
+        this.intro = true; this.updateSkills(v); // пока объявление и раздача — окно пересдачи не показываем
+        try {
+          await this.collectStale(v, true);
+          this.updateSeats(v, prev, true);
+          this.updateMe(v, null);
+          if (!fast) await this.announceRound(v);
+          await this.deal(v, fast);
+        } finally { this.intro = false; }
       }
       if (rsSeq > this.reshuffleSeq) {
         this.reshuffleSeq = rsSeq;
         if (fast) await this.deal(v, true);
         else await this.reshuffleFx(v);
       }
+      if (this.darkHand && !v.handHidden && !newRound) await this.revealDark(v, fast);
+      this.openPreWindow(v, fast);
       await this.applyCheck(v, fast);
       await this.syncTable(v, fast);
       this.updateSeats(v, newRound ? null : prev);
@@ -1146,7 +1157,13 @@
     updateHud(v) {
       $('#hud-round', this.el).textContent = T('Раунд {a}/{b}', { a: v.roundIdx + 1, b: v.plan.length });
       $('#hud-sub', this.el).textContent = poCards(v.plan[v.roundIdx]);
-      $('#hud-mode', this.el).innerHTML = v.bluff ? `<span class="mode-box">${T('обман')}</span>` : '';
+      const special = v.mode === 'dark' ? `<span class="mode-box dark">${T('тёмная ×2')}</span>` : '';
+      $('#hud-mode', this.el).innerHTML = special + (v.bluff ? `<span class="mode-box">${T('обман')}</span>` : '');
+      const tb = $('#trump-box', this.el);
+      if (tb) {
+        const html = v.trump === null ? `<span class="nt">⊘</span> ${T('без козыря')}` : `<span>♥</span> ${T('козырь')}`;
+        if (tb.dataset.html !== html) { tb.dataset.html = html; tb.innerHTML = html; tb.classList.toggle('notrump', v.trump === null); }
+      }
       // Заказы против карт: сколько заявлено всего при k картах в руке. Перебор — кто-то точно не доберёт.
       const bm = $('#bids-meter', this.el);
       if (bm) {
@@ -1308,6 +1325,7 @@
       this.hand.clear();
       this.sel = null;
       const k = v.plan[v.roundIdx], d = dims();
+      this.darkHand = !!v.handHidden; // «Тёмная»: свои карты лежат рубашкой вверх до конца заявок
       const order = Array.from({ length: v.n }, (_, j) => (v.leader + 1 + j) % v.n);
       const els = v.hand.map(c => {
         const el = makeCard(this.cardsLayer, c, false);
@@ -1318,7 +1336,7 @@
         return el;
       });
       if (fast) {
-        els.forEach((el, i) => { el.style.opacity = ''; el.classList.remove('down'); place(el, handXY(i, els.length, d)); });
+        els.forEach((el, i) => { el.style.opacity = ''; if (!v.handHidden) el.classList.remove('down'); place(el, handXY(i, els.length, d)); });
         for (let p = 0; p < v.n; p++) if (p !== v.you) this.renderFan(p, v.handCounts[p]);
         return;
       }
@@ -1354,8 +1372,10 @@
       await Promise.all(jobs);
       deck.forEach(el => { el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: 'forwards' }); setTimeout(() => el.remove(), 260); });
       await wait(120);
-      els.forEach((el, i) => setTimeout(() => { el.classList.remove('down'); el.classList.add('shine'); SFX.flick(); }, i * 55));
-      await wait(els.length * 55 + 420);
+      if (!v.handHidden) {
+        els.forEach((el, i) => setTimeout(() => { el.classList.remove('down'); el.classList.add('shine'); SFX.flick(); }, i * 55));
+        await wait(els.length * 55 + 420);
+      }
       els.forEach(el => el.classList.remove('shine'));
       this.dealing = false;
       for (let p = 0; p < v.n; p++) if (p !== v.you) this.renderFan(p, v.handCounts[p]);
@@ -1513,7 +1533,7 @@
       v.hand.forEach((c, i) => {
         let el = this.hand.get(c.id);
         if (!el) {
-          el = makeCard(this.cardsLayer, c, true);
+          el = makeCard(this.cardsLayer, c, !c.hidden);
           el.classList.add('inhand');
           place(el, { ...handXY(i, ids.length, d), y: d.H + d.ch });
           this.hand.set(c.id, el);
@@ -1545,20 +1565,67 @@
       const sk = v.skills.reshuffle;
       let b = bar.querySelector('.skill-btn');
       if (!b) {
-        bar.innerHTML = `<button class="skill-btn" data-act="skill" data-skill="reshuffle" title="${T('Пересдача: все карты всех игроков перетасовать и раздать заново. Только пока идут заявки, один раз за партию.')}">
+        bar.innerHTML = `<button class="skill-btn" data-act="skill" data-skill="reshuffle" title="${T('Пересдача: все карты всех игроков перетасовать и раздать заново. Только перед заявками, один раз за партию.')}">
           <span class="sk-ring"></span><span class="sk-ico">${shuffleSvg()}</span><span class="sk-lock">🔒</span>
           <span class="sk-name">${T('Пересдача')}</span><span class="sk-arm">${T('Нажмите ещё раз')}</span></button>`;
         b = bar.querySelector('.skill-btn');
       }
       const state = !sk.left ? 'used' : sk.can ? 'ready' : 'idle';
       // Во время розыгрыша пересдача невозможна — кнопка прячется и не закрывает край руки.
-      bar.classList.toggle('off', v.phase !== 'bid');
+      // Кнопка видна только в окне перед заявками и не во время раздачи.
+      const busy = !!this.dealing || !!this.intro;
+      bar.classList.toggle('off', v.phase !== 'pre' || busy || !!v.paused);
+      bar.classList.toggle('window', v.phase === 'pre' && state === 'ready' && !busy);
+      if (!b.querySelector('.sk-count')) b.insertAdjacentHTML('beforeend', '<span class="sk-count"></span>');
       if (b.dataset.state !== state) {
         const wasReady = b.dataset.state === 'idle' && state === 'ready';
         b.dataset.state = state;
         if (state !== 'ready') b.classList.remove('armed');
         if (wasReady) popEl(b, 'sk-pop');
       }
+    },
+
+    // Окно пересдачи открылось (раздача закончилась): привлекаем внимание — у кого умение есть, тем крупно.
+    openPreWindow(v, fast) {
+      const key = v.phase === 'pre' && v.pre && !v.pre.after ? `${v.roundIdx}:${v.reshuffle ? v.reshuffle.seq : 0}` : null;
+      if (!key || this.preShown === key || this.dealing || this.intro) { this.updateSkills(v); return; }
+      this.preShown = key;
+      this.updateSkills(v);
+      if (fast || v.paused) return;
+      const mine = v.skills && v.skills.reshuffle.can;
+      if (mine) {
+        banner(T('ПЕРЕСДАЧА?'), 'violet', true, T('Не нравятся карты? Есть 3 секунды'));
+        this.neonFlash('neon-legend', 1600);
+        SFX.chip(); vibrate([20, 30, 20]);
+        const b = $('#skills-bar .skill-btn', this.el);
+        if (b) { const [x, y] = VIEW.center(b); FX.ring(x, y, { r1: 90, color: '#c9a2ff', width: 3, life: 0.6 }); FX.ring(x, y, { r1: 140, color: '#f6d27a', width: 2, life: 0.8, delay: 0.15 }); }
+      }
+      this.updateStatus(v);
+    },
+    preLeft(v) { return v.phase === 'pre' && v.pre ? Math.max(0, v.pre.left - (Date.now() - v._at)) : 0; },
+
+    // «Тёмная»: заявки сделаны — рубашки переворачиваются, под ними настоящие карты.
+    async revealDark(v, fast) {
+      this.darkHand = false;
+      const old = [...this.hand.values()];
+      this.hand.clear();
+      const d = dims();
+      v.hand.forEach((c, i) => {
+        let el = old[i];
+        if (!el) { el = makeCard(this.cardsLayer, c, false); el.classList.add('inhand'); place(el, handXY(i, v.hand.length, d)); }
+        el.dataset.id = c.id;
+        el.querySelector('.front').style.backgroundImage = Cards.url(c);
+        this.hand.set(c.id, el);
+      });
+      old.slice(v.hand.length).forEach(el => el.remove());
+      const els = [...this.hand.values()];
+      if (fast) { els.forEach(el => el.classList.remove('down')); return; }
+      banner(T('КАРТЫ ОТКРЫТЫ'), 'violet', false);
+      const [cx, cy] = [d.cx, d.H - d.ch * 0.6];
+      FX.ring(cx, cy, { r1: 220, color: '#9b6bff', width: 3, life: 0.6 });
+      els.forEach((el, i) => setTimeout(() => { el.classList.remove('down'); el.classList.add('shine'); SFX.flick(); }, 120 + i * 70));
+      await wait(120 + els.length * 70 + 420);
+      els.forEach(el => el.classList.remove('shine'));
     },
 
     // Пересдача: все карты слетаются в центр, колода тасуется вихрем и раздаётся заново.
@@ -1621,24 +1688,28 @@
     async announceRound(v) {
       const n = v.roundIdx + 1, total = v.plan.length, k = v.plan[v.roundIdx];
       const peak = Math.max(...v.plan);
-      const tag = T(n === total ? 'ФИНАЛЬНЫЙ РАУНД' : n === 1 ? 'ИГРА НАЧИНАЕТСЯ' : k === peak && v.plan[v.roundIdx - 1] !== peak ? 'ПИК ПАРТИИ' : '');
+      const special = v.mode === 'notrump' ? 'notrump' : v.mode === 'dark' ? 'dark' : '';
+      const tag = T(special === 'notrump' ? 'БЕСКОЗЫРКА' : special === 'dark' ? 'ТЁМНАЯ' : n === total ? 'ФИНАЛЬНЫЙ РАУНД' : n === 1 ? 'ИГРА НАЧИНАЕТСЯ' : k === peak && v.plan[v.roundIdx - 1] !== peak ? 'ПИК ПАРТИИ' : '');
+      const note = special === 'notrump' ? T('Червы — не козырь. Берёт старшая карта масти') : special === 'dark' ? T('Заявка вслепую — карты откроются после заявок. Очки ×2') : '';
       const a = $('#announce');
       a.innerHTML = `<div class="an-back"></div><div class="an-box">
         ${tag ? `<div class="an-tag">${tag}</div>` : ''}
         <div class="an-title"><span>${T('РАУНД')}</span> <b>${n}</b></div>
         <div class="an-sub">${T('{c} · {n} из {t}', { c: poCards(k), n, t: total })}</div>
+        ${note ? `<div class="an-note">${note}</div>` : ''}
         <div class="an-line"></div></div>`;
-      a.className = 'on' + (n === total ? ' final' : '');
+      a.className = 'on' + (n === total ? ' final' : '') + (special ? ' ' + special : '');
       const cx = VIEW.w / 2, cy = VIEW.h * 0.45;
       SFX.roundGong(n === total);
       setTimeout(() => {
         FX.ring(cx, cy, { r1: Math.max(VIEW.w, VIEW.h) * 0.6, color: '#f6d27a', width: 5, life: 0.8 });
         FX.raysAt(cx, cy, { count: 16, len: Math.max(VIEW.w, VIEW.h) * 0.7, color: 'rgba(246,210,122,1)', life: 1.3, a: 0.3, spin: 0.6, force: true });
         FX.burst(cx, cy, { n: 50, colors: FX.GOLD, speed: [200, 600], size: [1.5, 3], g: 120, life: [0.6, 1.2] });
-        if (n === total) { FX.ring(cx, cy, { r1: 260, color: '#ff4d5e', width: 4, delay: 0.1 }); FX.shake(8, 0.4); }
+        if (special) { FX.ring(cx, cy, { r1: 300, color: special === 'dark' ? '#9b6bff' : '#7fd7ff', width: 4, delay: 0.1 }); FX.shake(6, 0.35); }
+        else if (n === total) { FX.ring(cx, cy, { r1: 260, color: '#ff4d5e', width: 4, delay: 0.1 }); FX.shake(8, 0.4); }
         else FX.shake(4, 0.25);
       }, 260);
-      await wait(1500);
+      await wait(special ? 2400 : 1500); // особый раунд — дольше, чтобы успеть прочитать
       a.classList.add('out');
       await wait(380);
       a.className = '';
@@ -1950,7 +2021,7 @@
     refreshFaces() {
       if (!this.el) return;
       this.el.querySelectorAll('.card').forEach(el => {
-        if (el.dataset.id) el.querySelector('.front').style.backgroundImage = Cards.url(Cards.parse(el.dataset.id));
+        if (el.dataset.id && !/^X\d/.test(el.dataset.id)) el.querySelector('.front').style.backgroundImage = Cards.url(Cards.parse(el.dataset.id));
         const b = el.querySelector('.back'); if (b) b.style.backgroundImage = Cards.backUrl();
       });
       this.seatEls.forEach((s, p) => { if (s) { const f = s.querySelector('.fan'); const n = +f.dataset.n; f.dataset.n = -1; this.renderFan(p, n); } });
@@ -2031,6 +2102,11 @@
     tickTimer() {
       const v = S.view;
       if (!v || v.stage !== 'game' || !this.el) return;
+      if (v.phase === 'pre') {
+        const sec = String(Math.max(1, Math.min(3, Math.ceil(this.preLeft(v) / 1000))));
+        const c = $('#skills-bar .sk-count', this.el); if (c && c.textContent !== sec) { c.textContent = sec; popEl(c, 'sk-pop'); }
+        const ps = $('#status .pre-s', this.el); if (ps && ps.textContent !== sec) ps.textContent = sec;
+      }
       const t = v.timer;
       const active = t && !v.paused && (v.phase === 'bid' || v.phase === 'play');
       const left = active ? Math.max(0, t.left - (Date.now() - v._at)) : 0;
@@ -2064,6 +2140,9 @@
       else if (v.fix) {
         mine = v.fix.p === v.you; warn = true;
         t = mine ? T('Вас поймали! Положите честную карту') : T('{n} пойман на обмане — меняет карту', { n: nm(v.fix.p) });
+      } else if (v.phase === 'pre') {
+        t = v.pre && v.pre.after ? T('Пересдача — карты раздаются заново')
+          : this.dealing || this.intro ? T('Раздача…') : T('Окно пересдачи · заявки через {s} с', { s: '<span class="pre-s">3</span>' });
       } else if (v.phase === 'bid') { mine = v.turn === v.you; t = mine ? T('Ваша заявка') : T('Заявляет {n}…', { n: nm(v.turn) }); }
       else if (v.phase === 'play') {
         mine = v.turn === v.you;
@@ -2071,7 +2150,7 @@
           const tr = v.trick, lead = tr && tr.plays.length ? tr.plays[0].card.suit : null;
           const need = v.bids[v.you] - v.took[v.you];
           t = tr && tr.command && tr.plays.length ? T('Старшие на стол — самую сильную') : !lead ? T('Ваш ход — вы ведёте') :
-            v.hand.some(c => c.suit === lead) ? T('Ваш ход — в масть {s}', { s: lead }) : T('Ваш ход — масти {s} нет', { s: lead });
+            v.hand.some(c => c.suit === lead && c.id !== '7♠') ? T('Ваш ход — в масть {s}', { s: lead }) : T('Ваш ход — масти {s} нет', { s: lead });
           t += need > 0 ? T(' · добрать {n}', { n: need }) : T(need === 0 ? ' · заявка выполнена' : ' · перебор');
           if (this.sel) t = (v.honest && v.honest.length && !v.honest.includes(this.sel)) ? T('Это обман! Нажмите ещё раз, чтобы рискнуть') : T('Нажмите карту ещё раз, чтобы сыграть');
         } else t = T('Ходит {n}…', { n: nm(v.turn) });
@@ -2195,13 +2274,15 @@
       await this.roundCoins(v, h, fast);
       const order = v.names.map((_, p) => p).sort((a, b) => v.scores[b] - v.scores[a]);
       const anyBonus = v.bluff || bonus.some(b => b);
-      showModal(`<h2 class="gold-text">${T('Итоги раунда {n}', { n: v.roundIdx + 1 })}</h2>
+      const nextMode = v.modes && v.modes[v.roundIdx + 1];
+      const nextTag = nextMode === 'notrump' ? ` · ${T('БЕСКОЗЫРКА')}` : nextMode === 'dark' ? ` · ${T('ТЁМНАЯ')}` : '';
+      showModal(`<h2 class="gold-text">${T('Итоги раунда {n}', { n: v.roundIdx + 1 })}${h.mode === 'dark' ? ` <span class="mode-box dark">${T('тёмная ×2')}</span>` : h.mode === 'notrump' ? ` <span class="trump-box notrump">${T('без козыря')}</span>` : ''}</h2>
         <table class="res-table"><tr><th>${T('Игрок')}</th><th>${T('Заявка / взял')}</th><th>${T('За раунд')}</th>${anyBonus ? `<th>${T('Проверки')}</th>` : ''}<th>${T('Всего')}</th></tr>
         ${order.map((p, i) => `<tr class="res-row ${p === v.you ? 'me-row' : ''}" style="animation-delay:${i * 90}ms"><td>${esc(v.names[p])}${p === v.you ? ` <span class="hint">${T('(вы)')}</span>` : ''}</td>
           <td>${h.bids[p]} / ${h.took[p]}</td><td class="d ${h.delta[p] >= 0 ? 'pos' : 'neg'}" data-count="${h.delta[p]}" data-signed="1">0</td>
           ${anyBonus ? `<td class="d ${bonus[p] > 0 ? 'pos' : bonus[p] < 0 ? 'neg' : 'hint'}">${bonus[p] ? (bonus[p] > 0 ? '+' : '') + bonus[p] : '—'}</td>` : ''}
           <td class="d"><span class="gold-text" data-count="${v.scores[p]}" data-from="${v.scores[p] - h.delta[p] - bonus[p]}">${v.scores[p] - h.delta[p] - bonus[p]}</span></td></tr>`).join('')}
-        </table><div class="actions"><span class="hint" style="margin-right:auto">${T('Следующий раунд: {c}', { c: poCards(v.plan[v.roundIdx + 1]) })}</span>
+        </table><div class="actions"><span class="hint" style="margin-right:auto">${T('Следующий раунд: {c}', { c: poCards(v.plan[v.roundIdx + 1]) })}${nextTag}</span>
         <button class="btn-gold" data-act="nextRound">${T('Следующий раунд')}</button></div>`);
       const ov = $('#overlay');
       ov.dataset.kind = 'results';
@@ -2716,14 +2797,15 @@
       else startSearch('ranked');
     },
     players: b => { S.players = +b.dataset.n; syncHome(); },
-    rounds: b => { S.roundsTouched = true; S.rounds = Math.max(1, Math.min(60, S.rounds + +b.dataset.d)); syncHome(); },
+    rounds: b => { if (S.test) return; S.roundsTouched = true; S.rounds = Math.max(1, Math.min(60, S.rounds + +b.dataset.d)); syncHome(); },
     timer: b => { const t = S.turnTime + +b.dataset.d; S.turnTime = clampTimer(t < 5 && +b.dataset.d < 0 ? 0 : t === 5 && +b.dataset.d > 0 && S.turnTime === 0 ? 5 : t); syncHome(); },
     bluff: () => { S.bluff = !S.bluff; syncHome(); },
     skills: () => { S.skills = !S.skills; syncHome(); },
+    test: () => { S.test = !S.test; if (!S.test && !S.roundsTouched) S.rounds = 2 * MAX_CARDS(S.players) - 1; syncHome(); },
     skill: b => {
       SFX.unlock();
       const v = S.view;
-      if (!v || !v.skills || !v.skills.reshuffle.can) { nope(b); toast(T(!v || !v.skills || !v.skills.reshuffle.left ? 'Пересдача уже использована' : 'Пересдача — только пока идут заявки')); return; }
+      if (!v || !v.skills || !v.skills.reshuffle.can) { nope(b); toast(T(!v || !v.skills || !v.skills.reshuffle.left ? 'Пересдача уже использована' : 'Пересдача — только до заявок')); return; }
       // Первое нажатие — «взвести», второе — применить (чтобы не нажать случайно).
       if (!b.classList.contains('armed')) {
         b.classList.add('armed'); SFX.click();
@@ -2738,7 +2820,7 @@
       if (!name) { $('#err').textContent = T('Введите имя'); $('#name').focus(); return; }
       const tv = $('#timer-val'); if (tv) S.turnTime = clampTimer(parseInt(tv.value, 10));
       save(STORE_KEY, { name });
-      try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, skills: S.skills, listed: S.listed, lang: I18N.lang, session: Auth.session }); connect(j.room, j.token); }
+      try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, skills: S.skills, test: S.test, listed: S.listed, lang: I18N.lang, session: Auth.session }); connect(j.room, j.token); }
       catch (e) { $('#err').textContent = e.message; }
     },
     join: async () => {

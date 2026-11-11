@@ -18,6 +18,10 @@ const BOT_DELAY = 1000;
 const TRICK_PAUSE = 2100; // время на эффекты последней карты и показ, кто взял
 const TRICK_PAUSE_BLUFF = 5000; // в режиме обмана — время, чтобы успеть проверить
 const DEFAULT_TURN_TIME = 30;
+// Окно «Пересдачи» перед заявками: 3 с после того, как у игроков отыграли объявление раунда и раздача.
+const PRE_WINDOW = 3000;
+const RESHUFFLE_FX = 4500; // после пересдачи — время на анимацию тасовки и новую раздачу
+const preIntro = (k, n, special = false) => (special ? 4200 : 3300) + Math.min(1600, k * n * 110) + k * 55;
 const ROOM_TTL = 3 * 60 * 60 * 1000; // пустая комната живёт 3 часа
 // Client ID не секретный; переменная GOOGLE_CLIENT_ID на Render позволяет сменить его без правки кода.
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '626516411258-ii9eiq7dni57082mmiil8mhbdma9p8qr.apps.googleusercontent.com';
@@ -102,7 +106,7 @@ function isOnline(r, seat) { for (const st of r.streams) if (st.seat === seat) r
 
 // kind: 'private' — по коду; 'public' — виден в списке столов; 'casual' — собран подбором (без рейтинга);
 // 'ranked' — собран рейтинговым подбором или калибровка с ботами (calib).
-function createRoom({ name, players, rounds, turnTime, bluff, skills, lang, listed }, acc = null, extra = {}) {
+function createRoom({ name, players, rounds, turnTime, bluff, skills, test, lang, listed }, acc = null, extra = {}) {
   const size = clampInt(players, Engine.MIN_PLAYERS, Engine.MAX_PLAYERS, 4);
   const r = {
     code: newCode(),
@@ -115,6 +119,8 @@ function createRoom({ name, players, rounds, turnTime, bluff, skills, lang, list
     turnTime: clampInt(turnTime, 0, 600, DEFAULT_TURN_TIME), // секунд на ход, 0 — без таймера
     bluff: !!bluff,
     skills: skills !== false && !extra.kind, // умения: на своих столах по умолчанию включены, в подборе и рейтинге — нет
+    // «Тестовый режим» (только свои столы): 17 раундов, 10-й — «Бескозырка», 15-й — «Тёмная».
+    test: !!test && !extra.kind,
     lang: lang === 'en' ? 'en' : 'ru', // язык имён ботов
     turnTimer: null, turnKey: null, deadline: 0, checkTimers: [],
     chat: [], social: [], socialSeq: 0,
@@ -125,6 +131,7 @@ function createRoom({ name, players, rounds, turnTime, bluff, skills, lang, list
     touched: Date.now(),
   };
   Object.assign(r, extra);
+  if (r.test) r.rounds = 17;
   const token = newToken();
   r.seats.push({ name: cleanName(name), token, bot: false, pid: newPid(), ...accSeat(acc) });
   r.hostSeat = 0;
@@ -229,7 +236,8 @@ function startGame(r) {
   let b = 0;
   while (r.seats.length < r.size) r.seats.push({ name: (r.lang === 'en' ? BOT_NAMES_EN : BOT_NAMES)[b++], token: null, bot: true, pid: newPid() });
   r.seenPlays = new Set();
-  r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff, skills: r.skills });
+  r.gameSeq = (r.gameSeq || 0) + 1;
+  r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff, skills: r.skills, test: r.test });
 }
 
 function seatView(r, s, i) {
@@ -242,7 +250,7 @@ function viewFor(r, seat) {
   const hostSeat = r.hostSeat;
   const me = r.seats[seat];
   const base = {
-    code: r.code, you: seat, youPid: me.pid, isHost: seat === hostSeat, size: r.size, rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff, skillsOn: r.skills,
+    code: r.code, you: seat, youPid: me.pid, isHost: seat === hostSeat, size: r.size, rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff, skillsOn: r.skills, test: r.test,
     kind: r.kind, calib: r.calib, autoStartIn: !r.game && r.autoStartAt ? Math.max(0, r.autoStartAt - Date.now()) : 0,
     chat: r.chat.slice(-40), social: r.social.slice(-16),
     likeReadyIn: Math.max(0, (me.likeAt || 0) + LIKE_COOLDOWN - Date.now()),
@@ -254,6 +262,7 @@ function viewFor(r, seat) {
   if (!r.game) {
     return {
       ...base, stage: 'lobby', plan: Engine.roundPlan(r.rounds, Engine.maxCards(r.size)),
+      modes: Engine.roundModes(Engine.roundPlan(r.rounds, Engine.maxCards(r.size)), r.test),
       seats: r.seats.map((s, i) => seatView(r, s, i)),
     };
   }
@@ -263,10 +272,13 @@ function viewFor(r, seat) {
     ...base, stage: 'game',
     names: g.names,
     seats: r.seats.map((s, i) => seatView(r, s, i)),
-    n: g.n, plan: g.plan, roundIdx: g.roundIdx, phase: g.phase, turn: g.turn, leader: g.leader,
+    n: g.n, plan: g.plan, modes: g.modes, mode: g.mode, trump: g.trump, roundIdx: g.roundIdx, phase: g.phase, turn: g.turn, leader: g.leader,
     bids: g.bids, took: g.took, scores: g.scores,
     handCounts: g.hands.map(h => h.length),
-    hand: g.hands[seat],
+    // В «Тёмной» свои карты не видны, пока идут заявки: вместо них — рубашки.
+    hand: Engine.handsHidden(g) ? g.hands[seat].map((_, i) => ({ id: 'X' + i, hidden: true })) : g.hands[seat],
+    handHidden: Engine.handsHidden(g),
+    pre: g.phase === 'pre' && r.preEnds ? { left: Math.max(0, r.preEnds - Date.now()), window: PRE_WINDOW, after: !!g.reshuffledRound } : null,
     trick: publicTrick(g.trick), lastTrick: publicTrick(g.lastTrick), trickWinner: g.trickWinner,
     history: g.history, log: g.log.slice(-100),
     legal: myTurn && g.phase === 'play' ? Engine.legalPlays(g, seat).map(c => c.id) : [],
@@ -311,8 +323,7 @@ function schedule(r) {
     r.timer = setTimeout(() => {
       const p = g.turn;
       try {
-        if (g.phase === 'bid' && Bots.wantsReshuffle(g, p)) Engine.reshuffle(g, p);
-        else if (g.phase === 'bid') Engine.placeBid(g, p, Bots.bid(g, p));
+        if (g.phase === 'bid') Engine.placeBid(g, p, Bots.bid(g, p));
         else if (g.phase === 'play') { const m = Bots.play(g, p); Engine.playCard(g, p, m.cardId, m.mode); }
       } catch (e) { console.error('bot error', e); }
       update(r);
@@ -374,9 +385,37 @@ function scheduleBotChecks(r) {
   }
 }
 
+// Окно пересдачи: по таймеру начинаются заявки; боты решают, пересдавать ли, пока окно открыто.
+function schedulePre(r) {
+  const g = r.game;
+  const key = g && !r.vote && g.phase === 'pre' ? `${g.roundIdx}:${g.reshuffleSeq}:${g.history.length}:${r.gameSeq || 0}` : null;
+  if (key === r.preKey) return;
+  clearTimeout(r.preTimer); clearTimeout(r.preBotTimer);
+  r.preKey = key; r.preEnds = 0;
+  if (!key) return;
+  const k = g.plan[g.roundIdx];
+  const intro = preIntro(k, g.n, g.mode !== 'normal');
+  const delay = g.reshuffledRound ? RESHUFFLE_FX : intro + PRE_WINDOW;
+  r.preEnds = Date.now() + delay;
+  r.preTimer = setTimeout(() => {
+    if (r.game !== g || r.preKey !== key) return;
+    Engine.beginBidding(g);
+    update(r);
+  }, delay);
+  if (g.reshuffledRound) return;
+  const bot = r.seats.findIndex((s, p) => s.bot && Bots.wantsReshuffle(g, p));
+  if (bot < 0) return;
+  r.preBotTimer = setTimeout(() => {
+    if (r.game !== g || r.preKey !== key || Engine.canReshuffle(g, bot)) return;
+    try { Engine.reshuffle(g, bot); } catch (e) { console.error('bot reshuffle', e); }
+    update(r);
+  }, intro + 500 + Math.random() * 1800);
+}
+
 function update(r) {
   r.touched = Date.now();
   if (r.game && r.game.phase === 'gameOver' && !r.game.rating) rateGame(r, r.game);
+  schedulePre(r);
   scheduleTurnTimer(r);
   broadcast(r);
   schedule(r);
@@ -497,7 +536,8 @@ function doAction(r, seat, body) {
     if (!g || g.phase !== 'gameOver') fail('Партия ещё не закончена');
     r.seenPlays = new Set();
     for (const s of r.seats) if (s.bot) { s.uid = null; s.left = false; s.rating = null; } // ушедшие в новой партии не участвуют
-    r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff, skills: r.skills });
+    r.gameSeq = (r.gameSeq || 0) + 1;
+    r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff, skills: r.skills, test: r.test });
     return;
   }
   if (type === 'kick') {
@@ -584,7 +624,7 @@ function openRooms() {
     .sort((a, b) => b.created - a.created).slice(0, 40)
     .map(r => ({
       code: r.code, host: r.seats[r.hostSeat].name, players: r.seats.length, size: r.size,
-      rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff, skills: r.skills, lang: r.lang,
+      rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff, skills: r.skills, test: r.test, lang: r.lang,
     }));
 }
 

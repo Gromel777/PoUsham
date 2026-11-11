@@ -112,47 +112,108 @@ for (const n of [2, 3, 4, 5, 6]) for (const bluff of [false, true]) for (let i =
 }
 console.log(`engine ok · проверок ботами: ${checks}, поймано: ${caught}`);
 
-// Умение «Пересдача»
+// 7♠ — джокер: под пики класть не обязательно
+g = table([['Т♠'], ['7♠', 'Т♦', 'К♥'], ['Д♣']]);
+E.playCard(g, 0, 'Т♠');
+assert.strictEqual(ids(E.legalPlays(g, 1)), ids([C('7♠'), C('Т♦'), C('К♥')]), '7♠ не обязывает отвечать в пики');
+g = table([['Т♠'], ['7♠', '6♠', 'Т♦'], ['Д♣']]);
+E.playCard(g, 0, 'Т♠');
+assert.strictEqual(ids(E.legalPlays(g, 1)), ids([C('7♠'), C('6♠')]), 'другие пики — обязан');
+
+// Очки
+assert.strictEqual(E.scoreFor(0, 0, 1), 12, 'ноль: 10 + 2 за карту');
+assert.strictEqual(E.scoreFor(0, 0, 9), 28);
+assert.strictEqual(E.scoreFor(3, 3, 9), 60);
+assert.strictEqual(E.scoreFor(3, 1, 9), -40);
+assert.strictEqual(E.scoreFor(1, 4, 9), 3, 'перебор: +1 за лишнюю');
+assert.strictEqual(E.scoreFor(0, 2, 5), 2);
+
+// Тестовый режим: 10-й раунд без козыря, 15-й тёмный
+{
+  const m = E.roundModes(E.roundPlan(17, 9), true);
+  assert.strictEqual(m[9], 'notrump'); assert.strictEqual(m[14], 'dark');
+  assert.strictEqual(m.filter(x => x === 'normal').length, 15);
+  assert.ok(E.roundModes(E.roundPlan(17, 9), false).every(x => x === 'normal'));
+  // без козыря червь не бьёт чужую масть, «старшие» — по достоинству
+  const t = table([['8♣'], ['К♥', '6♦'], ['9♣']]);
+  t.trick.trump = null;
+  E.playCard(t, 0, '8♣'); E.playCard(t, 1, 'К♥'); E.playCard(t, 2, '9♣');
+  assert.strictEqual(t.trickWinner, 2, 'в бескозырке червь не козырь');
+  assert.ok(!E.beats(C('6♥'), C('Т♣'), null));
+  assert.strictEqual(E.strongestOf([C('Т♣'), C('К♥')], null).id, 'Т♣');
+}
+
+// Полная тестовая партия: тёмная скрыта до конца заявок, очки ×2
+function playOut(x, opts = {}) {
+  let guard = 0;
+  while (x.phase !== 'gameOver') {
+    if (++guard > 30000) throw new Error('зацикливание');
+    if (x.phase === 'pre') { if (opts.pre) opts.pre(x); if (x.phase === 'pre') E.beginBidding(x); }
+    else if (x.phase === 'bid') { if (opts.bid) opts.bid(x); E.placeBid(x, x.turn, Bots.bid(x, x.turn)); }
+    else if (x.phase === 'play') { const m = Bots.play(x, x.turn); E.playCard(x, x.turn, m.cardId, m.mode); }
+    else if (x.phase === 'trickDone') E.nextTrick(x);
+    else E.nextRound(x);
+  }
+  x.history.forEach(h => assert.strictEqual(h.took.reduce((a, b) => a + b, 0), h.cards));
+  return x;
+}
+for (const n of [2, 3, 4, 5, 6]) for (let i = 0; i < 20; i++) {
+  let sawDark = false;
+  const x = playOut(E.newGame({ players: n, rounds: 17, names: Array.from({ length: n }, (_, k) => 'b' + k), test: true, bluff: i % 2 === 1 }), {
+    bid: x => { if (x.mode === 'dark') { sawDark = true; assert.ok(E.handsHidden(x)); } },
+  });
+  assert.ok(sawDark);
+  assert.strictEqual(x.history[9].mode, 'notrump'); assert.strictEqual(x.history[14].mode, 'dark');
+  const h = x.history[14];
+  h.bids.forEach((b, p) => assert.strictEqual(h.delta[p], 2 * E.scoreFor(b, h.took[p], h.cards), 'тёмная ×2'));
+  const fromHistory = x.scores.map((_, p) => x.history.reduce((a, r) => a + r.delta[p] + r.bonus[p], 0));
+  assert.deepStrictEqual(x.scores, fromHistory);
+}
+console.log('тестовый режим ok');
+
+// Умение «Пересдача»: только в окне до заявок
 {
   const off = E.newGame({ players: 3, rounds: 5, names: ['a', 'b', 'c'] });
+  assert.strictEqual(off.phase, 'bid', 'без умений окна нет');
   assert.ok(E.canReshuffle(off, 0), 'без умений пересдачи нет');
   const g = E.newGame({ players: 4, rounds: 17, names: ['a', 'b', 'c', 'd'], skills: true });
-  while (g.plan[g.roundIdx] < 5) { // доходим до раунда с 5 картами
-    while (g.phase === 'bid') E.placeBid(g, g.turn, 0);
-    while (g.phase !== 'roundDone') { if (g.phase === 'play') E.playCard(g, g.turn, E.legalPlays(g, g.turn)[0].id); else E.nextTrick(g); }
-    E.nextRound(g);
-  }
+  assert.strictEqual(g.phase, 'pre', 'с умениями раунд начинается с окна пересдачи');
+  assert.throws(() => E.placeBid(g, g.turn, 0), /не ваша заявка/, 'заявлять в окне нельзя');
   const first = g.turn, before = JSON.stringify(g.hands);
-  E.placeBid(g, g.turn, 2);
   E.reshuffle(g, 3);
   assert.notStrictEqual(JSON.stringify(g.hands), before, 'карты новые');
-  assert.ok(g.hands.every(h => h.length === 5), 'у всех по 5 карт');
-  assert.strictEqual(new Set(g.hands.flat().map(c => c.id)).size, 20, 'без повторов');
-  assert.ok(g.bids.every(b => b === null), 'заявки сброшены');
-  assert.strictEqual(g.turn, first, 'заявляет снова тот же');
-  assert.strictEqual(g.lastReshuffle.by, 3);
+  assert.strictEqual(new Set(g.hands.flat().map(c => c.id)).size, 4);
+  assert.strictEqual(g.phase, 'pre', 'окно держится до конца анимации');
   assert.ok(E.canReshuffle(g, 0), 'второй пересдачи в раунде нет');
-  assert.throws(() => E.reshuffle(g, 3));
-  while (g.phase === 'bid') E.placeBid(g, g.turn, 1);
-  assert.ok(E.canReshuffle(g, 0), 'во время розыгрыша нельзя');
+  E.beginBidding(g);
+  assert.strictEqual(g.phase, 'bid'); assert.strictEqual(g.turn, first);
+  assert.ok(E.canReshuffle(g, 0), 'во время заявок нельзя');
+  while (g.phase === 'bid') E.placeBid(g, g.turn, 0);
   while (g.phase !== 'roundDone') { if (g.phase === 'play') E.playCard(g, g.turn, E.legalPlays(g, g.turn)[0].id); else E.nextTrick(g); }
   E.nextRound(g);
+  assert.strictEqual(g.phase, 'pre');
   assert.ok(!E.canReshuffle(g, 0), 'в новом раунде другой игрок может');
   assert.ok(E.canReshuffle(g, 3), 'второй раз за партию нельзя');
-  // Партии ботов с умениями: всё сходится, каждый пересдаёт не больше раза.
+  // когда умения у всех кончились — окна нет
+  const y = E.newGame({ players: 2, rounds: 5, names: ['a', 'b'], skills: true });
+  E.reshuffle(y, 0); E.beginBidding(y);
+  while (y.phase !== 'roundDone') { if (y.phase === 'bid') E.placeBid(y, y.turn, 0); else if (y.phase === 'play') E.playCard(y, y.turn, E.legalPlays(y, y.turn)[0].id); else E.nextTrick(y); }
+  E.nextRound(y); E.reshuffle(y, 1); E.beginBidding(y);
+  while (y.phase !== 'roundDone') { if (y.phase === 'bid') E.placeBid(y, y.turn, 0); else if (y.phase === 'play') E.playCard(y, y.turn, E.legalPlays(y, y.turn)[0].id); else E.nextTrick(y); }
+  E.nextRound(y);
+  assert.strictEqual(y.phase, 'bid', 'умений не осталось — сразу заявки');
+  // в тёмной окна нет
+  const z = E.newGame({ players: 4, rounds: 17, names: ['a', 'b', 'c', 'd'], skills: true, test: true });
+  let darkPhase = null;
+  playOut(z, { pre: x => assert.notStrictEqual(x.mode, 'dark'), bid: x => { if (x.mode === 'dark' && darkPhase === null) darkPhase = x.phase; } });
+  assert.strictEqual(darkPhase, 'bid');
+  // партии ботов с умениями
   let used = 0;
   for (let i = 0; i < 40; i++) {
     const n = 2 + (i % 5);
-    const x = E.newGame({ players: n, rounds: 2 * E.maxCards(n) - 1, names: Array.from({ length: n }, (_, k) => 'b' + k), skills: true });
-    let c = 0;
-    while (x.phase !== 'gameOver') {
-      if (x.phase === 'bid') { if (Bots.wantsReshuffle(x, x.turn)) { E.reshuffle(x, x.turn); c++; } else E.placeBid(x, x.turn, Bots.bid(x, x.turn)); }
-      else if (x.phase === 'play') { const m = Bots.play(x, x.turn); E.playCard(x, x.turn, m.cardId, m.mode); }
-      else if (x.phase === 'trickDone') E.nextTrick(x);
-      else E.nextRound(x);
-    }
-    assert.ok(c <= n); used += c;
-    x.history.forEach(h => assert.strictEqual(h.took.reduce((a, b) => a + b, 0), h.cards));
+    playOut(E.newGame({ players: n, rounds: 2 * E.maxCards(n) - 1, names: Array.from({ length: n }, (_, k) => 'b' + k), skills: true }), {
+      pre: x => { for (let p = 0; p < x.n; p++) if (Bots.wantsReshuffle(x, p)) { E.reshuffle(x, p); used++; break; } },
+    });
   }
   console.log(`пересдача ok · ботами применено: ${used} за 40 партий`);
 }

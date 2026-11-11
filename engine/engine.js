@@ -27,10 +27,12 @@ const Engine = (() => {
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
     return a;
   }
-  function strength(c) { return (c.suit === TRUMP ? 100 : 0) + c.rank * 4 + SUIT_TIE[c.suit]; }
+  // trump — масть козыря раунда; null — «Бескозырка».
+  function strength(c, trump = TRUMP) { return (trump && c.suit === trump ? 100 : 0) + c.rank * 4 + SUIT_TIE[c.suit]; }
   // «Бьёт» как в Дураке: старшая той же масти или козырь по некозырной.
-  function beats(c, b) { return c.suit === b.suit ? c.rank > b.rank : c.suit === TRUMP; }
-  function strongestOf(cards) { return cards.reduce((a, c) => (strength(c) > strength(a) ? c : a)); }
+  function beats(c, b, trump = TRUMP) { return c.suit === b.suit ? c.rank > b.rank : !!trump && c.suit === trump; }
+  function strongestOf(cards, trump = TRUMP) { return cards.reduce((a, c) => (strength(c, trump) > strength(a, trump) ? c : a)); }
+  const trickTrump = t => (t && 'trump' in t ? t.trump : TRUMP);
   function handSort(a, b) { return SUIT_SORT[a.suit] - SUIT_SORT[b.suit] || a.rank - b.rank; }
 
   // Максимум карт на руке: колода делится на игроков, но не больше 9.
@@ -52,18 +54,28 @@ const Engine = (() => {
     return [...up, ...down];
   }
 
-  function scoreFor(bid, took) {
-    if (took === bid) return bid === 0 ? 5 : 20 * bid;
+  // Очки за раунд: точно — 20 за взятку; точный ноль — 10 + 2 за каждую карту на руке;
+  // недобор — −20 за каждую недостающую; перебор — +1 за каждую лишнюю взятку.
+  function scoreFor(bid, took, cards = 0) {
+    if (took === bid) return bid === 0 ? 10 + 2 * cards : 20 * bid;
     if (took < bid) return -20 * (bid - took);
-    return 2; // перебор — всегда +2
+    return took - bid;
+  }
+
+  // Особые раунды «Тестового режима»: 10-й — «Бескозырка», 15-й — «Тёмная» (заявка вслепую, очки ×2).
+  function roundModes(plan, test) {
+    const m = plan.map(() => 'normal');
+    if (test) { if (plan.length > 9) m[9] = 'notrump'; if (plan.length > 14) m[14] = 'dark'; }
+    return m;
   }
 
   function log(g, msg) { g.log.push(msg); if (g.log.length > 300) g.log.shift(); }
 
-  function newGame({ players, rounds, names, bluff = false, skills = false }) {
+  function newGame({ players, rounds, names, bluff = false, skills = false, test = false }) {
     if (players < MIN_PLAYERS || players > MAX_PLAYERS) throw new Error(`Игроков должно быть от ${MIN_PLAYERS} до ${MAX_PLAYERS}`);
+    const plan = roundPlan(rounds, maxCards(players));
     const g = {
-      n: players, names, plan: roundPlan(rounds, maxCards(players)), roundIdx: 0, bluff: !!bluff,
+      n: players, names, plan, modes: roundModes(plan, test), test: !!test, roundIdx: 0, bluff: !!bluff,
       scores: Array(players).fill(0), history: [], log: [],
       firstLeader: Math.floor(Math.random() * players),
       checkSeq: 0, lastCheck: null,
@@ -85,6 +97,8 @@ const Engine = (() => {
   function startRound(g) {
     const k = g.plan[g.roundIdx];
     dealHands(g);
+    g.mode = g.modes[g.roundIdx];
+    g.trump = g.mode === 'notrump' ? null : TRUMP;
     g.reshuffledRound = false;
     g.bids = Array(g.n).fill(null);
     g.took = Array(g.n).fill(0);
@@ -92,10 +106,20 @@ const Engine = (() => {
     // Первый ход: в 1-м раунде случайный игрок, дальше право переходит по часовой стрелке.
     g.leader = (g.firstLeader + g.roundIdx) % g.n;
     g.turn = (g.leader + 1) % g.n;
-    g.phase = 'bid';
+    // Окно пересдачи перед заявками: если у кого-то осталось умение (в «Тёмной» карт не видно — окна нет).
+    g.phase = g.skillsOn && g.mode !== 'dark' && g.skills.some(s => s.reshuffle) ? 'pre' : 'bid';
     g.trick = null; g.lastTrick = null; g.trickWinner = null; g.fix = null;
-    log(g, `— Раунд ${g.roundIdx + 1}/${g.plan.length}: по ${k} карт. Первый ход у ${g.names[g.leader]}, заявки начинает ${g.names[g.turn]}.`);
+    const tag = g.mode === 'notrump' ? ' БЕСКОЗЫРКА!' : g.mode === 'dark' ? ' ТЁМНАЯ: заявки вслепую, очки ×2!' : '';
+    log(g, `— Раунд ${g.roundIdx + 1}/${g.plan.length}: по ${k} карт.${tag} Первый ход у ${g.names[g.leader]}, заявки начинает ${g.names[g.turn]}.`);
   }
+  // Окно пересдачи закрылось — начинаются заявки.
+  function beginBidding(g) {
+    if (g.phase !== 'pre') return;
+    g.phase = 'bid';
+    g.turn = (g.leader + 1) % g.n;
+  }
+  // В «Тёмной» руки скрыты, пока идут заявки.
+  function handsHidden(g) { return g.mode === 'dark' && (g.phase === 'pre' || g.phase === 'bid'); }
 
   function placeBid(g, p, b) {
     if (g.phase !== 'bid' || g.turn !== p) throw new Error('Сейчас не ваша заявка');
@@ -105,7 +129,7 @@ const Engine = (() => {
     if (g.bids.every(x => x !== null)) {
       g.phase = 'play';
       g.turn = g.leader;
-      g.trick = { leader: g.leader, plays: [], command: false };
+      g.trick = { leader: g.leader, plays: [], command: false, trump: g.trump };
       const sum = g.bids.reduce((a, x) => a + x, 0);
       log(g, `Заявлено всего ${sum} из ${g.plan[g.roundIdx]}. Первым ходит ${g.names[g.leader]}.`);
     } else {
@@ -114,12 +138,12 @@ const Engine = (() => {
   }
 
   // Умение «Пересдача»: все карты всех игроков собираются, колода тасуется и раздаётся заново.
-  // Можно, пока идут заявки (ещё никто не начал розыгрыш), один раз за партию у игрока и не больше одной пересдачи за раунд.
-  // Заявки сбрасываются, заявлять снова начинает тот же игрок.
+  // Только в окне перед заявками (фаза 'pre'), один раз за партию у игрока и не больше одной пересдачи за раунд.
+  // После пересдачи окно остаётся открытым, пока идёт анимация; потом — заявки.
   function canReshuffle(g, p) {
     if (!g.skillsOn) return 'Умения за этим столом выключены';
     if (!g.skills[p] || !g.skills[p].reshuffle) return 'Пересдача уже использована';
-    if (g.phase !== 'bid') return 'Пересдача — только пока идут заявки';
+    if (g.phase !== 'pre') return 'Пересдача — только до заявок';
     if (g.reshuffledRound) return 'В этом раунде уже была пересдача';
     return null;
   }
@@ -129,26 +153,25 @@ const Engine = (() => {
     g.skills[p].reshuffle = false;
     g.reshuffledRound = true;
     dealHands(g);
-    g.bids = Array(g.n).fill(null);
-    g.turn = (g.leader + 1) % g.n;
     g.reshuffleSeq++;
     g.lastReshuffle = { seq: g.reshuffleSeq, by: p, roundIdx: g.roundIdx };
-    log(g, `${g.names[p]} применяет «Пересдачу»: карты перетасованы и розданы заново. Заявки сначала — начинает ${g.names[g.turn]}.`);
+    log(g, `${g.names[p]} применяет «Пересдачу»: карты перетасованы и розданы заново.`);
   }
 
   function leadSuit(trick) { return trick && trick.plays.length ? trick.plays[0].card.suit : null; }
 
   // Честный ход по правилам:
   // — есть масть первой карты → только эта масть (козырь нельзя), 7♠ можно всегда;
+  //   7♠ — джокер: она не считается пикой, поэтому класть её под пики не обязательно;
   // — масти нет → любая карта;
   // — после «Старшие на стол!» → только самая сильная карта (или 7♠ — её можно всегда).
   function strictLegal(g, p) {
     const h = g.hands[p];
     const t = g.trick;
     if (!t || t.plays.length === 0) return h.slice();
-    if (t.command) { const s = strongestOf(h); const sp = h.find(c => c.id === SPECIAL_ID && c !== s); return sp ? [s, sp] : [s]; }
+    if (t.command) { const s = strongestOf(h, trickTrump(t)); const sp = h.find(c => c.id === SPECIAL_ID && c !== s); return sp ? [s, sp] : [s]; }
     const suit = leadSuit(t);
-    if (!h.some(c => c.suit === suit)) return h.slice();
+    if (!h.some(c => c.suit === suit && c.id !== SPECIAL_ID)) return h.slice();
     return h.filter(c => c.suit === suit || c.id === SPECIAL_ID);
   }
   // Что можно положить: в режиме обмана — любую карту (кроме замены пойманной карты).
@@ -169,7 +192,8 @@ const Engine = (() => {
     const abs = trick.plays.find(pl => pl.absolute);
     if (abs) return abs;
     let best = trick.plays[0];
-    for (const pl of trick.plays.slice(1)) if (beats(pl.card, best.card)) best = pl;
+    const tr = trickTrump(trick);
+    for (const pl of trick.plays.slice(1)) if (beats(pl.card, best.card, tr)) best = pl;
     return best;
   }
 
@@ -257,15 +281,16 @@ const Engine = (() => {
     if (g.phase !== 'trickDone') return;
     g.lastTrick = { ...g.trick, winner: g.trickWinner };
     if (g.hands.every(h => h.length === 0)) { scoreRound(g); return; }
-    g.trick = { leader: g.trickWinner, plays: [], command: false };
+    g.trick = { leader: g.trickWinner, plays: [], command: false, trump: g.trump };
     g.turn = g.trickWinner;
     g.phase = 'play';
   }
 
   function scoreRound(g) {
-    const delta = g.bids.map((b, p) => scoreFor(b, g.took[p]));
+    const k = g.plan[g.roundIdx], mult = g.mode === 'dark' ? 2 : 1;
+    const delta = g.bids.map((b, p) => scoreFor(b, g.took[p], k) * mult);
     delta.forEach((d, p) => { g.scores[p] += d; });
-    g.history.push({ cards: g.plan[g.roundIdx], bids: [...g.bids], took: [...g.took], delta, bonus: [...g.bonus] });
+    g.history.push({ cards: k, mode: g.mode, bids: [...g.bids], took: [...g.took], delta, bonus: [...g.bonus] });
     g.trick = null;
     g.phase = g.roundIdx === g.plan.length - 1 ? 'gameOver' : 'roundDone';
     log(g, `Итог раунда: ${g.names.map((nm, p) => `${nm} ${delta[p] >= 0 ? '+' : ''}${delta[p]}`).join(', ')}`);
@@ -278,8 +303,8 @@ const Engine = (() => {
   }
 
   return { SUITS, TRUMP, RANKS, SPECIAL_ID, MIN_PLAYERS, MAX_PLAYERS, CHEAT_FINE, WRONG_CHECK,
-           strength, beats, strongestOf, maxCards, roundPlan, scoreFor, leadSuit,
-           newGame, placeBid, strictLegal, legalPlays, specialModes, currentBest, playCard,
+           strength, beats, strongestOf, maxCards, roundPlan, roundModes, scoreFor, leadSuit,
+           newGame, beginBidding, handsHidden, placeBid, strictLegal, legalPlays, specialModes, currentBest, playCard,
            canCheck, check, nextTrick, nextRound, canReshuffle, reshuffle };
 })();
 
@@ -287,20 +312,28 @@ const Engine = (() => {
 // Эвристики: оценить руку для заявки; добирать или сбрасывать; в режиме обмана иногда хитрить.
 const Bots = (() => {
   const E = Engine;
-  function winChance(c, n) {
+  const PLAIN = [0.03, 0.03, 0.03, 0.03, 0.05, 0.08, 0.15, 0.3, 0.55];
+  function winChance(c, n, trump = E.TRUMP) {
     if (c.id === E.SPECIAL_ID) return 0.95;
     let pr;
-    if (c.suit === E.TRUMP) pr = 0.25 + 0.75 * (c.rank / 8);
-    else pr = [0.03, 0.03, 0.03, 0.03, 0.05, 0.08, 0.15, 0.3, 0.55][c.rank];
+    if (trump && c.suit === trump) pr = 0.25 + 0.75 * (c.rank / 8);
+    else if (!trump) pr = Math.min(0.9, PLAIN[c.rank] * 1.5); // без козыря старшие карты надёжнее
+    else pr = PLAIN[c.rank];
     const f = n <= 2 ? 1.2 : n === 3 ? 1 : n === 4 ? 0.85 : 0.7;
     return Math.min(1, pr * f);
   }
+  // Средний шанс взятки у случайной карты — для заявки вслепую в «Тёмной».
+  const FULL_DECK = E.SUITS.flatMap(s => E.RANKS.map((r, i) => ({ id: r + s, suit: s, rank: i })));
   function bid(g, p) {
     const h = g.hands[p];
-    const est = h.reduce((a, c) => a + winChance(c, g.n), 0);
+    if (E.handsHidden(g)) {
+      const avg = FULL_DECK.reduce((a, c) => a + winChance(c, g.n, g.trump), 0) / FULL_DECK.length;
+      return Math.max(0, Math.min(h.length, Math.round(avg * h.length)));
+    }
+    const est = h.reduce((a, c) => a + winChance(c, g.n, g.trump), 0);
     return Math.max(0, Math.min(h.length, Math.round(est)));
   }
-  const byStr = (a, b) => E.strength(a) - E.strength(b);
+  const byStrOf = g => (a, b) => E.strength(a, g.trump) - E.strength(b, g.trump);
 
   // Пересдача ботом: рука «мутная» — много карт, про которые не ясно, возьмут или нет.
   // Решает один раз, когда до него доходит очередь заявлять.
@@ -308,7 +341,7 @@ const Bots = (() => {
     if (E.canReshuffle(g, p)) return false;
     const h = g.hands[p];
     if (h.length < 3) return false;
-    const fog = h.reduce((a, c) => { const w = winChance(c, g.n); return a + w * (1 - w); }, 0) / h.length;
+    const fog = h.reduce((a, c) => { const w = winChance(c, g.n, g.trump); return a + w * (1 - w); }, 0) / h.length;
     const roundsLeft = g.plan.length - g.roundIdx;
     // Ближе к концу партии бот смелее: умение всё равно сгорит.
     const urge = fog > 0.17 ? 0.45 : roundsLeft <= 3 ? 0.25 : 0.04;
@@ -317,7 +350,7 @@ const Bots = (() => {
 
   // Лучший ход из набора карт (без учёта обмана).
   function choose(g, p, cards) {
-    const legal = cards.slice().sort(byStr);
+    const legal = cards.slice().sort(byStrOf(g));
     const need = g.bids[p] - g.took[p];
     const t = g.trick;
     const modes = E.specialModes(g, p);
@@ -330,8 +363,8 @@ const Bots = (() => {
     const bestPlay = E.currentBest(t);
     if (bestPlay.absolute) return mv(legal[0]);
     const best = bestPlay.card;
-    const winners = legal.filter(c => c.id !== E.SPECIAL_ID && E.beats(c, best));
-    const losers = legal.filter(c => !E.beats(c, best));
+    const winners = legal.filter(c => c.id !== E.SPECIAL_ID && E.beats(c, best, g.trump));
+    const losers = legal.filter(c => !E.beats(c, best, g.trump));
     if (need > 0) {
       if (winners.length) return mv(winners[0]);
       if (special && modes.includes('top')) return mv(special, 'top');
@@ -347,11 +380,11 @@ const Bots = (() => {
     // Иногда врём: если честно не выходит то, что нужно.
     const need = g.bids[p] - g.took[p];
     const honestIds = new Set(honest.map(c => c.id));
-    const dishonest = g.hands[p].filter(c => !honestIds.has(c.id)).sort(byStr);
+    const dishonest = g.hands[p].filter(c => !honestIds.has(c.id)).sort(byStrOf(g));
     if (!dishonest.length) return move;
     const best = E.currentBest(g.trick);
     if (best.absolute) return move;
-    const winsNow = c => E.beats(c, best.card);
+    const winsNow = c => E.beats(c, best.card, g.trump);
     const honestCard = honest.find(c => c.id === move.cardId);
     if (need > 0 && !winsNow(honestCard)) {
       const w = dishonest.find(c => c.id !== E.SPECIAL_ID && winsNow(c));
@@ -375,7 +408,7 @@ const Bots = (() => {
     // Чем больше карт масти на руках у остальных может быть, тем подозрительнее.
     const mineOfLead = g.hands[botSeat].filter(c => c.suit === lead).length;
     // Козырь вместо масти — самый частый обман; у кого самого много этой масти, тот подозревает меньше.
-    let s = pl.card.suit === E.TRUMP ? 0.07 : 0.03;
+    let s = g.trump && pl.card.suit === g.trump ? 0.07 : 0.03;
     if (mineOfLead >= 3) s *= 0.5;
     return s;
   }
