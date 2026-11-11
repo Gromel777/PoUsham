@@ -76,6 +76,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(400);
   ok(lastA.stage === 'game', 'стол подбора стартовал сам, когда все подключились');
   ok(lastA.seats[0].pic === 'https://example.com/a.jpg' && lastA.kind === 'ranked', 'фото и тип стола в состоянии');
+  ok(lastA.bluff === true && lastA.rounds === 17, 'рейтинг: режим обмана и 17 раундов');
   // Чтобы не ждать 17 раундов — сокращаем партию.
   const room = rooms.get(ma.room); room.game.plan = room.game.plan.slice(0, 1);
   const v = await Promise.race([doneRanked, sleep(60000).then(() => null)]);
@@ -85,6 +86,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // ---------- калибровка с ботами ----------
   const cal = (await post('/api/calib', { session: C.session, name: 'Вова', players: 3 })).j;
   ok(cal.room && cal.token, 'калибровка создана');
+  ok(rooms.get(cal.room).bluff === true && rooms.get(cal.room).rounds === 17, 'калибровка: режим обмана и 17 раундов');
   const doneCal = new Promise(resolve => play(cal.room, cal.token, v => {
     if (v.stage === 'game' && v.phase === 'bid' && rooms.get(cal.room).game.plan.length > 1) rooms.get(cal.room).game.plan = rooms.get(cal.room).game.plan.slice(0, 1);
     if (v.stage === 'game' && v.phase === 'gameOver' && v.rating && v.rating.status === 'done') resolve(v);

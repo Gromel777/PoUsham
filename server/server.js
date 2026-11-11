@@ -577,6 +577,9 @@ function openRooms() {
     }));
 }
 
+// Рейтинговые столы и калибровка: всегда режим обмана и 17 раундов.
+const RANKED_RULES = { bluff: true, rounds: 17 };
+
 // Очередь подбора. Записи живут, пока клиент опрашивает статус (раз в пару секунд).
 const MM = {
   queue: new Map(),           // ticket -> запись
@@ -659,7 +662,7 @@ function mmMatch() {
 
 function mmMakeRoom(group, size, mode) {
   const first = group[0];
-  const { r, token } = createRoom({ name: first.name, players: size, turnTime: DEFAULT_TURN_TIME, bluff: false, lang: first.lang }, first.acc,
+  const { r, token } = createRoom({ name: first.name, players: size, turnTime: DEFAULT_TURN_TIME, lang: first.lang, ...(mode === 'ranked' ? RANKED_RULES : { bluff: false }) }, first.acc,
     { kind: mode, autoStartAt: Date.now() + MM.AUTOSTART });
   first.result = { room: r.code, token, kind: mode };
   const taken = new Set([r.seats[0].name.toLowerCase()]);
@@ -678,7 +681,7 @@ function mmMakeRoom(group, size, mode) {
 function calibRoom(body, acc) {
   if (!acc) fail('Рейтинговая игра — только после входа через Google');
   if (acc.games >= Rating.BOARD_MIN_GAMES) fail('Калибровка пройдена — ищите соперников в рейтинговой игре');
-  return createRoom({ name: body.name || acc.nick, players: clampInt(body.players, 2, 4, 4), turnTime: DEFAULT_TURN_TIME, bluff: false, lang: body.lang }, acc,
+  return createRoom({ name: body.name || acc.nick, players: clampInt(body.players, 2, 4, 4), turnTime: DEFAULT_TURN_TIME, lang: body.lang, ...RANKED_RULES }, acc,
     { kind: 'ranked', calib: true, autoStartAt: Date.now() + 3000 });
 }
 
