@@ -915,7 +915,12 @@
       const prev = this.prev;
       const newGame = !prev || (prev.phase === 'gameOver' && v.phase !== 'gameOver');
       const newRound = newGame || prev.roundIdx !== v.roundIdx;
-      if (!prev) { this.checkSeq = v.lastCheck ? v.lastCheck.seq : 0; this.leadKey = leadersOf(v).join(','); }
+      if (!prev) { this.checkSeq = v.lastCheck ? v.lastCheck.seq : 0; }
+      // Показанный счёт и корона меняются только вместе с анимациями (монеты, полёт короны).
+      if (!prev || newGame || fast || !this.shown || this.shown.length !== v.n) {
+        this.shown = v.scores.slice(); this.scoreAnims = 0;
+        this.crownSet = leadersOf(v); this.leadKey = this.crownSet.join(',');
+      }
       this.updateHud(v);
       if (!prev || this.seatEls.length !== v.n) { TABLE_SCALE = v.n >= 5 ? 0.61 : 0.66; this.buildSeats(v); }
       this.updateLog(v);
@@ -940,13 +945,52 @@
       this.maybeBoom(v, prev, fast);
       this.updateNeon(v);
       this.updatePuck(v, fast);
-      const leadKey = leadersOf(v).join(',');
-      if (prev && this.leadKey != null && leadKey !== this.leadKey && v.phase !== 'roundDone' && v.phase !== 'gameOver') await this.leaderChange(v, this.leadKey, fast);
-      if (v.phase !== 'roundDone' && v.phase !== 'gameOver') this.leadKey = leadKey;
       if (v.phase === 'roundDone' && this.resultsShownFor !== v.roundIdx) { this.resultsShownFor = v.roundIdx; await this.showResults(v, fast); }
       if (v.phase === 'gameOver' && !this.overShown) { this.overShown = true; await this.showGameOver(v, fast); }
       else if (v.phase === 'gameOver') renderOverRating(v);
       this.prev = v;
+      await this.settleScores(v, fast);
+    },
+
+    // ---------- показанный счёт ----------
+    scoreEl(p) {
+      if (S.view && p === S.view.you) return $('#me-panel .sc', this.el);
+      return this.seatEls[p] && this.seatEls[p].querySelector('.sc');
+    },
+    avaEl(p) {
+      if (S.view && p === S.view.you) return $('#me-panel .ava', this.el);
+      return this.seatEls[p] && this.seatEls[p].querySelector('.ava');
+    },
+    setShown(p, val) {
+      if (!this.shown) return;
+      this.shown[p] = val;
+      const el = this.scoreEl(p);
+      if (el) setScore(el, val, true);
+    },
+    paintCrowns(v) { for (let p = 0; p < v.n; p++) { const a = this.avaEl(p); if (a) markAvatar(a, v, p); } },
+    // Если никакая анимация не объясняет расхождение (переподключение, пропущенные обновления) — подтягиваем счёт.
+    async settleScores(v, fast) {
+      if (!this.shown || this.scoreAnims > 0) return;
+      if (v.phase === 'roundDone' && this.resultsShownFor !== v.roundIdx) return;
+      let changed = false;
+      v.scores.forEach((sc, p) => { if (this.shown[p] !== sc) { this.setShown(p, sc); changed = true; } });
+      if (changed || leadersOf({ scores: this.shown }).join(',') !== this.leadKey) await this.refreshLeaders(v, fast);
+    },
+    // Корона следует за показанным счётом: смена лидера — только после того, как долетели монеты.
+    async refreshLeaders(v, fast) {
+      if (this.leaderBusy) { this.leaderAgain = true; return; }
+      this.leaderBusy = true;
+      try {
+        do {
+          this.leaderAgain = false;
+          const now = leadersOf({ scores: this.shown });
+          const key = now.join(',');
+          if (key === this.leadKey) break;
+          const old = this.leadKey;
+          this.leadKey = key;
+          await this.leaderChange(S.view || v, old, now, fast);
+        } while (this.leaderAgain);
+      } finally { this.leaderBusy = false; }
     },
 
     updateHud(v) {
@@ -1009,10 +1053,14 @@
       }
     },
 
+    // Взятка засчитывается на табло, только когда карты долетели до аватара победителя.
+    tookShown(v, p) {
+      return v.took[p] - (v.phase === 'trickDone' && v.trickWinner === p && v.trick && v.trick.plays.length ? 1 : 0);
+    },
     pipsHtml(v, p, prev, fresh) {
-      const bid = v.bids[p], took = v.took[p];
+      const bid = v.bids[p], took = this.tookShown(v, p);
       const same = prev && prev.roundIdx === v.roundIdx;
-      const pt = same ? prev.took[p] : 0;
+      const pt = same ? this.tookShown(prev, p) : 0;
       const n = Math.max(bid || 0, took);
       return Array.from({ length: Math.min(n, 9) }, (_, j) => `<span class="pip ${j < took ? (bid !== null && j < bid ? 'got' : 'over') : ''} ${!fresh && j < took && j >= pt ? 'pop' : ''}"></span>`).join('');
     },
@@ -1031,11 +1079,11 @@
         setAvaPic(ava, s.pic);
         markAvatar(ava, v, p);
         el.querySelector('.nm').textContent = s.name; el.style.setProperty('--pc', nameColor(p));
-        setScore(el.querySelector('.sc'), v.scores[p], !!prev);
+        setScore(el.querySelector('.sc'), this.shown ? this.shown[p] : v.scores[p], !!prev);
         const bid = v.bids[p];
         const pb = prev && prev.roundIdx === v.roundIdx ? prev.bids[p] : null;
         const tag = bid === null ? `<span class="bidtag wait">${T(v.phase === 'bid' && v.turn === p ? 'думает…' : 'заявка —')}</span>`
-          : `<span class="bidtag ${pb === null && !fresh ? 'pop' : ''}">${T('{a} из {b}', { a: v.took[p], b: bid })}</span>`;
+          : `<span class="bidtag ${pb === null && !fresh ? 'pop' : ''}">${T('{a} из {b}', { a: this.tookShown(v, p), b: bid })}</span>`;
         el.querySelector('.pips').innerHTML = tag + this.pipsHtml(v, p, prev, fresh);
         if (pb === null && bid !== null && !fresh && prev) SFX.chip();
         if (!this.dealing) this.renderFan(p, v.handCounts[p]);
@@ -1048,7 +1096,7 @@
 
     updateMe(v, prev) {
       const box = $('#me-panel', this.el);
-      const me = v.you, bid = v.bids[me], took = v.took[me];
+      const me = v.you, bid = v.bids[me], took = this.tookShown(v, me);
       const playing = (v.phase === 'bid' || v.phase === 'play') && !v.paused;
       box.classList.toggle('turn', playing && v.turn === me);
       if (!box.firstChild) {
@@ -1062,7 +1110,7 @@
       const ava = box.querySelector('.ava');
       setAvaPic(ava, v.seats[me] && v.seats[me].pic);
       markAvatar(ava, v, me);
-      setScore(box.querySelector('.sc'), v.scores[me], !!prev);
+      setScore(box.querySelector('.sc'), this.shown ? this.shown[me] : v.scores[me], !!prev);
       const b1 = box.querySelector('.b1'), b2 = box.querySelector('.b2');
       const nb = bid === null ? '—' : String(bid);
       if (b1.textContent !== nb) { b1.textContent = nb; if (prev) popEl(b1); }
@@ -1346,14 +1394,14 @@
     },
 
     // Смена лидера: корона летит от прежнего лидера к новому, взрыв золота; прежний — «теряет корону».
-    async leaderChange(v, oldKey, fast) {
-      const now = leadersOf(v);
+    async leaderChange(v, oldKey, now, fast) {
       const old = oldKey ? oldKey.split(',').map(Number) : [];
-      if (fast || now.length !== 1 || old.includes(now[0])) return;
+      if (fast || now.length !== 1 || old.includes(now[0])) { this.crownSet = now; this.paintCrowns(v); return; }
       const winner = now[0];
       const lost = old.filter(p => !now.includes(p));
       const [wx, wy] = this.seatCenter(winner);
-      this.crownFlying = true;
+      // Корона снимается с прежнего лидера в момент вылета и садится на нового только по прилёте.
+      this.crownSet = now.filter(p => p !== winner); this.paintCrowns(v);
       const fly = document.createElement('div');
       fly.className = 'crown-fly';
       fly.innerHTML = crownSvg();
@@ -1378,8 +1426,7 @@
       ], { duration: 1100, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
       await a.finished.catch(() => {});
       fly.remove();
-      this.crownFlying = false;
-      this.updateSeats(v, null); this.updateMe(v, null);
+      this.crownSet = now; this.paintCrowns(v);
       FX.ring(wx, wy, { r1: 160, color: '#f6d27a', width: 6 });
       FX.ring(wx, wy, { r1: 90, color: '#fff3c4', width: 3, delay: 0.1 });
       FX.raysAt(wx, wy, { count: 14, len: 260, color: 'rgba(246,210,122,1)', life: 1.2, a: 0.45, spin: 1, force: true });
@@ -1399,6 +1446,8 @@
       const d = dims();
       const [x2, y2] = to == null ? [d.cx, d.cy] : this.seatCenter(to);
       floater(x1, y1 - 30, -amount);
+      // Показанный счёт: у отдающего тает сразу, у получающего растёт по прилёте монет; корона — после.
+      if (this.shown) { this.scoreAnims++; this.setShown(from, this.shown[from] - amount); }
       const avFrom = from === S.view.you ? $('#me-panel .ava', this.el) : this.seatEls[from] && this.seatEls[from].querySelector('.ava');
       if (avFrom) { avFrom.classList.remove('drain'); void avFrom.offsetWidth; avFrom.classList.add('drain'); setTimeout(() => avFrom.classList.remove('drain'), 1200); }
       FX.burst(x1, y1, { n: 14, colors: ['#ff4d5e', '#ffc08a'], speed: [60, 160], size: [1.5, 2.5], g: 0, life: [0.3, 0.6] });
@@ -1431,6 +1480,11 @@
         }).catch(() => c.remove());
       }
       setTimeout(() => {
+        if (this.shown) {
+          if (to != null) this.setShown(to, this.shown[to] + amount);
+          this.scoreAnims = Math.max(0, this.scoreAnims - 1);
+          if (S.view) this.settleScores(S.view, false);
+        }
         if (to == null) { FX.ring(x2, y2, { r1: 70, color: '#8a6a3a', width: 2 }); return; }
         FX.ring(x2, y2, { r1: 90, color: '#f6d27a', width: 4 });
         FX.raysAt(x2, y2, { count: 10, len: 140, color: 'rgba(246,210,122,1)', life: 0.7, a: 0.4, force: true });
@@ -1759,20 +1813,87 @@
         <div class="hint" style="margin-top:6px">${waiting.length ? T('Ждём голоса: {l}. ', { l: waiting.join(', ') }) : ''}${T('Если игрок вернётся, голосование отменится.')}</div></div>`;
     },
 
+    // Итог раунда: плюс — монеты сыплются сверху в аватар, минус — высыпаются из него. Счёт растёт/тает по монете.
+    async roundCoins(v, h, fast) {
+      if (fast) { v.scores.forEach((sc, p) => this.setShown(p, sc)); await this.refreshLeaders(v, true); return; }
+      await wait(500);
+      const my = h.delta[v.you];
+      if (my > 0) SFX.win(); else if (my < 0) SFX.lose();
+      await Promise.all(h.delta.map((dl, p) => dl > 0 ? this.coinRain(p, dl) : dl < 0 ? this.coinSpill(p, -dl) : null));
+      v.scores.forEach((sc, p) => { if (this.shown[p] !== sc) this.setShown(p, sc); });
+      await wait(250);
+      await this.refreshLeaders(v, false);
+    },
+
+    coinCount(amount) { return Math.max(4, Math.min(18, 3 + Math.round(amount / 4))); },
+
+    coinRain(p, amount) {
+      const [x, y] = this.seatCenter(p);
+      const ava = this.avaEl(p);
+      const n = this.coinCount(amount), start = this.shown[p];
+      this.scoreAnims++;
+      floater(x, y - 46, amount);
+      return Promise.all(Array.from({ length: n }, (_, i) => new Promise(res => {
+        const c = document.createElement('div');
+        c.className = 'coin-fly coin-drop';
+        $('#app').appendChild(c);
+        const sx = x + rnd(-55, 55), sy = y - rnd(150, 230), wob = rnd(-14, 14);
+        const a = c.animate([
+          { transform: `translate(${sx}px, ${sy}px) translate(-50%,-50%) scale(.9) rotateY(0deg) rotateZ(${wob}deg)`, opacity: 0 },
+          { transform: `translate(${sx + (x - sx) * 0.25}px, ${sy + (y - sy) * 0.18}px) translate(-50%,-50%) scale(1) rotateY(300deg) rotateZ(${wob}deg)`, opacity: 1, offset: 0.25 },
+          { transform: `translate(${x + rnd(-6, 6)}px, ${y + rnd(-4, 4)}px) translate(-50%,-50%) scale(.55) rotateY(1080deg) rotateZ(0deg)`, opacity: 1 },
+        ], { duration: 620 + rnd(0, 120), delay: i * 70, easing: 'cubic-bezier(.5,0,.85,.55)', fill: 'forwards' });
+        const land = () => {
+          c.remove();
+          this.setShown(p, start + Math.round(amount * (i + 1) / n));
+          FX.burst(x, y - 6, { n: 4, colors: FX.GOLD, speed: [60, 170], size: [1.3, 2.4], g: 240, life: [0.25, 0.5], spread: Math.PI, angle: -Math.PI / 2 });
+          if (i % 2 === 0) SFX.coinHit(i);
+          if (ava) ava.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.08) translateY(2px)' }, { transform: 'scale(1)' }], { duration: 160, easing: 'ease-out' });
+          if (i === n - 1) {
+            FX.ring(x, y, { r1: 80, color: '#f6d27a', width: 3.5 });
+            FX.raysAt(x, y, { count: 8, len: 110, color: 'rgba(246,210,122,1)', life: 0.6, a: 0.35 });
+            if (ava) ava.animate([{ filter: 'brightness(1)' }, { filter: 'brightness(1.5) drop-shadow(0 0 14px #f6d27a)' }, { filter: 'brightness(1)' }], { duration: 600 });
+          }
+          res();
+        };
+        a.finished.then(land).catch(land);
+      }))).then(() => { this.scoreAnims--; });
+    },
+
+    coinSpill(p, amount) {
+      const [x, y] = this.seatCenter(p);
+      const ava = this.avaEl(p);
+      const n = this.coinCount(amount), start = this.shown[p];
+      this.scoreAnims++;
+      floater(x, y - 46, -amount);
+      if (ava) { ava.classList.remove('drain'); void ava.offsetWidth; ava.classList.add('drain'); setTimeout(() => ava.classList.remove('drain'), 1200); }
+      const floor = y + 150;
+      return Promise.all(Array.from({ length: n }, (_, i) => new Promise(res => {
+        setTimeout(() => {
+          this.setShown(p, start - Math.round(amount * (i + 1) / n));
+          if (i % 3 === 0) SFX.coinHit(i + 3);
+          FX.burst(x, y - 10, { n: 3, colors: ['#ff4d5e', '#ffc08a'], speed: [40, 110], size: [1.2, 2.2], g: 0, life: [0.2, 0.4] });
+          if (ava && i % 2 === 0) ava.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${i % 4 ? 3 : -3}px)` }, { transform: 'translateX(0)' }], { duration: 120 });
+          const c = document.createElement('div');
+          c.className = 'coin-fly coin-lost';
+          $('#app').appendChild(c);
+          const dx = rnd(-100, 100), up = rnd(70, 140), ex = x + dx * 1.15, ey = Math.min(floor - rnd(0, 40), VIEW.h - 14);
+          const a = c.animate([
+            { transform: `translate(${x}px, ${y - 8}px) translate(-50%,-50%) scale(.5) rotateY(0deg)`, opacity: 0 },
+            { transform: `translate(${x + dx * 0.45}px, ${y - up}px) translate(-50%,-50%) scale(1) rotateY(360deg) rotateZ(${dx / 3}deg)`, opacity: 1, offset: 0.38, easing: 'cubic-bezier(.3,.6,.5,1)' },
+            { transform: `translate(${ex}px, ${ey}px) translate(-50%,-50%) scale(.8) rotateY(900deg) rotateZ(${dx}deg)`, opacity: 0, easing: 'cubic-bezier(.5,0,.9,.6)' },
+          ], { duration: 820 + rnd(0, 160), easing: 'linear', fill: 'forwards' });
+          const done = () => { c.remove(); res(); };
+          a.finished.then(done).catch(done);
+        }, i * 65);
+      }))).then(() => { this.scoreAnims--; });
+    },
+
     async showResults(v, fast) {
       const h = v.history[v.history.length - 1];
       if (!h) return;
       const bonus = h.bonus || h.delta.map(() => 0);
-      if (!fast) {
-        await wait(600);
-        h.delta.forEach((dl, p) => { const [x, y] = this.seatCenter(p); floater(x, y - 24, dl); });
-        const my = h.delta[v.you];
-        if (my > 0) SFX.win(); else if (my < 0) SFX.lose();
-        await wait(900);
-      }
-      const leadKey = leadersOf(v).join(',');
-      if (this.leadKey != null && leadKey !== this.leadKey) await this.leaderChange(v, this.leadKey, fast);
-      this.leadKey = leadKey;
+      await this.roundCoins(v, h, fast);
       const order = v.names.map((_, p) => p).sort((a, b) => v.scores[b] - v.scores[a]);
       const anyBonus = v.bluff || bonus.some(b => b);
       showModal(`<h2 class="gold-text">${T('Итоги раунда {n}', { n: v.roundIdx + 1 })}</h2>
@@ -1789,9 +1910,8 @@
     },
 
     async showGameOver(v, fast) {
-      const leadKey = leadersOf(v).join(',');
-      if (this.leadKey != null && leadKey !== this.leadKey) await this.leaderChange(v, this.leadKey, fast);
-      this.leadKey = leadKey;
+      const h = v.history[v.history.length - 1];
+      if (h && this.shown && v.scores.some((sc, p) => sc !== this.shown[p])) await this.roundCoins(v, h, fast);
       if (!fast) await wait(700);
       const order = v.names.map((_, p) => p).sort((a, b) => v.scores[b] - v.scores[a]);
       const iWon = v.scores[v.you] === v.scores[order[0]];
@@ -1819,7 +1939,7 @@
   }
   // Значки на аватаре: корона и золотая рамка у лидера, фишка «▶» у того, кто ходит первым в раунде.
   function markAvatar(ava, v, p) {
-    const lead = leadersOf(v).includes(p) && !Game.crownFlying;
+    const lead = (Game.crownSet || []).includes(p);
     ava.classList.toggle('lead', lead);
     const crown = ava.querySelector('.crown');
     if (lead && !crown) ava.insertAdjacentHTML('beforeend', crownSvg());
@@ -1860,10 +1980,15 @@
   function countUp(el, from, to, dur, signed) {
     const t0 = performance.now();
     const fmt = n => (signed && n > 0 ? '+' : '') + n;
+    // Новый отсчёт на том же элементе продолжает с текущего показанного числа и гасит прежний.
+    const tok = el._cu = (el._cu || 0) + 1;
+    if (el._cuRun) { const cur = parseInt(String(el.textContent).replace(/[^0-9-]/g, ''), 10); if (isFinite(cur)) from = cur; }
+    el._cuRun = true;
     const step = now => {
+      if (el._cu !== tok) return;
       const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
       el.textContent = fmt(Math.round(from + (to - from) * e));
-      if (k < 1) requestAnimationFrame(step);
+      if (k < 1) requestAnimationFrame(step); else el._cuRun = false;
     };
     requestAnimationFrame(step);
   }
