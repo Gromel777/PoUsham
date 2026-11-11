@@ -94,7 +94,7 @@ function isOnline(r, seat) { for (const st of r.streams) if (st.seat === seat) r
 
 // kind: 'private' — по коду; 'public' — виден в списке столов; 'casual' — собран подбором (без рейтинга);
 // 'ranked' — собран рейтинговым подбором или калибровка с ботами (calib).
-function createRoom({ name, players, rounds, turnTime, bluff, lang, listed }, acc = null, extra = {}) {
+function createRoom({ name, players, rounds, turnTime, bluff, skills, lang, listed }, acc = null, extra = {}) {
   const size = clampInt(players, Engine.MIN_PLAYERS, Engine.MAX_PLAYERS, 4);
   const r = {
     code: newCode(),
@@ -106,6 +106,7 @@ function createRoom({ name, players, rounds, turnTime, bluff, lang, listed }, ac
     rounds: clampInt(rounds, 1, 60, 2 * Engine.maxCards(size) - 1),
     turnTime: clampInt(turnTime, 0, 600, DEFAULT_TURN_TIME), // секунд на ход, 0 — без таймера
     bluff: !!bluff,
+    skills: skills !== false && !extra.kind, // умения: на своих столах по умолчанию включены, в подборе и рейтинге — нет
     lang: lang === 'en' ? 'en' : 'ru', // язык имён ботов
     turnTimer: null, turnKey: null, deadline: 0, checkTimers: [],
     chat: [], social: [], socialSeq: 0,
@@ -220,7 +221,7 @@ function startGame(r) {
   let b = 0;
   while (r.seats.length < r.size) r.seats.push({ name: (r.lang === 'en' ? BOT_NAMES_EN : BOT_NAMES)[b++], token: null, bot: true, pid: newPid() });
   r.seenPlays = new Set();
-  r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff });
+  r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff, skills: r.skills });
 }
 
 function seatView(r, s, i) {
@@ -233,7 +234,7 @@ function viewFor(r, seat) {
   const hostSeat = r.hostSeat;
   const me = r.seats[seat];
   const base = {
-    code: r.code, you: seat, youPid: me.pid, isHost: seat === hostSeat, size: r.size, rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff,
+    code: r.code, you: seat, youPid: me.pid, isHost: seat === hostSeat, size: r.size, rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff, skillsOn: r.skills,
     kind: r.kind, calib: r.calib, autoStartIn: !r.game && r.autoStartAt ? Math.max(0, r.autoStartAt - Date.now()) : 0,
     chat: r.chat.slice(-40), social: r.social.slice(-16),
     likeReadyIn: Math.max(0, (me.likeAt || 0) + LIKE_COOLDOWN - Date.now()),
@@ -266,6 +267,9 @@ function viewFor(r, seat) {
     lastCheck: g.lastCheck,
     timer: r.deadline && r.turnKey ? { left: Math.max(0, r.deadline - Date.now()), total: r.turnTime * 1000 } : null,
     specialModes: myTurn ? Engine.specialModes(g, seat) : [],
+    skills: g.skillsOn ? { reshuffle: { left: g.skills[seat].reshuffle, can: !r.vote && !Engine.canReshuffle(g, seat) } } : null,
+    skillsUsed: g.skills.map(x => !x.reshuffle),
+    reshuffle: g.lastReshuffle,
     paused: !!r.vote,
     rating: g.phase === 'gameOver' ? (g.rating || null) : null,
     vote: r.vote ? {
@@ -299,7 +303,8 @@ function schedule(r) {
     r.timer = setTimeout(() => {
       const p = g.turn;
       try {
-        if (g.phase === 'bid') Engine.placeBid(g, p, Bots.bid(g, p));
+        if (g.phase === 'bid' && Bots.wantsReshuffle(g, p)) Engine.reshuffle(g, p);
+        else if (g.phase === 'bid') Engine.placeBid(g, p, Bots.bid(g, p));
         else if (g.phase === 'play') { const m = Bots.play(g, p); Engine.playCard(g, p, m.cardId, m.mode); }
       } catch (e) { console.error('bot error', e); }
       update(r);
@@ -311,7 +316,7 @@ function turnKeyOf(r) {
   const g = r.game;
   if (!g || r.vote || !r.turnTime || r.seats[g.turn].bot) return null;
   if (g.phase !== 'bid' && g.phase !== 'play') return null;
-  return `${g.roundIdx}:${g.phase}:${g.turn}:${g.trick ? g.trick.plays.length : 0}:${g.fix ? 'f' : ''}:${g.took.join('')}`;
+  return `${g.roundIdx}:${g.reshuffleSeq}:${g.phase}:${g.turn}:${g.trick ? g.trick.plays.length : 0}:${g.fix ? 'f' : ''}:${g.took.join('')}`;
 }
 function scheduleTurnTimer(r) {
   const key = turnKeyOf(r);
@@ -476,7 +481,7 @@ function doAction(r, seat, body) {
     if (!g || g.phase !== 'gameOver') fail('Партия ещё не закончена');
     r.seenPlays = new Set();
     for (const s of r.seats) if (s.bot) { s.uid = null; s.left = false; s.rating = null; } // ушедшие в новой партии не участвуют
-    r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff });
+    r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff, skills: r.skills });
     return;
   }
   if (type === 'kick') {
@@ -512,6 +517,7 @@ function doAction(r, seat, body) {
     else if (type === 'play') Engine.playCard(g, seat, String(body.cardId), body.mode || 'normal');
     else if (type === 'nextRound') Engine.nextRound(g);
     else if (type === 'check') Engine.check(g, seat, String(body.cardId));
+    else if (type === 'skill' && body.skill === 'reshuffle') Engine.reshuffle(g, seat);
     else fail('Неизвестное действие');
   } catch (e) {
     if (e instanceof GameError) throw e;
@@ -562,7 +568,7 @@ function openRooms() {
     .sort((a, b) => b.created - a.created).slice(0, 40)
     .map(r => ({
       code: r.code, host: r.seats[r.hostSeat].name, players: r.seats.length, size: r.size,
-      rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff, lang: r.lang,
+      rounds: r.rounds, turnTime: r.turnTime, bluff: r.bluff, skills: r.skills, lang: r.lang,
     }));
 }
 

@@ -562,6 +562,14 @@
         if (!ensure()) return; const t = now();
         [659.25, 830.61, 987.77].slice(0, 1 + Math.floor(level / 3)).forEach((f, i) => tone(t + i * 0.06, f, 0.5, 0.08, 'sine', { wet: 0.4 }));
       },
+      // Пересдача: взмах, треск тасуемой колоды и мистический аккорд.
+      reshuffle() {
+        if (!ensure()) return;
+        const t = now();
+        noise(t, 0.5, 'bandpass', 500, 1.2, 0.14, { to: 2600, attack: 0.25 });
+        for (let k = 0; k < 2; k++) for (let i = 0; i < 14; i++) noise(t + 0.9 + k * 0.5 + i * 0.016, 0.03, 'highpass', 3200 + (i % 4) * 400, 0.9, 0.12);
+        [293.66, 369.99, 440, 587.33].forEach((f, i) => tone(t + 0.1 + i * 0.07, f, 1.4, 0.06, 'triangle', { wet: 0.6 }));
+      },
       coins() { if (!ensure()) return; const t = now(); for (let i = 0; i < 6; i++) tone(t + i * 0.05, rnd(1900, 3200), 0.12, 0.06, 'sine', { wet: 0.2 }); },
       click() { if (!ensure()) return; tone(now(), 1400, 0.03, 0.07, 'square'); },
       chip() { if (!ensure()) return; const t = now(); tone(t, 1800, 0.05, 0.1, 'triangle'); tone(t + 0.03, 2400, 0.06, 0.06, 'sine'); },

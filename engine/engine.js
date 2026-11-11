@@ -60,23 +60,32 @@ const Engine = (() => {
 
   function log(g, msg) { g.log.push(msg); if (g.log.length > 300) g.log.shift(); }
 
-  function newGame({ players, rounds, names, bluff = false }) {
+  function newGame({ players, rounds, names, bluff = false, skills = false }) {
     if (players < MIN_PLAYERS || players > MAX_PLAYERS) throw new Error(`Игроков должно быть от ${MIN_PLAYERS} до ${MAX_PLAYERS}`);
     const g = {
       n: players, names, plan: roundPlan(rounds, maxCards(players)), roundIdx: 0, bluff: !!bluff,
       scores: Array(players).fill(0), history: [], log: [],
       firstLeader: Math.floor(Math.random() * players),
       checkSeq: 0, lastCheck: null,
+      // Умения: каждое — один раз за партию. Пока одно: «Пересдача» (reshuffle).
+      skillsOn: !!skills, skills: Array.from({ length: players }, () => ({ reshuffle: !!skills })),
+      reshuffleSeq: 0, lastReshuffle: null,
     };
     startRound(g);
     return g;
   }
 
-  function startRound(g) {
+  function dealHands(g) {
     const k = g.plan[g.roundIdx];
     const deck = shuffle(makeDeck());
     g.hands = [];
     for (let p = 0; p < g.n; p++) g.hands.push(deck.splice(0, k).sort(handSort));
+  }
+
+  function startRound(g) {
+    const k = g.plan[g.roundIdx];
+    dealHands(g);
+    g.reshuffledRound = false;
     g.bids = Array(g.n).fill(null);
     g.took = Array(g.n).fill(0);
     g.bonus = Array(g.n).fill(0); // очки за проверки в этом раунде
@@ -102,6 +111,29 @@ const Engine = (() => {
     } else {
       g.turn = (p + 1) % g.n;
     }
+  }
+
+  // Умение «Пересдача»: все карты всех игроков собираются, колода тасуется и раздаётся заново.
+  // Можно, пока идут заявки (ещё никто не начал розыгрыш), один раз за партию у игрока и не больше одной пересдачи за раунд.
+  // Заявки сбрасываются, заявлять снова начинает тот же игрок.
+  function canReshuffle(g, p) {
+    if (!g.skillsOn) return 'Умения за этим столом выключены';
+    if (!g.skills[p] || !g.skills[p].reshuffle) return 'Пересдача уже использована';
+    if (g.phase !== 'bid') return 'Пересдача — только пока идут заявки';
+    if (g.reshuffledRound) return 'В этом раунде уже была пересдача';
+    return null;
+  }
+  function reshuffle(g, p) {
+    const err = canReshuffle(g, p);
+    if (err) throw new Error(err);
+    g.skills[p].reshuffle = false;
+    g.reshuffledRound = true;
+    dealHands(g);
+    g.bids = Array(g.n).fill(null);
+    g.turn = (g.leader + 1) % g.n;
+    g.reshuffleSeq++;
+    g.lastReshuffle = { seq: g.reshuffleSeq, by: p, roundIdx: g.roundIdx };
+    log(g, `${g.names[p]} применяет «Пересдачу»: карты перетасованы и розданы заново. Заявки сначала — начинает ${g.names[g.turn]}.`);
   }
 
   function leadSuit(trick) { return trick && trick.plays.length ? trick.plays[0].card.suit : null; }
@@ -248,7 +280,7 @@ const Engine = (() => {
   return { SUITS, TRUMP, RANKS, SPECIAL_ID, MIN_PLAYERS, MAX_PLAYERS, CHEAT_FINE, WRONG_CHECK,
            strength, beats, strongestOf, maxCards, roundPlan, scoreFor, leadSuit,
            newGame, placeBid, strictLegal, legalPlays, specialModes, currentBest, playCard,
-           canCheck, check, nextTrick, nextRound };
+           canCheck, check, nextTrick, nextRound, canReshuffle, reshuffle };
 })();
 
 // ===== BOTS =====
@@ -269,6 +301,19 @@ const Bots = (() => {
     return Math.max(0, Math.min(h.length, Math.round(est)));
   }
   const byStr = (a, b) => E.strength(a) - E.strength(b);
+
+  // Пересдача ботом: рука «мутная» — много карт, про которые не ясно, возьмут или нет.
+  // Решает один раз, когда до него доходит очередь заявлять.
+  function wantsReshuffle(g, p, rng = Math.random) {
+    if (E.canReshuffle(g, p)) return false;
+    const h = g.hands[p];
+    if (h.length < 3) return false;
+    const fog = h.reduce((a, c) => { const w = winChance(c, g.n); return a + w * (1 - w); }, 0) / h.length;
+    const roundsLeft = g.plan.length - g.roundIdx;
+    // Ближе к концу партии бот смелее: умение всё равно сгорит.
+    const urge = fog > 0.17 ? 0.45 : roundsLeft <= 3 ? 0.25 : 0.04;
+    return rng() < urge;
+  }
 
   // Лучший ход из набора карт (без учёта обмана).
   function choose(g, p, cards) {
@@ -335,7 +380,7 @@ const Bots = (() => {
     return s;
   }
 
-  return { bid, play, suspicion };
+  return { bid, play, suspicion, wantsReshuffle };
 })();
 
 return { Engine, Bots };

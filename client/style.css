@@ -138,6 +138,7 @@ input, select { font: inherit; }
 .settings-line { display: flex; gap: 6px; flex-wrap: wrap; }
 .settings-line span { padding: 3px 10px; border-radius: 10px; border: 1px solid var(--line); font-size: 12px; color: var(--gold-2); background: rgba(0, 0, 0, .25); }
 .settings-line span.bluff { border-color: var(--crimson); color: #ffb3bd; }
+.settings-line span.skills { border-color: #b98cff; color: #e2d0ff; }
 
 /* аватар */
 .ava { position: relative; width: var(--ava); height: var(--ava); flex: none; border-radius: 50%; display: grid; place-items: center; font-family: var(--font-title); font-weight: 700; font-size: calc(var(--ava) * .46); color: #241a06; background: var(--gold-grad); box-shadow: 0 0 0 2px #0b0910, 0 0 0 3.5px var(--gold-3), 0 6px 16px rgba(0, 0, 0, .6); }
@@ -893,3 +894,30 @@ input, select { font: inherit; }
 
 /* ================= плашка игрока под рукой — на 20% прозрачнее ================= */
 .me-panel { background: linear-gradient(160deg, rgba(34, 26, 46, .74), rgba(10, 8, 14, .76)); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+
+/* умения: кнопка «Пересдача» справа внизу */
+.skills-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+.skills-bar:empty { display: none; }
+.skill-btn { position: relative; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; color: #f6d27a;
+  background: radial-gradient(circle at 35% 30%, #3a2a5c, #120c1c 70%); border: 2px solid rgba(232, 196, 106, .55);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .55), inset 0 0 12px rgba(185, 140, 255, .35); transition: transform .15s, filter .2s, opacity .2s; }
+.skill-btn .sk-ico { display: grid; place-items: center; filter: drop-shadow(0 0 4px rgba(246, 210, 122, .6)); transition: transform .3s; }
+.skill-btn .sk-ring { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid transparent; pointer-events: none; }
+.skill-btn .sk-name { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: -4px; font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  color: var(--gold-2); white-space: nowrap; text-shadow: 0 1px 3px #000; padding: 1px 6px; border-radius: 8px; background: rgba(8, 6, 12, .8); }
+.skill-btn .sk-arm { position: absolute; right: 100%; top: 50%; transform: translate(-8px, -50%) scale(.9); opacity: 0; pointer-events: none; white-space: nowrap;
+  font-size: 12px; font-weight: 800; color: #fff; padding: 5px 10px; border-radius: 10px; background: linear-gradient(135deg, #6c3fc4, #b98cff); box-shadow: 0 0 16px rgba(185, 140, 255, .7); transition: opacity .2s, transform .2s; }
+.skill-btn .sk-lock { position: absolute; right: -4px; top: -4px; font-size: 14px; display: none; }
+.skill-btn:active { transform: scale(.92); }
+.skill-btn[data-state="ready"] { animation: skReady 1.6s ease-in-out infinite; }
+.skill-btn[data-state="ready"] .sk-ring { border-color: rgba(185, 140, 255, .8); border-top-color: #f6d27a; animation: spin 2.4s linear infinite; }
+.skill-btn[data-state="idle"] { filter: saturate(.4) brightness(.75); }
+.skill-btn[data-state="used"] { filter: grayscale(1) brightness(.5); opacity: .7; }
+.skill-btn[data-state="used"] .sk-lock { display: block; }
+.skill-btn.armed { transform: scale(1.1); border-color: #f6d27a; box-shadow: 0 0 26px rgba(185, 140, 255, .9), inset 0 0 18px rgba(246, 210, 122, .5); }
+.skill-btn.armed .sk-ico { transform: rotate(180deg) scale(1.1); }
+.skill-btn.armed .sk-arm { opacity: 1; transform: translate(-8px, -50%) scale(1); }
+.skill-btn.sk-pop { animation: skPop .5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes skReady { 0%, 100% { box-shadow: 0 6px 16px rgba(0, 0, 0, .55), inset 0 0 12px rgba(185, 140, 255, .35), 0 0 0 rgba(185, 140, 255, 0); }
+  50% { box-shadow: 0 6px 16px rgba(0, 0, 0, .55), inset 0 0 16px rgba(185, 140, 255, .55), 0 0 22px rgba(185, 140, 255, .55); } }
+@keyframes skPop { 0% { transform: scale(.7); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }

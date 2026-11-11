@@ -111,3 +111,48 @@ for (const n of [2, 3, 4, 5, 6]) for (const bluff of [false, true]) for (let i =
   assert.deepStrictEqual(g.scores, fromHistory, 'очки сходятся с историей');
 }
 console.log(`engine ok · проверок ботами: ${checks}, поймано: ${caught}`);
+
+// Умение «Пересдача»
+{
+  const off = E.newGame({ players: 3, rounds: 5, names: ['a', 'b', 'c'] });
+  assert.ok(E.canReshuffle(off, 0), 'без умений пересдачи нет');
+  const g = E.newGame({ players: 4, rounds: 17, names: ['a', 'b', 'c', 'd'], skills: true });
+  while (g.plan[g.roundIdx] < 5) { // доходим до раунда с 5 картами
+    while (g.phase === 'bid') E.placeBid(g, g.turn, 0);
+    while (g.phase !== 'roundDone') { if (g.phase === 'play') E.playCard(g, g.turn, E.legalPlays(g, g.turn)[0].id); else E.nextTrick(g); }
+    E.nextRound(g);
+  }
+  const first = g.turn, before = JSON.stringify(g.hands);
+  E.placeBid(g, g.turn, 2);
+  E.reshuffle(g, 3);
+  assert.notStrictEqual(JSON.stringify(g.hands), before, 'карты новые');
+  assert.ok(g.hands.every(h => h.length === 5), 'у всех по 5 карт');
+  assert.strictEqual(new Set(g.hands.flat().map(c => c.id)).size, 20, 'без повторов');
+  assert.ok(g.bids.every(b => b === null), 'заявки сброшены');
+  assert.strictEqual(g.turn, first, 'заявляет снова тот же');
+  assert.strictEqual(g.lastReshuffle.by, 3);
+  assert.ok(E.canReshuffle(g, 0), 'второй пересдачи в раунде нет');
+  assert.throws(() => E.reshuffle(g, 3));
+  while (g.phase === 'bid') E.placeBid(g, g.turn, 1);
+  assert.ok(E.canReshuffle(g, 0), 'во время розыгрыша нельзя');
+  while (g.phase !== 'roundDone') { if (g.phase === 'play') E.playCard(g, g.turn, E.legalPlays(g, g.turn)[0].id); else E.nextTrick(g); }
+  E.nextRound(g);
+  assert.ok(!E.canReshuffle(g, 0), 'в новом раунде другой игрок может');
+  assert.ok(E.canReshuffle(g, 3), 'второй раз за партию нельзя');
+  // Партии ботов с умениями: всё сходится, каждый пересдаёт не больше раза.
+  let used = 0;
+  for (let i = 0; i < 40; i++) {
+    const n = 2 + (i % 5);
+    const x = E.newGame({ players: n, rounds: 2 * E.maxCards(n) - 1, names: Array.from({ length: n }, (_, k) => 'b' + k), skills: true });
+    let c = 0;
+    while (x.phase !== 'gameOver') {
+      if (x.phase === 'bid') { if (Bots.wantsReshuffle(x, x.turn)) { E.reshuffle(x, x.turn); c++; } else E.placeBid(x, x.turn, Bots.bid(x, x.turn)); }
+      else if (x.phase === 'play') { const m = Bots.play(x, x.turn); E.playCard(x, x.turn, m.cardId, m.mode); }
+      else if (x.phase === 'trickDone') E.nextTrick(x);
+      else E.nextRound(x);
+    }
+    assert.ok(c <= n); used += c;
+    x.history.forEach(h => assert.strictEqual(h.took.reduce((a, b) => a + b, 0), h.cards));
+  }
+  console.log(`пересдача ok · ботами применено: ${used} за 40 партий`);
+}

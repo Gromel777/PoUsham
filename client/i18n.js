@@ -27,6 +27,12 @@
     'до {m} карт · {s} с на ход': 'up to {m} cards · {s} s per move', 'до {m} карт · без таймера': 'up to {m} cards · no timer',
     'секунд на ход (0 — без таймера)': 'seconds per move (0 — no timer)', 'Введите имя': 'Enter your name', 'Код комнаты — 4 символа': 'Room code is 4 characters',
     'Язык': 'Language',
+    // умения
+    'Умения': 'Skills', 'умения': 'skills', '«Пересдача» — раз за партию': '“Reshuffle” — once per game', 'Пересдача': 'Reshuffle', 'ПЕРЕСДАЧА!': 'RESHUFFLE!',
+    'Нажмите ещё раз': 'Tap again', 'Вы': 'You',
+    'Пересдача: все карты всех игроков перетасовать и раздать заново. Только пока идут заявки, один раз за партию.': 'Reshuffle: collect everyone’s cards, shuffle and deal again. Only during bidding, once per game.',
+    'Пересдача уже использована': 'Reshuffle already used', 'Пересдача — только пока идут заявки': 'Reshuffle — only during bidding',
+    'В этом раунде уже была пересдача': 'There was already a reshuffle this round', 'Умения за этим столом выключены': 'Skills are off at this table',
     // аккаунт и рейтинг
     'Вы вошли: {n} · рейтинг {r}': 'Signed in: {n} · rating {r}', 'Лидеры': 'Leaders', 'Выйти из аккаунта': 'Sign out', 'Выход': 'Sign out',
     'Войдите, чтобы играть на рейтинг': 'Sign in to play for rating', 'Таблица лидеров': 'Leaderboard', 'Закрыть': 'Close',
@@ -172,6 +178,7 @@
     [/^(.+): время вышло — ход сделан автоматически$/, (m, n) => `${n}: time’s up — auto move`],
     [/^(.+) предлагает заменить ботом игрока (.+)\. Игра на паузе\.$/, (m, a, b) => `${a} proposes replacing ${b} with a bot. Game paused.`],
     [/^(.+) заменяет карту: (10|[6-9]|[ВДКТ])([♠♣♦♥])(.*)$/, (m, n, r, s, note) => `${n} swaps the card: ${cardEn(r + s)}${NOTE(note)}`],
+    [/^(.+) применяет «Пересдачу»: карты перетасованы и розданы заново\. Заявки сначала — начинает (.+)\.$/, (m, n, b) => `${n} uses “Reshuffle”: cards shuffled and dealt again. Bids start over — ${b} first.`],
     [/^(.+) заявляет (\d+)$/, (m, n, b) => `${n} bids ${b}`],
     [/^(.+): (10|[6-9]|[ВДКТ])([♠♣♦♥])(.*)$/, (m, n, r, s, note) => `${n}: ${cardEn(r + s)}${NOTE(note)}`],
   ];

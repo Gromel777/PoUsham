@@ -20,6 +20,13 @@ function listen(room, token, onView) {
   const humans = [a.j, b.j]; let done = false; let checks = { hiddenOk: true };
   for (const h of humans) listen(h.room, h.token, async v => {
     if (v.stage !== 'game' || done) return;
+    if (v.you === 0 && v.skills && v.skills.reshuffle.can && !checks.reshuffleSent) {
+      checks.reshuffleSent = true;
+      post('/api/action', { room: h.room, token: h.token, type: 'skill', skill: 'reshuffle' }).then(r => { checks.reshuffleOk = r.ok; });
+      return;
+    }
+    if (v.reshuffle && v.reshuffle.by === 0) checks.reshuffleSeen = true;
+    if (v.you === 0 && checks.reshuffleSeen && v.skills && v.skills.reshuffle.left) checks.reshuffleLeftBug = true;
     if (v.hand.length !== v.handCounts[v.you]) checks.hiddenOk = false;
     if (JSON.stringify(v).includes('"hands"')) checks.hiddenOk = false;
     if (v.phase === 'gameOver') { if (!done) { done = true; console.log('gameOver scores', v.scores, 'rounds', v.history.length, checks); server.close(); process.exit(0); } return; }

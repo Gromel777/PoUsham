@@ -12,7 +12,7 @@
 
   const S = {
     view: null, es: null, room: null, token: null, err: '', connecting: false, prefillCode: '', screen: null, busy: false,
-    tab: 'ranked', players: 4, rounds: 17, roundsTouched: false, turnTime: 30, bluff: false, listed: true,
+    tab: 'ranked', players: 4, rounds: 17, roundsTouched: false, turnTime: 30, bluff: false, skills: true, listed: true,
     rankedSize: 0, casualSize: 0, // 0 — «любой стол»
   };
 
@@ -302,6 +302,7 @@
               <span class="opt-label" style="min-width:0;margin-left:6px">${T('Таймер')}</span>
               <div class="stepper"><button data-act="timer" data-d="-5">−</button><input class="num-input" id="timer-val" inputmode="numeric" maxlength="3"><button data-act="timer" data-d="5">+</button></div></div>
             <div class="row"><label class="switch" data-act="bluff" id="bluff-sw"><i></i><span>${T('Режим обмана')}</span></label><span class="hint" id="timer-hint"></span></div>
+            <div class="row"><label class="switch" data-act="skills" id="skills-sw"><i></i><span>${T('Умения')}</span></label><span class="hint">${T('«Пересдача» — раз за партию')}</span></div>
             <div class="row"><label class="switch" data-act="listed" id="listed-sw"><i></i><span>${T('Открытый стол')}</span></label><span class="hint">${T('виден всем в списке столов')}</span></div>
             <button class="btn-gold" data-act="create">${T('Создать стол')}</button>
           </div>
@@ -362,7 +363,7 @@
     if (!box) return;
     const cnt = cur('#rooms-count'); if (cnt) cnt.textContent = list.length ? String(list.length) : '';
     box.innerHTML = list.length ? list.map(r => `<div class="room-row">
-        <div class="rr-main"><b>${esc(r.host)}</b><span class="hint">${T('{n} раундов', { n: r.rounds })} · ${r.turnTime ? T('таймер {s} с', { s: r.turnTime }) : T('без таймера')}${r.bluff ? ' · ' + T('обман') : ''}</span></div>
+        <div class="rr-main"><b>${esc(r.host)}</b><span class="hint">${T('{n} раундов', { n: r.rounds })} · ${r.turnTime ? T('таймер {s} с', { s: r.turnTime }) : T('без таймера')}${r.bluff ? ' · ' + T('обман') : ''}${r.skills ? ' · ' + T('умения') : ''}</span></div>
         <span class="rr-seats">${r.players}/${r.size}</span>
         <button class="btn-ghost" data-act="joinRoom" data-code="${esc(r.code)}">${T('Сесть')}</button></div>`).join('')
       : `<div class="hint room-empty">${T('Открытых столов пока нет — нажмите «Быстрая игра» или создайте свой стол.')}</div>`;
@@ -431,12 +432,13 @@
     const th = $('#timer-hint', el); if (th) th.textContent = S.turnTime ? T('до {m} карт · {s} с на ход', { m: MAX_CARDS(S.players), s: S.turnTime }) : T('до {m} карт · без таймера', { m: MAX_CARDS(S.players) });
     const tv2 = $('#timer-val', el); if (tv2) tv2.title = T('секунд на ход (0 — без таймера)');
     const sw = $('#bluff-sw', el); if (sw) sw.classList.toggle('on', S.bluff);
+    const ks = $('#skills-sw', el); if (ks) ks.classList.toggle('on', S.skills);
     el.querySelectorAll('#seg-theme button').forEach(b => b.classList.toggle('on', b.dataset.t === prefs.cards));
   }
 
   function joinLink(code) { return `${location.origin}/?room=${code}`; }
   function settingsLine(v) {
-    return `<div class="settings-line"><span>${T('{n} игроков', { n: v.size })}</span><span>${T('{n} раундов', { n: v.rounds })}</span><span>${v.turnTime ? T('таймер {s} с', { s: v.turnTime }) : T('без таймера')}</span>${v.bluff ? `<span class="bluff">${T('режим обмана')}</span>` : ''}</div>`;
+    return `<div class="settings-line"><span>${T('{n} игроков', { n: v.size })}</span><span>${T('{n} раундов', { n: v.rounds })}</span><span>${v.turnTime ? T('таймер {s} с', { s: v.turnTime }) : T('без таймера')}</span>${v.bluff ? `<span class="bluff">${T('режим обмана')}</span>` : ''}${v.skillsOn ? `<span class="skills">${T('умения')}</span>` : ''}</div>`;
   }
   const matchedKind = v => v.kind === 'ranked' || v.kind === 'casual';
   function lobbyTitle(v) {
@@ -498,7 +500,7 @@
             <button class="icon-btn" data-act="menu" title="${T('Меню')}">${iconSvg('menu')}</button>
           </div>
         </div>
-        <div class="round-dock"><div class="status" id="status"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> ${T('козырь')}</span><span id="hud-mode"></span></div></div></div>
+        <div class="round-dock"><div class="skills-bar" id="skills-bar"></div><div class="status" id="status"></div><div class="round-box"><b id="hud-round">—</b><span class="s" id="hud-sub"></span><div class="tags"><span class="trump-box"><span>♥</span> ${T('козырь')}</span><span id="hud-mode"></span></div></div></div>
         <div class="me-panel" id="me-panel"></div>
         <div class="action" id="action"></div>
         <div id="vote"></div>
@@ -635,6 +637,10 @@
     </svg>`;
   }
 
+  // Иконка «Пересдачи»: две перекрещённые стрелки.
+  function shuffleSvg() {
+    return `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3.5c2.2 0 3.6 1.1 5 3.2l1 1.6c1.4 2.1 2.8 3.2 5 3.2H21"/><path d="M3 17h3.5c1.6 0 2.8-.6 3.8-1.8"/><path d="M13.7 8.8C14.7 7.6 15.9 7 17.5 7H21"/><path d="M18 4l3 3-3 3"/><path d="M18 14l3 3-3 3"/></svg>`;
+  }
   function iconSvg(name) {
     const p = {
       scores: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
@@ -670,6 +676,7 @@
       <li><b>7♠:</b> a normal card; when leading — “Highest on the table!” (everyone plays their strongest card, the trick is yours); when following — the top card (takes the trick).</li>
       <li><b>Timer:</b> when time runs out, a random honest card is played for you (for bids — an automatic estimate of your hand).</li>
       <li><b>Bluff mode:</b> any card may be played, breaking the suit rule and “Highest on the table!”. While the trick is on the table anyone can tap “?” on someone else’s card (except the first card of the trick, 7♠ and a move with only one card in hand). Caught — the cheater gives the checker 50 points, the card goes back and an honest card must be played. Wrong — the checker loses 20 points.</li>
+      <li><b>Skills</b> (table option): <b>Reshuffle</b> — once per game, while bids are being made, all players’ cards are collected, shuffled and dealt again. Bids start over. At most one reshuffle per round.</li>
     </ul><div class="actions"><button class="btn-gold" data-act="close">Got it</button></div>`;
     return `<h2 class="gold-text">Правила «В Точку»</h2><ul class="rules">
       <li>Колода 36 карт, 2–6 игроков. Козыри — черви <b style="color:var(--crimson)">♥</b>.</li>
@@ -681,6 +688,7 @@
       <li><b>7♠:</b> как обычная карта; первым ходом — «Старшие на стол!» (все кладут самую сильную карту, взятка ваша); в ответ — как самая старшая (забирает взятку).</li>
       <li><b>Таймер:</b> если время на ход вышло, за игрока кладётся случайная честная карта (на заявку — автоматическая оценка руки).</li>
       <li><b>Режим обмана:</b> можно класть любую карту, нарушая правила масти и «Старшие на стол!». Пока взятка на столе, любой может нажать «?» на чужой карте (кроме первой карты взятки, 7♠ и хода, когда у игрока была одна карта). Поймал — обманщик отдаёт проверившему ${50} очков, карта возвращается, и он обязан положить честную. Ошибся — проверивший теряет 20 очков.</li>
+      <li><b>Умения</b> (настройка стола): <b>«Пересдача»</b> — один раз за партию, пока идут заявки, карты всех игроков собираются, тасуются и раздаются заново. Заявки начинаются сначала. Не больше одной пересдачи за раунд.</li>
     </ul><div class="actions"><button class="btn-gold" data-act="close">Понятно</button></div>`;
   }
   function langSeg(extra = '') {
@@ -921,6 +929,9 @@
         this.shown = v.scores.slice(); this.scoreAnims = 0;
         this.crownSet = leadersOf(v); this.leadKey = this.crownSet.join(',');
       }
+      const rsSeq = v.reshuffle ? v.reshuffle.seq : 0;
+      if (!prev || newRound) this.reshuffleSeq = rsSeq; // раздача и так покажет новые карты
+      this.updateSkills(v);
       this.updateHud(v);
       if (!prev || this.seatEls.length !== v.n) { TABLE_SCALE = v.n >= 5 ? 0.61 : 0.66; this.buildSeats(v); }
       this.updateLog(v);
@@ -933,6 +944,11 @@
         if (!fast) await this.announceRound(v);
         await this.deal(v, fast);
       }
+      if (rsSeq > this.reshuffleSeq) {
+        this.reshuffleSeq = rsSeq;
+        if (fast) await this.deal(v, true);
+        else await this.reshuffleFx(v);
+      }
       await this.applyCheck(v, fast);
       await this.syncTable(v, fast);
       this.updateSeats(v, newRound ? null : prev);
@@ -941,6 +957,7 @@
       this.updateChecks(v);
       this.updateStatus(v);
       this.updateAction(v);
+      this.updateSkills(v);
       this.updateVote(v);
       this.maybeBoom(v, prev, fast);
       this.updateNeon(v);
@@ -1024,7 +1041,7 @@
       this.logLast = lines[lines.length - 1]; this.logLen = lines.length;
       const away = body.scrollTop < -6, oldTop = body.scrollTop, oldH = body.scrollHeight;
       const myName = v.names[v.you];
-      body.innerHTML = lines.slice().reverse().map((l, i) => `<div class="${/ОБМАН|проверяет|время вышло/.test(l) ? 'hot' : l.startsWith(myName) ? 'mine' : ''}${i < fresh ? ' new' : ''}">${colorNames(I18N.trLog(l), v.names)}</div>`).join('');
+      body.innerHTML = lines.slice().reverse().map((l, i) => `<div class="${/ОБМАН|проверяет|время вышло|Пересдач/.test(l) ? 'hot' : l.startsWith(myName) ? 'mine' : ''}${i < fresh ? ' new' : ''}">${colorNames(I18N.trLog(l), v.names)}</div>`).join('');
       // Если игрок листает историю — не сбиваем ему место, а только подсвечиваем кнопку «к новым».
       if (away) { body.scrollTop = oldTop - (body.scrollHeight - oldH); const j = $('#log-jump', this.el); if (j && fresh) j.classList.add('fresh'); }
       else body.scrollTop = 0;
@@ -1363,6 +1380,84 @@
       for (const o of this.table.values()) { const [x, y] = slotXY(o.spot, d, v.n); place(o.el, { ...o.el._p, x, y }); }
       this.syncHand(v);
       this.updateChecks(v);
+    },
+
+    // Кнопки умений (пока одно — «Пересдача»): готово / сейчас нельзя / использовано.
+    updateSkills(v) {
+      const bar = $('#skills-bar', this.el);
+      if (!bar) return;
+      if (!v.skills) { if (bar.innerHTML) bar.innerHTML = ''; return; }
+      const sk = v.skills.reshuffle;
+      let b = bar.querySelector('.skill-btn');
+      if (!b) {
+        bar.innerHTML = `<button class="skill-btn" data-act="skill" data-skill="reshuffle" title="${T('Пересдача: все карты всех игроков перетасовать и раздать заново. Только пока идут заявки, один раз за партию.')}">
+          <span class="sk-ring"></span><span class="sk-ico">${shuffleSvg()}</span><span class="sk-lock">🔒</span>
+          <span class="sk-name">${T('Пересдача')}</span><span class="sk-arm">${T('Нажмите ещё раз')}</span></button>`;
+        b = bar.querySelector('.skill-btn');
+      }
+      const state = !sk.left ? 'used' : sk.can ? 'ready' : 'idle';
+      if (b.dataset.state !== state) {
+        const wasReady = b.dataset.state === 'idle' && state === 'ready';
+        b.dataset.state = state;
+        if (state !== 'ready') b.classList.remove('armed');
+        if (wasReady) popEl(b, 'sk-pop');
+      }
+    },
+
+    // Пересдача: все карты слетаются в центр, колода тасуется вихрем и раздаётся заново.
+    async reshuffleFx(v) {
+      const rs = v.reshuffle;
+      const d = dims();
+      const cx = d.cx, cy = d.cy;
+      this.closeSpecial();
+      const box = $('#action', this.el); if (box.dataset.kind) { box.dataset.kind = ''; box.innerHTML = ''; }
+      const who = rs.by === v.you ? T('Вы') : v.names[rs.by];
+      banner(T('ПЕРЕСДАЧА!'), 'violet', false, who);
+      SFX.reshuffle(); vibrate([30, 40, 30, 40, 60]);
+      this.neonFlash('neon-legend', 2200);
+      // Вспышка у того, кто применил.
+      const [bx, by] = this.seatCenter(rs.by);
+      FX.ring(bx, by, { r1: 120, color: '#c9a2ff', width: 4, life: 0.7 });
+      FX.burst(bx, by, { n: 30, colors: FX.GOLD, speed: [120, 320], size: [1.5, 3], g: 0, life: [0.4, 0.8] });
+      FX.trail(bx, by, cx, cy);
+      const pile = [];
+      // Свои карты — рубашкой вверх в центр.
+      for (const el of this.hand.values()) { el.classList.remove('inhand', 'legal', 'illegal', 'sel', 'bluffy', 'boom'); el.classList.add('down'); pile.push(el); }
+      this.hand.clear(); this.sel = null;
+      const jobs = pile.map((el, i) => wait(i * 40).then(() => fly(el, { x: cx + rnd(-8, 8), y: cy + rnd(-8, 8), rot: rnd(-20, 20), s: 0.75 }, { dur: 480, ease: 'cubic-bezier(.55,0,.4,1)' })));
+      // Карты соперников — из их вееров.
+      this.dealing = true;
+      for (let p = 0; p < v.n; p++) {
+        if (p === v.you || !this.seatEls[p]) continue;
+        const fan = this.seatEls[p].querySelector('.fan');
+        const cnt = Math.max(0, +fan.dataset.n || 0);
+        const [sx, sy] = this.seatCenter(p);
+        for (let i = 0; i < cnt; i++) {
+          const el = makeCard(this.cardsLayer, null, false);
+          place(el, { x: sx, y: sy, rot: rnd(-30, 30), s: 0.4 });
+          pile.push(el);
+          jobs.push(wait(i * 45 + 60).then(() => { if (fan.lastElementChild) fan.lastElementChild.remove(); fan.dataset.n = fan.children.length; return fly(el, { x: cx + rnd(-8, 8), y: cy + rnd(-8, 8), rot: rnd(-20, 20), s: 0.75 }, { dur: 480, ease: 'cubic-bezier(.55,0,.4,1)' }); }));
+        }
+      }
+      await Promise.all(jobs);
+      FX.vortex(cx, cy, { n: 46, r: 110, colors: FX.GOLD });
+      FX.ring(cx, cy, { r1: 160, color: '#f6d27a', width: 3, life: 0.6 });
+      // Тасовка: колода дважды делится на две половины и сходится «врезкой».
+      const deck = pile.slice(-Math.min(pile.length, 14));
+      pile.filter(el => !deck.includes(el)).forEach(el => el.remove());
+      deck.forEach((el, i) => { el.style.zIndex = 60 + i; place(el, { x: cx, y: cy - i * 0.8, rot: 0, s: 0.75 }); });
+      const off = d.cw * 0.62;
+      for (let k = 0; k < 2; k++) {
+        await Promise.all(deck.map((el, i) => fly(el, { x: cx + (i % 2 ? off : -off), y: cy - 6 - i * 0.6, rot: i % 2 ? 9 : -9, s: 0.75 }, { dur: 230, ease: 'cubic-bezier(.3,.8,.3,1)' })));
+        await Promise.all(deck.map((el, i) => wait(i * 22).then(() => { if (i % 3 === 0) SFX.deal(); el.style.zIndex = 60 + ((i * 7) % deck.length); return fly(el, { x: cx, y: cy - i * 0.8, rot: rnd(-3, 3), s: 0.75 }, { dur: 200, via: { x: cx + (i % 2 ? off : -off) * 0.4, y: cy - d.ch * 0.25, rot: i % 2 ? 25 : -25, s: 0.8, offset: 0.5 } }); })));
+        FX.sparkleAt(cx, cy);
+      }
+      FX.burst(cx, cy, { n: 40, colors: FX.GOLD, speed: [150, 450], size: [1.5, 3], g: 80, life: [0.5, 1] });
+      FX.shake(4, 0.25);
+      await wait(150);
+      deck.forEach(el => el.remove());
+      this.dealing = false;
+      await this.deal(v, false);
     },
 
     // Объявление раунда: на весь экран, с ударом, лучами и гонгом.
@@ -2407,12 +2502,26 @@
     rounds: b => { S.roundsTouched = true; S.rounds = Math.max(1, Math.min(60, S.rounds + +b.dataset.d)); syncHome(); },
     timer: b => { const t = S.turnTime + +b.dataset.d; S.turnTime = clampTimer(t < 5 && +b.dataset.d < 0 ? 0 : t === 5 && +b.dataset.d > 0 && S.turnTime === 0 ? 5 : t); syncHome(); },
     bluff: () => { S.bluff = !S.bluff; syncHome(); },
+    skills: () => { S.skills = !S.skills; syncHome(); },
+    skill: b => {
+      SFX.unlock();
+      const v = S.view;
+      if (!v || !v.skills || !v.skills.reshuffle.can) { nope(b); toast(T(!v || !v.skills || !v.skills.reshuffle.left ? 'Пересдача уже использована' : 'Пересдача — только пока идут заявки')); return; }
+      // Первое нажатие — «взвести», второе — применить (чтобы не нажать случайно).
+      if (!b.classList.contains('armed')) {
+        b.classList.add('armed'); SFX.click();
+        clearTimeout(Game.skillArmT); Game.skillArmT = setTimeout(() => b.classList.remove('armed'), 2800);
+        return;
+      }
+      clearTimeout(Game.skillArmT); b.classList.remove('armed');
+      act({ type: 'skill', skill: 'reshuffle' });
+    },
     create: async () => {
       const name = $('#name').value.trim();
       if (!name) { $('#err').textContent = T('Введите имя'); $('#name').focus(); return; }
       const tv = $('#timer-val'); if (tv) S.turnTime = clampTimer(parseInt(tv.value, 10));
       save(STORE_KEY, { name });
-      try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, listed: S.listed, lang: I18N.lang, session: Auth.session }); connect(j.room, j.token); }
+      try { const j = await api('/api/create', { name, players: S.players, rounds: S.rounds, turnTime: S.turnTime, bluff: S.bluff, skills: S.skills, listed: S.listed, lang: I18N.lang, session: Auth.session }); connect(j.room, j.token); }
       catch (e) { $('#err').textContent = e.message; }
     },
     join: async () => {
