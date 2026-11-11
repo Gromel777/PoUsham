@@ -51,7 +51,7 @@ scripts/build-static.js  Builds dist/ (client + engine.js) for Render Static Sit
 client/manifest.webmanifest, client/icons/, client/img/, client/music/*.mp3, client/privacy.html
 prototype/po-usham.html  First offline single-file prototype vs bots. Legacy, not served. Don't edit.
 test-*.js            Tests (plain node scripts, no framework). `npm test` runs all.
-render.yaml          Render web service `pousham` (free plan, healthCheckPath /health) + optional static site `vtochku` (never sleeps).
+render.yaml          Render web service `pousham` (free plan, healthCheckPath /health) + static site (never sleeps), live at https://pousham-1.onrender.com.
 README.md            Human README in Russian (structure, run, deploy, env).
 ```
 

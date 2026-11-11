@@ -40,7 +40,7 @@ scripts/build-static.js — сборка клиента для статичес�
 
 Пока сервер Render просыпается, игра показывает свой экран загрузки, и обучение можно пройти прямо во время ожидания.
 Чтобы заставка Render не появлялась даже при самом первом входе, клиент можно выложить на **Render Static Site** (он не засыпает):
-New → Static Site → тот же репозиторий, Build Command `npm run build:static`, Publish Directory `dist`.
+New → Static Site → тот же репозиторий, Build Command `npm run build:static`, Publish Directory `dist`. Сейчас он работает по адресу https://pousham-1.onrender.com.
 Клиент с другого адреса сам обращается к API на `https://pousham.onrender.com`. Адрес статического сайта нужно добавить
 в Google Cloud → OAuth Client → Authorized JavaScript origins.
 
