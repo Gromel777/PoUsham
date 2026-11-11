@@ -63,6 +63,10 @@ const PHRASE_MAX = 24; // свои фразы игрока на колесе
 const PHRASES = ['Блефуешь!', 'Проверю!', 'Ну ты даёшь', 'Везёт же', 'Давай быстрее', 'Красиво!', 'Не верю', 'GG'];
 const LIKE_COOLDOWN = 60 * 1000; // у лайка, дизлайка и грязи — своя минута у каждого
 const CHAT_GAP = 1200, EMOTE_GAP = 1500;
+// Пауза (как в Dota): у каждого игрока несколько пауз на партию; снять может любой — через отсчёт 5…1.
+const PAUSES_PER_PLAYER = 3;
+const UNPAUSE_COUNTDOWN = 5000;
+const PAUSE_MAX = 5 * 60 * 1000; // дольше — пауза снимается сама (тоже с отсчётом)
 
 /** @type {Map<string, any>} */
 const rooms = new Map();
@@ -182,6 +186,60 @@ function joinRoom(r, name, acc = null) {
 
 // ---------- кик и голосование ----------
 const humanSeats = r => r.seats.map((s, i) => i).filter(i => !r.seats[i].bot);
+// Игра стоит: идёт голосование или кто-то поставил паузу (в том числе во время отсчёта снятия).
+const halted = r => !!(r.vote || r.pause);
+
+// Перед остановкой запоминаем, сколько оставалось на таймере хода и в окне пересдачи, — после паузы продолжим с того же места.
+function freezeTimers(r) {
+  if (halted(r)) return;
+  const now = Date.now();
+  r.savedTurn = r.turnKey && r.deadline ? { key: r.turnKey, left: Math.max(1500, r.deadline - now) } : null;
+  r.savedPre = r.preKey && r.preEnds ? { key: r.preKey, left: Math.max(800, r.preEnds - now) } : null;
+}
+
+function clearPause(r) {
+  if (!r.pause) return;
+  clearTimeout(r.pause.resumeTimer); clearTimeout(r.pause.maxTimer);
+  r.pause = null;
+}
+// Запуск отсчёта 5…1; по его окончании игра продолжается.
+function startUnpause(r, seat) {
+  const pz = r.pause;
+  if (!pz || pz.resumeAt) return;
+  pz.resumeAt = Date.now() + UNPAUSE_COUNTDOWN;
+  pz.resumeBy = seat;
+  clearTimeout(pz.maxTimer);
+  gameLog(r, seat === null ? 'Пауза слишком долгая — игра продолжится через 5 с' : `${r.seats[seat].name} снимает паузу — игра продолжится через 5 с`);
+  pz.resumeTimer = setTimeout(() => {
+    if (r.pause !== pz) return;
+    clearPause(r);
+    gameLog(r, 'Игра продолжается');
+    update(r);
+  }, UNPAUSE_COUNTDOWN);
+}
+function setPause(r, seat) {
+  const g = r.game;
+  if (!g || g.phase === 'gameOver') fail('Сейчас паузу поставить нельзя');
+  if (r.pause && !r.pause.resumeAt) fail('Игра уже на паузе');
+  if (!(r.pausesLeft[seat] > 0)) fail('Паузы закончились');
+  r.pausesLeft[seat]--;
+  const name = r.seats[seat].name;
+  if (r.pause) { // отсчёт снятия идёт — новая пауза его отменяет
+    clearPause(r);
+    gameLog(r, `${name} снова ставит паузу`);
+  } else {
+    freezeTimers(r);
+    gameLog(r, `${name} ставит паузу`);
+  }
+  r.pause = { by: seat, at: Date.now(), resumeAt: 0, resumeBy: null, resumeTimer: null };
+  r.pause.maxTimer = setTimeout(() => { if (r.pause && !r.pause.resumeAt) { startUnpause(r, null); broadcast(r); } }, PAUSE_MAX);
+}
+function resetPauses(r) {
+  clearPause(r);
+  r.pausesLeft = r.seats.map(() => PAUSES_PER_PLAYER);
+  r.savedTurn = r.savedPre = null;
+}
+
 function gameLog(r, msg) { if (r.game) { r.game.log.push(msg); if (r.game.log.length > 300) r.game.log.shift(); } }
 
 // Закрыть соединения игрока и сообщить ему, что его убрали со стола.
@@ -238,6 +296,7 @@ function startGame(r) {
   r.seenPlays = new Set();
   r.gameSeq = (r.gameSeq || 0) + 1;
   r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff, skills: r.skills, test: r.test });
+  resetPauses(r);
 }
 
 function seatView(r, s, i) {
@@ -287,10 +346,16 @@ function viewFor(r, seat) {
     lastCheck: g.lastCheck,
     timer: r.deadline && r.turnKey ? { left: Math.max(0, r.deadline - Date.now()), total: r.turnTime * 1000 } : null,
     specialModes: myTurn ? Engine.specialModes(g, seat) : [],
-    skills: g.skillsOn ? { reshuffle: { left: g.skills[seat].reshuffle, can: !r.vote && !Engine.canReshuffle(g, seat) } } : null,
+    skills: g.skillsOn ? { reshuffle: { left: g.skills[seat].reshuffle, can: !halted(r) && !Engine.canReshuffle(g, seat) } } : null,
     skillsUsed: g.skills.map(x => !x.reshuffle),
     reshuffle: g.lastReshuffle,
-    paused: !!r.vote,
+    paused: halted(r),
+    pause: r.pause ? {
+      by: r.pause.by,
+      resumeIn: r.pause.resumeAt ? Math.max(0, r.pause.resumeAt - Date.now()) : 0,
+      resumeBy: r.pause.resumeBy,
+    } : null,
+    pausesLeft: r.pausesLeft ? r.pausesLeft[seat] : 0,
     rating: g.phase === 'gameOver' ? (g.rating || null) : null,
     vote: r.vote ? {
       target: r.vote.target,
@@ -316,7 +381,7 @@ function broadcast(r) {
 function schedule(r) {
   clearTimeout(r.timer);
   const g = r.game;
-  if (!g || r.vote) return; // голосование — пауза
+  if (!g || halted(r)) return; // голосование или пауза
   if (g.phase === 'trickDone') {
     r.timer = setTimeout(() => { Engine.nextTrick(g); update(r); }, g.bluff ? TRICK_PAUSE_BLUFF : TRICK_PAUSE);
   } else if ((g.phase === 'bid' || g.phase === 'play') && r.seats[g.turn].bot) {
@@ -333,7 +398,7 @@ function schedule(r) {
 // Таймер хода для живых игроков: по истечении — автоматическая заявка или случайная честная карта.
 function turnKeyOf(r) {
   const g = r.game;
-  if (!g || r.vote || !r.turnTime || r.seats[g.turn].bot) return null;
+  if (!g || halted(r) || !r.turnTime || r.seats[g.turn].bot) return null;
   if (g.phase !== 'bid' && g.phase !== 'play') return null;
   return `${g.roundIdx}:${g.reshuffleSeq}:${g.phase}:${g.turn}:${g.trick ? g.trick.plays.length : 0}:${g.fix ? 'f' : ''}:${g.took.join('')}`;
 }
@@ -342,7 +407,10 @@ function scheduleTurnTimer(r) {
   if (key === r.turnKey) return;
   clearTimeout(r.turnTimer);
   r.turnKey = key;
-  r.deadline = key ? Date.now() + r.turnTime * 1000 : 0;
+  // После паузы тот же ход продолжается с оставшимся временем.
+  const left = key && r.savedTurn && r.savedTurn.key === key ? r.savedTurn.left : r.turnTime * 1000;
+  if (key || !halted(r)) r.savedTurn = null;
+  r.deadline = key ? Date.now() + left : 0;
   if (!key) return;
   r.turnTimer = setTimeout(() => {
     const g = r.game;
@@ -359,13 +427,13 @@ function scheduleTurnTimer(r) {
       gameLog(r, `${r.seats[p].name}: время вышло — ход сделан автоматически`);
     } catch (e) { console.error('timeout move error', e); }
     update(r);
-  }, r.turnTime * 1000 + 300);
+  }, left + 300);
 }
 
 // Боты в режиме обмана иногда проверяют подозрительные карты.
 function scheduleBotChecks(r) {
   const g = r.game;
-  if (!g || !g.bluff || g.fix || r.vote || !g.trick) return;
+  if (!g || !g.bluff || g.fix || halted(r) || !g.trick) return;
   if (g.phase !== 'play' && g.phase !== 'trickDone') return;
   r.seenPlays = r.seenPlays || new Set();
   for (const pl of g.trick.plays) {
@@ -376,7 +444,7 @@ function scheduleBotChecks(r) {
       if (!r.seats[b].bot || b === pl.p) continue;
       if (Math.random() >= Bots.suspicion(g, b, pl)) continue;
       const t = setTimeout(() => {
-        if (r.game !== g || r.vote || Engine.canCheck(g, b, pl.card.id)) return;
+        if (r.game !== g || halted(r) || Engine.canCheck(g, b, pl.card.id)) return;
         try { Engine.check(g, b, pl.card.id); update(r); } catch {}
       }, 900 + Math.random() * 1600);
       r.checkTimers.push(t);
@@ -388,14 +456,16 @@ function scheduleBotChecks(r) {
 // Окно пересдачи: по таймеру начинаются заявки; боты решают, пересдавать ли, пока окно открыто.
 function schedulePre(r) {
   const g = r.game;
-  const key = g && !r.vote && g.phase === 'pre' ? `${g.roundIdx}:${g.reshuffleSeq}:${g.history.length}:${r.gameSeq || 0}` : null;
+  const key = g && !halted(r) && g.phase === 'pre' ? `${g.roundIdx}:${g.reshuffleSeq}:${g.history.length}:${r.gameSeq || 0}` : null;
   if (key === r.preKey) return;
   clearTimeout(r.preTimer); clearTimeout(r.preBotTimer);
   r.preKey = key; r.preEnds = 0;
   if (!key) return;
   const k = g.plan[g.roundIdx];
   const intro = preIntro(k, g.n, g.mode !== 'normal');
-  const delay = g.reshuffledRound ? RESHUFFLE_FX : intro + PRE_WINDOW;
+  const resumed = r.savedPre && r.savedPre.key === key ? r.savedPre.left : 0;
+  r.savedPre = null;
+  const delay = resumed || (g.reshuffledRound ? RESHUFFLE_FX : intro + PRE_WINDOW);
   r.preEnds = Date.now() + delay;
   r.preTimer = setTimeout(() => {
     if (r.game !== g || r.preKey !== key) return;
@@ -409,7 +479,7 @@ function schedulePre(r) {
     if (r.game !== g || r.preKey !== key || Engine.canReshuffle(g, bot)) return;
     try { Engine.reshuffle(g, bot); } catch (e) { console.error('bot reshuffle', e); }
     update(r);
-  }, intro + 500 + Math.random() * 1800);
+  }, resumed ? Math.random() * Math.max(0, resumed - 700) : intro + 500 + Math.random() * 1800);
 }
 
 function update(r) {
@@ -482,7 +552,7 @@ function socialAction(r, seat, body) {
 // Кулдауны те же, что у людей (по минуте на каждое действие).
 function botSocialTick(r) {
   const g = r.game;
-  if (!g || r.vote || g.phase === 'gameOver' || r.streams.size === 0) return;
+  if (!g || halted(r) || g.phase === 'gameOver' || r.streams.size === 0) return;
   const now = Date.now();
   for (let b = 0; b < r.seats.length; b++) {
     const s = r.seats[b];
@@ -538,6 +608,7 @@ function doAction(r, seat, body) {
     for (const s of r.seats) if (s.bot) { s.uid = null; s.left = false; s.rating = null; } // ушедшие в новой партии не участвуют
     r.gameSeq = (r.gameSeq || 0) + 1;
     r.game = Engine.newGame({ players: r.size, rounds: r.rounds, names: r.seats.map(s => s.name), bluff: r.bluff, skills: r.skills, test: r.test });
+    resetPauses(r);
     return;
   }
   if (type === 'kick') {
@@ -553,6 +624,7 @@ function doAction(r, seat, body) {
     if (r.vote) fail('Голосование уже идёт');
     if (!r.seats[target] || r.seats[target].bot || target === seat) fail('За этого игрока голосовать нельзя');
     if (isOnline(r, target)) fail('Игрок в сети — голосовать можно только за вылетевшего');
+    freezeTimers(r);
     r.vote = { target, yes: new Set([seat]), no: new Set() };
     gameLog(r, `${r.seats[seat].name} предлагает заменить ботом игрока ${r.seats[target].name}. Игра на паузе.`);
     checkVote(r);
@@ -567,7 +639,15 @@ function doAction(r, seat, body) {
     checkVote(r);
     return;
   }
+  if (type === 'pause') { setPause(r, seat); return; }
+  if (type === 'unpause') {
+    if (!r.pause) fail('Игра не на паузе');
+    if (r.pause.resumeAt) fail('Пауза уже снимается');
+    startUnpause(r, seat);
+    return;
+  }
   if (r.vote) fail('Игра на паузе: идёт голосование');
+  if (r.pause) fail('Игра на паузе');
   try {
     if (type === 'bid') Engine.placeBid(g, seat, Number(body.value));
     else if (type === 'play') Engine.playCard(g, seat, String(body.cardId), body.mode || 'normal');
@@ -912,7 +992,7 @@ setInterval(() => { try { mmMatch(); autoStartTick(); } catch (e) { console.erro
 setInterval(() => { for (const r of rooms.values()) for (const st of r.streams) { try { st.res.write(': ping\n\n'); } catch {} } }, 20000);
 setInterval(() => {
   const now = Date.now();
-  for (const [code, r] of rooms) if (r.streams.size === 0 && now - r.touched > ROOM_TTL) { clearTimeout(r.timer); rooms.delete(code); }
+  for (const [code, r] of rooms) if (r.streams.size === 0 && now - r.touched > ROOM_TTL) { clearTimeout(r.timer); clearPause(r); rooms.delete(code); }
 }, 10 * 60 * 1000);
 
 server.listen(PORT, () => console.log(`В Точку: сервер запущен на порту ${PORT}`));

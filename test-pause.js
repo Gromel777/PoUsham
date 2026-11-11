@@ -1,0 +1,53 @@
+// Тест паузы: поставить, снять другим игроком через отсчёт 5…1, отменить отсчёт, лимит пауз, сохранение таймера хода.
+process.env.PORT = 3998;
+const http = require('http');
+const { server } = require('./server/server.js');
+const base = 'http://localhost:3998';
+const post = (p, b) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then(async r => ({ ok: r.ok, j: await r.json() }));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exit(1); } console.log('ok', m); };
+(async () => {
+  const a = await post('/api/create', { name: 'Аня', players: 3, rounds: 3, turnTime: 20, skills: false });
+  const b = await post('/api/join', { name: 'Боря', room: a.j.room });
+  const last = {};
+  for (const [k, h] of [['a', a.j], ['b', b.j]]) http.get(`${base}/api/events?room=${h.room}&token=${h.token}`, res => {
+    let buf = ''; res.on('data', d => { buf += d; let i; while ((i = buf.indexOf('\n\n')) >= 0) { const ch = buf.slice(0, i); buf = buf.slice(i + 2); const l = ch.split('\n').find(x => x.startsWith('data: ')); if (l) last[k] = JSON.parse(l.slice(6)); } });
+  });
+  await sleep(200);
+  const A = body => post('/api/action', { room: a.j.room, token: a.j.token, ...body });
+  const B = body => post('/api/action', { room: a.j.room, token: b.j.token, ...body });
+  assert(!(await A({ type: 'pause' })).ok, 'нельзя паузу в лобби');
+  await A({ type: 'start' });
+  // ждём, пока ход дойдёт до человека
+  for (let i = 0; i < 60 && !(last.a.phase === 'bid' && !last.a.seats[last.a.turn].bot); i++) await sleep(200);
+  assert(last.a.phase === 'bid' && last.a.timer, 'ход человека с таймером');
+  await sleep(1500);
+  const p = await A({ type: 'pause' });
+  assert(p.ok, 'пауза поставлена');
+  await sleep(100);
+  assert(last.b.paused && last.b.pause.by === 0 && last.b.pause.resumeIn === 0 && !last.b.timer, 'Боря видит паузу, таймер стоит');
+  assert(last.a.pausesLeft === 2, 'у Ани осталось 2 паузы');
+  assert(!(await A({ type: 'pause' })).ok, 'повторная пауза не ставится');
+  const turnP = last.a.turn;
+  const bidRes = await (turnP === 0 ? A : B)({ type: 'bid', value: 0 });
+  assert(!bidRes.ok, 'на паузе ходить нельзя: ' + bidRes.j.error);
+  await sleep(2500);
+  assert(last.a.phase === 'bid' && last.a.turn === turnP, 'на паузе ничего не меняется');
+  assert((await B({ type: 'unpause' })).ok, 'Боря снимает паузу');
+  await sleep(100);
+  assert(last.a.pause && last.a.pause.resumeIn > 4000 && last.a.pause.resumeBy === 1, 'идёт отсчёт 5 с');
+  assert(!(await B({ type: 'unpause' })).ok, 'второй раз снимать нельзя');
+  await sleep(2000);
+  assert((await A({ type: 'pause' })).ok, 'Аня отменяет отсчёт новой паузой');
+  await sleep(100);
+  assert(last.b.pause && last.b.pause.resumeIn === 0 && last.a.pausesLeft === 1, 'снова пауза, у Ани 1');
+  await A({ type: 'unpause' });
+  await sleep(5300);
+  assert(!last.a.paused && !last.a.pause, 'через 5 с игра продолжилась');
+  assert(last.a.timer && last.a.timer.left < 19000 && last.a.timer.left > 15000, 'таймер хода продолжился с остатка: ' + last.a.timer.left);
+  await A({ type: 'pause' }); await A({ type: 'unpause' }); await sleep(5200);
+  assert(!(await A({ type: 'pause' })).ok, 'паузы закончились');
+  assert((await B({ type: 'pause' })).ok, 'у Бори свои паузы');
+  server.close(); process.exit(0);
+})();
+setTimeout(() => { console.log('TIMEOUT'); process.exit(1); }, 60000);

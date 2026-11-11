@@ -214,7 +214,7 @@
     save(STORE_KEY, { room, token });
     if (S.es) S.es.close();
     const es = new EventSource(`/api/events?room=${encodeURIComponent(room)}&token=${encodeURIComponent(token)}`);
-    es.onmessage = e => { S.connecting = false; const v = JSON.parse(e.data); v._at = Date.now(); enqueue(v); };
+    es.onmessage = e => { S.connecting = false; const v = JSON.parse(e.data); v._at = Date.now(); if (v.stage === 'game' && Game.el) Game.updatePause(v); enqueue(v); };
     es.addEventListener('rtc', e => { try { const m = JSON.parse(e.data); Voice.onSignal(m.from, m.data); } catch {} });
     es.addEventListener('kicked', e => {
       let reason = T('Вас убрали со стола.');
@@ -538,6 +538,7 @@
         <div class="log-panel ${prefs.log ? '' : 'closed'}" id="log"><div class="log-head" data-act="log"><span>${T('Журнал')}</span><span class="tg">${prefs.log ? '−' : '+'}</span></div><div class="log-body" id="log-body"></div><button class="log-jump" id="log-jump" data-act="log-jump" title="${T('К новым')}">↓</button></div>
         <div class="hud-right">
           <div class="hud-icons">
+            <button class="icon-btn pause-btn" data-act="pause" title="${T('Пауза')}">${iconSvg('pause')}<i class="pz-left"></i></button>
             <button class="icon-btn" data-act="fullscreen" title="${T('Во весь экран')}">${iconSvg('full')}</button>
             <button class="icon-btn" data-act="scores" title="${T('Счёт')}">${iconSvg('scores')}</button>
             <button class="icon-btn" data-act="menu" title="${T('Меню')}">${iconSvg('menu')}</button>
@@ -547,6 +548,7 @@
         <div class="me-panel" id="me-panel"></div>
         <div class="action" id="action"></div>
         <div id="vote"></div>
+        <div id="pause"></div>
       </div>`);
     Game.mount(el);
   }
@@ -706,6 +708,8 @@
     const p = {
       scores: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
       menu: '<path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+      pause: '<path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>',
+      play: '<path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/>',
       full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
     }[name];
     return `<svg viewBox="0 0 24 24">${p}</svg>`;
@@ -764,6 +768,7 @@
       <li><b>Scoring:</b> exactly your bid — +20 per trick; bid 0 and took 0 — +10 plus 2 per card in hand; short — −20 per missing trick; over — +1 per extra trick.</li>
       <li><b>7♠:</b> a normal card; when leading — “Highest on the table!” (everyone plays their strongest card, the trick is yours); when following — the top card (takes the trick).</li>
       <li><b>Timer:</b> when time runs out, a random honest card is played for you (for bids — an automatic estimate of your hand).</li>
+      <li><b>Pause:</b> each player has 3 pauses per game (the ⏸ button at the top). Anyone can unpause — the game resumes after a 5…1 countdown; you can pause again during the countdown. After 5 minutes the pause ends by itself.</li>
       <li><b>Bluff mode:</b> any card may be played, breaking the suit rule and “Highest on the table!”. While the trick is on the table anyone can tap “?” on someone else’s card (except the first card of the trick, 7♠ and a move with only one card in hand). Caught — the cheater gives the checker 50 points, the card goes back and an honest card must be played. Wrong — the checker loses 20 points.</li>
       <li><b>Skills</b> (table option): <b>Reshuffle</b> — once per game, in the 3-second window after the deal and before bidding, all players’ cards are collected, shuffled and dealt again. At most one reshuffle per round.</li>
       <li><b>Test mode</b> (table option): 17 rounds; round 10 is <b>No trumps</b> (hearts are an ordinary suit), round 15 is <b>Dark</b> (bid blind, cards are revealed after bidding, round points ×2).</li>
@@ -777,6 +782,7 @@
       <li><b>Очки:</b> взял ровно заявленное — +20 за взятку; заявил 0 и взял 0 — +10 и ещё +2 за каждую карту на руке; недобор — −20 за каждую; перебор — +1 за каждую лишнюю взятку.</li>
       <li><b>7♠:</b> как обычная карта; первым ходом — «Старшие на стол!» (все кладут самую сильную карту, взятка ваша); в ответ — как самая старшая (забирает взятку).</li>
       <li><b>Таймер:</b> если время на ход вышло, за игрока кладётся случайная честная карта (на заявку — автоматическая оценка руки).</li>
+      <li><b>Пауза:</b> у каждого игрока 3 паузы на партию (кнопка ⏸ вверху). Снять паузу может любой — игра продолжится после отсчёта 5…1; во время отсчёта можно снова поставить паузу. Через 5 минут пауза снимается сама.</li>
       <li><b>Режим обмана:</b> можно класть любую карту, нарушая правила масти и «Старшие на стол!». Пока взятка на столе, любой может нажать «?» на чужой карте (кроме первой карты взятки, 7♠ и хода, когда у игрока была одна карта). Поймал — обманщик отдаёт проверившему ${50} очков, карта возвращается, и он обязан положить честную. Ошибся — проверивший теряет 20 очков.</li>
       <li><b>Умения</b> (настройка стола): <b>«Пересдача»</b> — один раз за партию, в окне 3 секунды после раздачи (до заявок), карты всех игроков собираются, тасуются и раздаются заново. Не больше одной пересдачи за раунд.</li>
       <li><b>Тестовый режим</b> (настройка стола): 17 раундов; 10-й — <b>«Бескозырка»</b> (червы — обычная масть), 15-й — <b>«Тёмная»</b> (заявка вслепую, карты открываются после заявок, очки раунда ×2).</li>
@@ -1015,7 +1021,7 @@
 
     mount(el) {
       TABLE_SCALE = 0.66;
-      Object.assign(this, { el, prev: null, hand: new Map(), table: new Map(), seatEls: [], sel: null, special: false, resultsShownFor: -1, overShown: false, checkSeq: 0 });
+      Object.assign(this, { pv: null, pzKind: '', el, prev: null, hand: new Map(), table: new Map(), seatEls: [], sel: null, special: false, resultsShownFor: -1, overShown: false, checkSeq: 0 });
       this.cardsLayer = $('#cards', el); this.seatsLayer = $('#seats', el); this.checksLayer = $('#checks', el);
       this.applyDims();
       this.onResize = () => { this.applyDims(); if (S.view && S.view.stage === 'game') this.relayout(S.view); };
@@ -1103,6 +1109,7 @@
       this.updateAction(v);
       this.updateSkills(v);
       this.updateVote(v);
+      this.updatePause(this.pv && this.pv._at >= v._at ? this.pv : v);
       this.maybeBoom(v, prev, fast);
       this.updateNeon(v);
       this.updatePuck(v, fast);
@@ -2107,6 +2114,7 @@
         const c = $('#skills-bar .sk-count', this.el); if (c && c.textContent !== sec) { c.textContent = sec; popEl(c, 'sk-pop'); }
         const ps = $('#status .pre-s', this.el); if (ps && ps.textContent !== sec) ps.textContent = sec;
       }
+      this.tickPause();
       const t = v.timer;
       const active = t && !v.paused && (v.phase === 'bid' || v.phase === 'play');
       const left = active ? Math.max(0, t.left - (Date.now() - v._at)) : 0;
@@ -2136,7 +2144,8 @@
       if (!st) return;
       const nm = p => esc(v.names[p]);
       let t = '', mine = false, warn = false;
-      if (v.paused) t = T('Пауза — голосование');
+      if (v.vote) t = T('Пауза — голосование');
+      else if (v.pause) t = v.pause.resumeIn ? T('Пауза снимается…') : T('Пауза');
       else if (v.fix) {
         mine = v.fix.p === v.you; warn = true;
         t = mine ? T('Вас поймали! Положите честную карту') : T('{n} пойман на обмане — меняет карту', { n: nm(v.fix.p) });
@@ -2176,6 +2185,61 @@
           <div class="chips" style="--n:${k + 1}">${Array.from({ length: k + 1 }, (_, b) => `<button class="chip" style="animation-delay:${b * 35}ms" data-act="bid" data-b="${b}">${b}</button>`).join('')}</div>
           <span class="hint">${T('Заявлено другими: {a} из {b}', { a: sum, b: k })}</span></div>`;
       } else if (box.dataset.kind) { box.dataset.kind = ''; box.innerHTML = ''; }
+    },
+
+    // Пауза: тёмная вуаль поверх стола, панель с кнопками; при снятии — большой отсчёт 5…1.
+    // Состояние берётся из последнего пришедшего с сервера (pv), а не из очереди анимаций, чтобы отклик был сразу.
+    updatePause(v) {
+      if (!this.el) return;
+      this.pv = v;
+      const btn = $('.pause-btn', this.el);
+      const pz = v.pause, over = v.phase === 'gameOver';
+      if (btn) {
+        btn.innerHTML = iconSvg(pz && !pz.resumeIn ? 'play' : 'pause') + `<i class="pz-left">${pz && !pz.resumeIn ? '' : v.pausesLeft}</i>`;
+        btn.title = T(pz && !pz.resumeIn ? 'Снять паузу' : 'Пауза');
+        btn.classList.toggle('on', !!pz);
+        btn.classList.toggle('dim', over || (!(pz && !pz.resumeIn) && !v.pausesLeft));
+      }
+      const box = $('#pause', this.el);
+      if (!box) return;
+      this.el.classList.toggle('is-paused', !!pz);
+      if (!pz) { if (box.innerHTML) { box.innerHTML = ''; this.pzKind = ''; } return; }
+      const nm = p => (p === null || p === undefined) ? '' : esc(v.names[p]);
+      const counting = pz.resumeIn > 0;
+      const kind = (counting ? 'c' : 'p') + pz.by + ':' + pz.resumeBy + ':' + v.pausesLeft + ':' + !!v.vote;
+      if (this.pzKind === kind) return;
+      const fresh = !this.pzKind || this.pzKind[0] !== kind[0];
+      this.pzKind = kind;
+      const again = v.pausesLeft > 0 ? `<button class="btn-ghost" data-act="pause">${T('Пауза ({n})', { n: v.pausesLeft })}</button>` : '';
+      box.innerHTML = `<div class="pause-veil"></div><div class="pause-panel glass ${fresh ? 'in' : ''}">
+        ${counting ? `<div class="pz-cap">${T('Игра продолжится через')}</div>
+          <div class="pz-count gold-text"><svg class="pz-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45"/></svg><b></b></div>
+          <div class="hint">${pz.resumeBy === null ? T('Пауза снимается автоматически') : T('Паузу снимает {n}', { n: `<b>${nm(pz.resumeBy)}</b>` })}</div>
+          ${again ? `<div class="row pz-row">${again}</div>` : ''}`
+        : `<h3 class="pz-title gold-text">${T('ПАУЗА')}</h3>
+          <div>${pz.by === v.you ? T('Вы поставили паузу') : T('Паузу поставил {n}', { n: `<b>${nm(pz.by)}</b>` })}</div>
+          <div class="row pz-row"><button class="btn-gold" data-act="unpause">${T('Снять паузу')}</button></div>
+          <div class="hint">${T('Игра продолжится через 5 секунд после снятия. Осталось ваших пауз: {n}', { n: v.pausesLeft })}</div>`}
+        ${v.vote ? `<div class="hint">${T('Идёт голосование — игра стоит до его окончания')}</div>` : ''}</div>`;
+      this.pzSec = -1;
+      this.tickPause();
+    },
+    tickPause() {
+      const v = this.pv;
+      if (!v || !v.pause || !v.pause.resumeIn || !this.el) return;
+      const left = Math.max(0, v.pause.resumeIn - (Date.now() - v._at));
+      const sec = Math.max(1, Math.ceil(left / 1000));
+      const b = $('#pause .pz-count b', this.el);
+      if (!b) return;
+      const ring = $('#pause .pz-ring circle', this.el);
+      if (ring) ring.style.strokeDashoffset = (283 * (1 - left / 5000)).toFixed(1);
+      if (sec !== this.pzSec) {
+        this.pzSec = sec;
+        b.textContent = sec;
+        popEl(b, 'pz-pop');
+        SFX.tick(sec);
+        vibrate(20);
+      }
     },
 
     updateVote(v) {
@@ -2897,6 +2961,8 @@
     },
     install: () => installApp(),
     voteKick: b => act({ type: 'voteKick', seat: +b.dataset.seat }),
+    pause: () => { const v = Game.pv || S.view; if (!v || v.stage !== 'game') return; act({ type: v.pause && !v.pause.resumeIn ? 'unpause' : 'pause' }); },
+    unpause: () => act({ type: 'unpause' }),
     vote: b => act({ type: 'vote', value: b.dataset.yes === '1' }),
     scores: () => showScores(),
     menu: () => showMenu(),
