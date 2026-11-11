@@ -20,6 +20,9 @@ const TRICK_PAUSE_BLUFF = 5000; // в режиме обмана — время, 
 const DEFAULT_TURN_TIME = 30;
 // Окно «Пересдачи» перед заявками: 3 с после того, как у игроков отыграли объявление раунда и раздача.
 const PRE_WINDOW = 3000;
+// Итоги раунда: следующий раунд — когда все живые игроки нажали «Следующий раунд», или по таймеру.
+const NEXT_WAIT = 15000;      // сколько ждём забывших (отсчёт видят все)
+const RESULTS_ANIM = 3000;    // до этого клиенты показывают монеты; таймер начинается после
 const RESHUFFLE_FX = 4500; // после пересдачи — время на анимацию тасовки и новую раздачу
 const preIntro = (k, n, special = false) => (special ? 4200 : 3300) + Math.min(1600, k * n * 110) + k * 55;
 const ROOM_TTL = 3 * 60 * 60 * 1000; // пустая комната живёт 3 часа
@@ -357,6 +360,10 @@ function viewFor(r, seat) {
       resumeBy: r.pause.resumeBy,
     } : null,
     pausesLeft: r.pausesLeft ? r.pausesLeft[seat] : 0,
+    next: g.phase === 'roundDone' && r.readyKey ? {
+      ready: [...r.ready], need: readyNeed(r),
+      left: r.readyHeld != null ? r.readyHeld : Math.max(0, r.readyEnds - Date.now()), wait: NEXT_WAIT, held: r.readyHeld != null,
+    } : null,
     rating: g.phase === 'gameOver' ? (g.rating || null) : null,
     vote: r.vote ? {
       target: r.vote.target,
@@ -483,9 +490,57 @@ function schedulePre(r) {
   }, resumed ? Math.random() * Math.max(0, resumed - 700) : intro + 500 + Math.random() * 1800);
 }
 
+// Готовность к следующему раунду: ждут только живых людей в сети (боты и вылетевшие не задерживают).
+function readyNeed(r) { return humanSeats(r).filter(i => !r.seats[i].left && isOnline(r, i)); }
+function readyNext(r, seat) {
+  const g = r.game;
+  if (!g || g.phase !== 'roundDone') return;
+  if (!r.readyKey) scheduleNext(r);
+  r.ready.add(seat);
+  tryNext(r);
+}
+function tryNext(r) {
+  const g = r.game;
+  if (!g || g.phase !== 'roundDone' || !r.ready || halted(r)) return false;
+  const need = readyNeed(r);
+  if (need.length && !need.every(i => r.ready.has(i))) return false;
+  clearTimeout(r.nextTimer); r.nextTimer = null;
+  r.readyKey = null; r.readyEnds = 0; r.ready = new Set(); r.readyHeld = null;
+  Engine.nextRound(g);
+  return true;
+}
+function scheduleNext(r) {
+  const g = r.game;
+  const key = g && g.phase === 'roundDone' ? `${g.roundIdx}:${r.gameSeq || 0}` : null;
+  if (key !== r.readyKey) {
+    clearTimeout(r.nextTimer);
+    r.readyKey = key; r.ready = new Set(); r.readyEnds = 0; r.readyHeld = null;
+    if (!key) return;
+    r.readyEnds = Date.now() + RESULTS_ANIM + NEXT_WAIT;
+  } else if (!key) return;
+  // Пауза или голосование — отсчёт замирает и продолжается с того же места.
+  if (halted(r)) {
+    if (r.readyHeld == null) { clearTimeout(r.nextTimer); r.nextTimer = null; r.readyHeld = Math.max(0, r.readyEnds - Date.now()); }
+    return;
+  }
+  if (r.readyHeld != null) { r.readyEnds = Date.now() + r.readyHeld; r.readyHeld = null; clearTimeout(r.nextTimer); r.nextTimer = null; }
+  if (r.nextTimer) return;
+  r.nextTimer = setTimeout(() => {
+    r.nextTimer = null;
+    if (r.game !== g || r.readyKey !== key || g.phase !== 'roundDone' || halted(r)) return;
+    gameLog(r, 'Время вышло — следующий раунд начинается автоматически');
+    r.readyKey = null; r.ready = new Set(); r.readyEnds = 0;
+    Engine.nextRound(g);
+    update(r);
+  }, Math.max(0, r.readyEnds - Date.now()));
+}
+
 function update(r) {
   r.touched = Date.now();
   if (r.game && r.game.phase === 'gameOver' && !r.game.rating) rateGame(r, r.game);
+  scheduleNext(r);
+  // Кто-то вышел из сети / был заменён ботом — возможно, ждать больше некого.
+  if (tryNext(r)) scheduleNext(r);
   schedulePre(r);
   scheduleTurnTimer(r);
   broadcast(r);
@@ -652,7 +707,7 @@ function doAction(r, seat, body) {
   try {
     if (type === 'bid') Engine.placeBid(g, seat, Number(body.value));
     else if (type === 'play') Engine.playCard(g, seat, String(body.cardId), body.mode || 'normal');
-    else if (type === 'nextRound') Engine.nextRound(g);
+    else if (type === 'nextRound') readyNext(r, seat);
     else if (type === 'check') Engine.check(g, seat, String(body.cardId));
     else if (type === 'skill' && body.skill === 'reshuffle') Engine.reshuffle(g, seat);
     else fail('Неизвестное действие');

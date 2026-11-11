@@ -30,7 +30,7 @@ function listen(room, token, onView) {
     if (v.hand.length !== v.handCounts[v.you]) checks.hiddenOk = false;
     if (JSON.stringify(v).includes('"hands"')) checks.hiddenOk = false;
     if (v.phase === 'gameOver') { if (!done) { done = true; console.log('gameOver scores', v.scores, 'rounds', v.history.length, checks); server.close(); process.exit(0); } return; }
-    if (v.phase === 'roundDone' && v.you === 0) return post('/api/action', { room: h.room, token: h.token, type: 'nextRound' });
+    if (v.phase === 'roundDone') { if (v.next && v.next.ready.length && !v.next.ready.includes(v.you)) checks.waitsForAll = true; if (v.next && !v.next.ready.includes(v.you)) post('/api/action', { room: h.room, token: h.token, type: 'nextRound' }); return; }
     if (v.turn !== v.you) return;
     if (v.phase === 'bid') post('/api/action', { room: h.room, token: h.token, type: 'bid', value: 0 });
     else if (v.phase === 'play' && v.legal.length) post('/api/action', { room: h.room, token: h.token, type: 'play', cardId: v.legal[0], mode: 'normal' });

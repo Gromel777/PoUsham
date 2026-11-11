@@ -91,7 +91,7 @@
     'Ждём, когда хост начнёт игру…': 'Waiting for the host to start…', 'Выйти': 'Leave', 'Ссылка скопирована': 'Link copied',
     'Позовите друзей: QR-код или ссылка': 'Invite friends: QR code or link',
     // игра
-    'Журнал': 'Log', 'Заказы / карты': 'Bids / cards', 'Настройки': 'Settings', 'Партия': 'Game', 'ждём заявки': 'waiting for bids', 'перебор +{d}': 'over by {d}', 'ровно': 'exact', 'недобор −{d}': 'under by {d}', 'заявили {a} из {b}': '{a} of {b} bid', 'К новым': 'To latest', 'Счёт': 'Score', 'Меню': 'Menu', 'козырь': 'trump', 'Раунд {a}/{b}': 'Round {a}/{b}', 'обман': 'bluff',
+    'Журнал': 'Log', 'Заказы / карты': 'Bids / cards', 'Готов': 'Ready', 'Ждём других…': 'Waiting for others…', 'Готовы {a} из {b}': '{a} of {b} ready', 'Авто через': 'Auto in', 'Настройки': 'Settings', 'Партия': 'Game', 'ждём заявки': 'waiting for bids', 'перебор +{d}': 'over by {d}', 'ровно': 'exact', 'недобор −{d}': 'under by {d}', 'заявили {a} из {b}': '{a} of {b} bid', 'К новым': 'To latest', 'Счёт': 'Score', 'Меню': 'Menu', 'козырь': 'trump', 'Раунд {a}/{b}': 'Round {a}/{b}', 'обман': 'bluff',
     'думает…': 'thinking…', 'заявка —': 'bid —', '{a} из {b}': '{a} of {b}', 'вылетел': 'dropped', 'Заменить ботом': 'Replace with bot',
     'заявка': 'bid', 'взял': 'took', 'ВРЁШЬ!': 'LIAR!', 'ЧЕСТНО!': 'HONEST!', 'СТАРШИЕ НА СТОЛ!': 'HIGHEST ON THE TABLE!', 'САМАЯ СТАРШАЯ!': 'THE TOP CARD!',
     'ТУЗ КОЗЫРЕЙ!': 'ACE OF TRUMPS!', 'ФИНАЛЬНЫЙ РАУНД': 'FINAL ROUND', 'ИГРА НАЧИНАЕТСЯ': 'GAME ON', 'ПИК ПАРТИИ': 'PEAK OF THE GAME', 'РАУНД': 'ROUND',
@@ -202,6 +202,7 @@
     [/^Голосование: (.+) заменён ботом \((\d+) за, (\d+) против\)$/, (m, n, a, b) => `Vote: ${n} replaced by a bot (${a} for, ${b} against)`],
     [/^Голосование: (.+) остаётся за столом \((\d+) за, (\d+) против\)$/, (m, n, a, b) => `Vote: ${n} stays (${a} for, ${b} against)`],
     [/^(.+): время вышло — ход сделан автоматически$/, (m, n) => `${n}: time’s up — auto move`],
+    [/^Время вышло — следующий раунд начинается автоматически$/, () => `Time’s up — next round starts automatically`],
     [/^(.+) предлагает заменить ботом игрока (.+)\. Игра на паузе\.$/, (m, a, b) => `${a} proposes replacing ${b} with a bot. Game paused.`],
     [/^(.+) заменяет карту: (10|[6-9]|[ВДКТ])([♠♣♦♥])(.*)$/, (m, n, r, s, note) => `${n} swaps the card: ${cardEn(r + s)}${NOTE(note)}`],
     [/^(.+) применяет «Пересдачу»: карты перетасованы и розданы заново\.$/, (m, n) => `${n} uses “Reshuffle”: cards shuffled and dealt again.`],

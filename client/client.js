@@ -1128,6 +1128,7 @@
       this.updateHud(v);
       if (!prev || this.seatEls.length !== v.n) { TABLE_SCALE = v.n >= 5 ? 0.61 : 0.66; this.buildSeats(v); }
       this.updateLog(v);
+      if (v.phase === 'roundDone' && $('#overlay').dataset.kind === 'results') this.updateNext(v);
       if (newRound) {
         closeModalIf('results'); closeModalIf('over');
         this.overShown = false;
@@ -1966,9 +1967,9 @@
       const t0 = performance.now();
       this.puckAnim = true;
       const step = now => {
-        const el = now - t0;
+        const el = Math.max(0, now - t0); // метка кадра бывает чуть раньше старта
         let deg = from;
-        if (el < tRoll) {
+        if (tRoll && el < tRoll) {
           const e = ease(el / tRoll);
           deg = from + (to - from) * e;
           this.puckK = kFrom + (kTo - kFrom) * e;
@@ -2403,11 +2404,52 @@
           <td>${h.bids[p]} / ${h.took[p]}</td><td class="d ${h.delta[p] >= 0 ? 'pos' : 'neg'}" data-count="${h.delta[p]}" data-signed="1">0</td>
           ${anyBonus ? `<td class="d ${bonus[p] > 0 ? 'pos' : bonus[p] < 0 ? 'neg' : 'hint'}">${bonus[p] ? (bonus[p] > 0 ? '+' : '') + bonus[p] : '—'}</td>` : ''}
           <td class="d"><span class="gold-text" data-count="${v.scores[p]}" data-from="${v.scores[p] - h.delta[p] - bonus[p]}">${v.scores[p] - h.delta[p] - bonus[p]}</span></td></tr>`).join('')}
-        </table><div class="actions"><span class="hint" style="margin-right:auto">${T('Следующий раунд: {c}', { c: poCards(v.plan[v.roundIdx + 1]) })}${nextTag}</span>
-        <button class="btn-gold" data-act="nextRound">${T('Следующий раунд')}</button></div>`);
+        </table><div class="next-ready" id="next-ready"></div>
+        <div class="actions"><span class="hint" style="margin-right:auto">${T('Следующий раунд: {c}', { c: poCards(v.plan[v.roundIdx + 1]) })}${nextTag}</span>
+        <div class="next-timer" id="next-timer" title="${T('Авто через')}"><svg viewBox="0 0 36 36"><circle class="nt-bg" cx="18" cy="18" r="15.5"/><circle class="nt-fg" cx="18" cy="18" r="15.5" pathLength="100"/></svg><b>15</b></div>
+        <button class="btn-gold" data-act="nextRound" id="next-btn">${T('Следующий раунд')}</button></div>`);
       const ov = $('#overlay');
       ov.dataset.kind = 'results';
+      this.updateNext(v);
       ov.querySelectorAll('[data-count]').forEach(td => countUp(td, +(td.dataset.from || 0), +td.dataset.count, 900, !!td.dataset.signed));
+    },
+
+    // Кто уже нажал «Следующий раунд» и сколько осталось до автоматического перехода.
+    updateNext(v) {
+      const box = $('#next-ready');
+      if (!box || !v.next) return;
+      const nx = v.next;
+      this.nextDeadline = performance.now() + nx.left;
+      this.nextHeld = nx.held ? nx.left : null; // пауза — отсчёт замер
+      this.nextWait = nx.wait;
+      const meReady = nx.ready.includes(v.you) || this.nextClicked === v.roundIdx;
+      const key = JSON.stringify([nx.ready, nx.need, meReady]);
+      if (box.dataset.key !== key) {
+        box.dataset.key = key;
+        box.innerHTML = nx.need.length > 1 ? nx.need.map(p => {
+          const ok = nx.ready.includes(p) || (p === v.you && meReady);
+          return `<span class="nr-chip ${ok ? 'ok' : ''} ${p === v.you ? 'me' : ''}" style="--pc:${nameColor(p)}"><i>${ok ? '✓' : ''}</i>${esc(v.names[p])}</span>`;
+        }).join('') + `<span class="nr-count">${T('Готовы {a} из {b}', { a: nx.need.filter(p => nx.ready.includes(p) || (p === v.you && meReady)).length, b: nx.need.length })}</span>` : '';
+        const btn = $('#next-btn');
+        if (btn) { btn.disabled = meReady; btn.textContent = meReady ? T('Ждём других…') : T('Следующий раунд'); btn.classList.toggle('waiting', meReady); }
+      }
+      if (!this.nextTick) {
+        const tick = () => {
+          const el = $('#next-timer');
+          if (!el) { this.nextTick = null; return; }
+          const left = this.nextHeld != null ? this.nextHeld : Math.max(0, this.nextDeadline - performance.now());
+          el.classList.toggle('held', this.nextHeld != null);
+          const wait = this.nextWait || 15000;
+          const shown = Math.min(wait, left);
+          const sec = Math.ceil(shown / 1000);
+          const b = el.querySelector('b');
+          if (b.textContent !== String(sec)) { b.textContent = sec; if (sec <= 5 && left <= wait) { el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick'); } }
+          el.querySelector('.nt-fg').style.strokeDashoffset = (100 - shown / wait * 100).toFixed(2);
+          el.classList.toggle('low', left <= 5000);
+          this.nextTick = requestAnimationFrame(tick);
+        };
+        this.nextTick = requestAnimationFrame(tick);
+      }
     },
 
     async showGameOver(v, fast) {
@@ -2973,7 +3015,13 @@
       armedCheck = null; clearTimeout(armedT);
       act({ type: 'check', cardId: b.dataset.card });
     },
-    nextRound: () => { closeModal(); act({ type: 'nextRound' }); },
+    nextRound: b => {
+      if (b.disabled) return;
+      // Окно не закрываем: ждём остальных (или таймер). Одиночная игра с ботами перейдёт сразу.
+      Game.nextClicked = S.view ? S.view.roundIdx : null;
+      b.disabled = true; b.textContent = T('Ждём других…'); b.classList.add('waiting');
+      act({ type: 'nextRound' });
+    },
     chat: () => { $('#emo-pick').classList.remove('on'); Social.toggleChat(); if (Social.open) setTimeout(() => $('#chat-input').focus(), 50); },
     'chat-close': () => Social.toggleChat(false),
     emotes: () => { Social.toggleChat(false); Social.openEmotes(); },

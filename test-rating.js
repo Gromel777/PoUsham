@@ -114,7 +114,7 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; };
       }
       if (v.stage !== 'game') return;
       if (v.phase === 'gameOver') { if (v.rating && v.rating.status !== 'pending' && v.you === 0) resolve(v); return; }
-      if (v.phase === 'roundDone' && v.you === 0) return post('/api/action', { room: room.room, token: h.token, type: 'nextRound' });
+      if (v.phase === 'roundDone') { if (v.next && !v.next.ready.includes(v.you)) post('/api/action', { room: room.room, token: h.token, type: 'nextRound' }); return; }
       if (v.turn !== v.you) return;
       if (v.phase === 'bid') post('/api/action', { room: room.room, token: h.token, type: 'bid', value: 0 });
       else if (v.phase === 'play' && v.legal.length) post('/api/action', { room: room.room, token: h.token, type: 'play', cardId: v.legal[0], mode: 'normal' });
