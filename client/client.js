@@ -740,7 +740,7 @@
     const l1 = $('#mm-line1'), l2 = $('#mm-line2');
     if (l1) l1.textContent = T('Ищут игру: {n}', { n: st.inQueue });
     if (l2) l2.textContent = MMS.mode === 'ranked'
-      ? T('Разброс ±{w}', { w: st.window }) + (st.botsIn > 0 ? ' · ' + T('через {s} с — втроём + бот', { s: Math.ceil(st.botsIn / 1000) }) : ' · ' + T('втроём + бот, как только найдётся третий'))
+      ? T('Разброс ±{w}', { w: st.window }) + (st.botsIn > 0 ? ' · ' + T('боты через {s} с', { s: Math.ceil(st.botsIn / 1000) }) : ' · ' + T('добираем ботами'))
       : st.botsIn > 0 ? T('Через {s} с сядем с теми, кто есть, + боты', { s: Math.ceil(st.botsIn / 1000) }) : T('Свободные места займут боты');
     MMS.timer = setTimeout(pollSearch, 1500);
   }

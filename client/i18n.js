@@ -126,6 +126,7 @@
     'Подберём игроков без рейтинга. Не набралось за 45 с — свободные места займут боты.': 'We’ll find players, no rating. Not enough in 45 s — bots fill the free seats.',
     'Приватный стол или вылетели из игры? Введите код и то же имя.': 'Private table or dropped out? Enter the code and the same name.',
     'Открытых столов пока нет — создайте свой во вкладке «Свой стол» или попробуйте «Быстрая игра».': 'No open tables yet — host one in “Host” or try Quick match.',
+    'боты через {s} с': 'bots in {s} s', 'добираем ботами': 'filling with bots',
     // лобби
     '{n} игроков': '{n} players', '{n} раундов': '{n} rounds', 'таймер {s} с': 'timer {s} s', 'без таймера': 'no timer', 'режим обмана': 'bluff mode',
     'Скопировать ссылку': 'Copy link', 'Стол': 'Table', 'Свободно': 'Free', 'займёт бот': 'a bot will sit', '(вы)': '(you)',

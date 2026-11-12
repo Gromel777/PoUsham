@@ -88,7 +88,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(!(await post('/api/action', { room: ma.room, token: ma.token, type: 'restart' })).ok, 'рейтинговую не переиграть');
 
   // ---------- рейтинг: только на 4; за минуту не набрались — трое + бот ----------
-  MM.RANKED_BOTS_AFTER = 1500;
+  MM.RANKED_BOTS_AFTER = 1500; MM.RANKED_MIN = 3; // обычные правила (временно на тесте игры — RANKED_MIN 1, см. ниже)
   const r1 = (await post('/api/mm/join', { mode: 'ranked', sizes: [2], session: A.session, name: 'Аня' })).j.ticket;
   const r2 = (await post('/api/mm/join', { mode: 'ranked', session: B.session, name: 'Боря' })).j.ticket;
   await sleep(300);
@@ -102,6 +102,24 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const rr = rooms.get(s1.room);
   ok(rr.size === 4 && rr.seats.length === 3, 'стол на 4, трое людей — четвёртое место займёт бот');
   await post('/api/mm/status', { ticket: r2 });
+
+  // ---------- временно: рейтинг в одиночку — через ожидание стол на 4 с тремя ботами ----------
+  MM.RANKED_MIN = 1; MM.RANKED_BOTS_AFTER = 1000;
+  await post('/api/mm/cancel', { ticket: r2 });
+  const Dn = await login('dn', 'Дина');
+  const soloT = (await post('/api/mm/join', { mode: 'ranked', session: Dn.session, name: 'Дина' })).j.ticket;
+  ok((await post('/api/mm/status', { ticket: soloT })).j.state === 'waiting', 'рейтинг в одиночку: сначала ждём живых');
+  await sleep(2200);
+  const soloM = (await post('/api/mm/status', { ticket: soloT })).j;
+  ok(soloM.state === 'matched' && soloM.kind === 'ranked', 'через ожидание — рейтинговый стол с ботами');
+  const soloR = rooms.get(soloM.room);
+  ok(soloR.size === 4 && soloR.seats.length === 1 && soloR.bluff && soloR.rounds === 17, 'стол на 4, один живой, обман, 17 раундов');
+  const soloDone = new Promise(resolve => play(soloM.room, soloM.token, v => {
+    if (soloR.game && soloR.game.plan.length > 1) soloR.game.plan = soloR.game.plan.slice(0, 1);
+    if (v.stage === 'game' && v.phase === 'gameOver' && v.rating && v.rating.status === 'done') resolve(v);
+  }));
+  const soloV = await Promise.race([soloDone, sleep(60000).then(() => null)]);
+  ok(soloV && Object.keys(soloV.rating.changes).join() === '0' && soloV.seats.filter(s => s.bot).length === 3, 'партия с 3 ботами засчитана живому');
 
   // ---------- обычный подбор с ботами после ожидания ----------
   const g1 = (await post('/api/mm/join', { mode: 'casual', sizes: [4], name: 'Гость1' })).j.ticket;

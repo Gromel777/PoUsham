@@ -831,7 +831,9 @@ function doAction(r, seat, body) {
 function rateGame(r, g) {
   if (r.kind !== 'ranked') { g.rating = { status: 'skip', reason: 'Обычная партия — рейтинг не меняется.' }; return; }
   const accSeats = r.seats.map((s, i) => ({ s, i })).filter(x => x.s.uid);
-  if (!r.calib && accSeats.length < Rating.MIN_RATED) {
+  // Калибровка или (временно) стол, где живой с аккаунтом один — боты в расчёте как соперники с рейтингом 1000.
+  const withBots = r.calib || accSeats.length < Rating.MIN_RATED;
+  if (!withBots && accSeats.length < Rating.MIN_RATED) {
     g.rating = { status: 'skip', reason: 'Партия не в рейтинге: нужно минимум двое игроков, вошедших через Google.' };
     return;
   }
@@ -841,7 +843,7 @@ function rateGame(r, g) {
   // Места — среди всех за столом (боты тоже занимают места); ушедшие — последние.
   const all = r.seats.map((s, i) => ({ score: g.scores[i], left: !!s.left }));
   const placeAll = Rating.places(all);
-  const inRating = r.calib ? r.seats.map((s, i) => ({ s, i })) : accSeats;
+  const inRating = withBots ? r.seats.map((s, i) => ({ s, i })) : accSeats;
   const entries = inRating.map(({ s, i }) => (s.uid
     ? { playerId: s.uid, score: g.scores[i], left: !!s.left, place: placeAll[i] }
     : { bot: true, score: g.scores[i], left: false, place: placeAll[i] }));
@@ -881,8 +883,10 @@ const MM = {
   STEP_SMALLER: 10000,        // «любой»: стол на одного меньше — после каждых 10 с ожидания
   CASUAL_BOTS_AFTER: 45000,   // обычная игра: через 45 с можно вдвоём-втроём, остальные — боты
   RANKED_SIZE: 4,             // рейтинговая игра — только стол на 4
-  RANKED_BOTS_AFTER: 60000,   // рейтинг: за минуту четверо не набрались — садим троих, четвёртое место — бот
-  RANKED_MIN: 3,
+  // ВРЕМЕННО на время теста: за 20 с четверо не набрались — садим тех, кто есть (хоть одного), остальные места — боты.
+  // Вернуть как было: RANKED_BOTS_AFTER: 60000, RANKED_MIN: 3.
+  RANKED_BOTS_AFTER: 20000,
+  RANKED_MIN: 1,
   RANKED_WINDOW: (waitMs) => Math.min(600, 100 + Math.floor(waitMs / 1000) * 5), // разброс рейтинга растёт с ожиданием
   STALE: 20000,
   AUTOSTART: 15000,           // стол подбора стартует сам: когда все подключились или через 15 с
