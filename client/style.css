@@ -1602,6 +1602,13 @@ body.room-picnic .bg {
     radial-gradient(ellipse 70% 60% at 50% 55%, transparent 55%, rgba(20, 30, 10, .45) 100%),
     url('/img/rooms/picnic.webp') center 32% / cover no-repeat, #3f6a2a;
 }
+/* на главном экране у пикника свой фон — вид на горы и озеро */
+body.room-picnic[data-screen="home"] .bg {
+  background:
+    radial-gradient(ellipse 75% 70% at 50% 50%, transparent 50%, rgba(10, 16, 30, .45) 100%),
+    url('/img/rooms/picnic-home.webp') center 40% / cover no-repeat, #4a6a8a;
+}
+body.room-picnic[data-screen="home"] .brand-name { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .85)) drop-shadow(0 0 14px rgba(0, 0, 0, .5)); }
 body.room-picnic .bg::before { display: none; }
 body.room-picnic .bg::after { background: linear-gradient(180deg, rgba(10, 16, 6, .25), transparent 22%, transparent 80%, rgba(10, 16, 6, .3)); }
 body.room-picnic .mote { width: 4px; height: 4px; background: #fff6c8; box-shadow: 0 0 8px 3px rgba(255, 240, 170, .35); }

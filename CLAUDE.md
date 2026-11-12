@@ -45,6 +45,7 @@ client/room-cozy.js  Room skin "Пижамная вечеринка": only SVG m
 client/room-office.js Room skin "Переговорка" (same interface). New room = new room-*.js + entry in ROOMS/ROOM_SKINS (client.js) + roomPreview + CSS `body.room-<k>`.
 client/room-picnic.js Room skin "Пикник": background is a picture client/img/rooms/picnic.webp (CSS `body.room-picnic .bg`), table = two blankets,
                      turn neon (rx 492) runs between them. Server auto-serves every .webp in client/img/rooms/.
+                     Home screen has its own background picnic-home.webp: `setScreen()` writes `body[data-screen]`, CSS `body.room-picnic[data-screen="home"] .bg`.
                      Preview without settings: `?skin=cozy|office|picnic` (`?room=` is the table code for invite links!).
 client/i18n.js       ru/en. Key = the Russian string itself. trServer() translates server errors, trLog() translates log lines.
 client/viewport.js   Virtual screen height 488 (min width 950) scaled with CSS zoom. window.VIEW.

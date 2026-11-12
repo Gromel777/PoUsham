@@ -366,6 +366,7 @@
     el.innerHTML = html;
     host.appendChild(el);
     S.screen = name;
+    document.body.dataset.screen = name; // для оформления по экранам (например, свой фон главного экрана у комнаты)
     return el;
   }
   const logoHtml = (size = '') => `<div class="logo-row"><span class="logo-hood"><img src="/img/logo.webp?v=1" alt="" draggable="false"><i class="eye l"></i><i class="eye r"></i></span><h1 class="logo gold-text" ${size}>${T('В Точку')}</h1></div>`;
