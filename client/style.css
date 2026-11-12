@@ -1559,8 +1559,7 @@ body.room-office .table-wrap.neon-bluff .neon-glow, body.room-office .table-wrap
 body.room-office .chair { width: calc(var(--ava) * 3); height: calc(var(--ava) * 3); transform: translate(-50%, -50%) rotate(var(--chair-rot, 0deg)) translateY(-8%); filter: drop-shadow(0 8px 10px rgba(5, 8, 14, .6)); }
 body.room-office .seat .plate { background: linear-gradient(160deg, rgba(48, 54, 66, .95), rgba(28, 32, 40, .96)); border-color: rgba(200, 214, 235, .25); }
 
-/* ================= Графика: низкая (Настройки → «Графика»; по умолчанию на телефонах) =================
-   Никакого размытия фона — вместо него плотный тёмный фон; постоянные анимации стола и украшений выключены,
+/* ================= Графика: низкая (Настройки → «Графика»; по умолчанию на телефонах) ==========   Никакого размытия фона — вместо него плотный тёмный фон; постоянные анимации стола и украшений выключены,
    свечения остаются неподвижными. Игровые эффекты карт (fx.js) — облегчённые. */
 body.gfx-low .glass, body.gfx-low .log-panel, body.gfx-low .me-panel, body.gfx-low .w-panel,
 body.gfx-low #overlay, body.gfx-low #welcome, body.gfx-low .pause-veil { backdrop-filter: none; -webkit-backdrop-filter: none; }
@@ -1590,3 +1589,9 @@ body.gfx-low .screen.enter { animation-name: screenInLite; }
 body.gfx-low .screen.leave { animation-name: screenOutLite; }
 @keyframes screenInLite { from { opacity: 0; transform: scale(1.04) } to { opacity: 1; transform: none } }
 @keyframes screenOutLite { to { opacity: 0; transform: scale(.97) } }
+=======
+/* 7♠ в руке: широкое фиолетовое свечение по контуру, чтобы карту было видно сразу */
+.card.inhand.seven .face.front { box-shadow: 0 0 0 3px #c9a4ff, 0 0 16px 5px rgba(170, 110, 255, .85), 0 0 34px 12px rgba(140, 80, 255, .45), 0 6px 14px rgba(0, 0, 0, .5); animation: sevenGlow 1.6s ease-in-out infinite; }
+.card.inhand.legal.seven .face.front { box-shadow: 0 0 0 2px var(--gold), 0 0 0 5px #c9a4ff, 0 0 18px 6px rgba(170, 110, 255, .9), 0 0 38px 14px rgba(140, 80, 255, .5), 0 6px 14px rgba(0, 0, 0, .5); }
+@keyframes sevenGlow { 50% { filter: brightness(1.12) drop-shadow(0 0 10px rgba(190, 140, 255, .9)); } }
+body.gfx-low .card.inhand.seven .face.front { animation: none; } /* без пульсации на слабых телефонах, свечение остаётся */

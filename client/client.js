@@ -1358,7 +1358,7 @@
   const tf = p => `translate3d(${p.x}px,${p.y}px,0) translate(-50%,-50%) rotate(${p.rot || 0}deg) scale(${p.s == null ? 1 : p.s})`;
   function makeCard(layer, card, faceUp) {
     const el = document.createElement('div');
-    el.className = 'card' + (faceUp ? '' : ' down');
+    el.className = 'card' + (faceUp ? '' : ' down') + (card && !card.hidden && card.id === '7♠' ? ' seven' : '');
     if (card) el.dataset.id = card.id;
     el.innerHTML = '<div class="aura"></div><div class="ci"><div class="face front"></div><div class="face back"></div></div>';
     if (card && !card.hidden) el.querySelector('.front').style.backgroundImage = Cards.url(card);
