@@ -38,7 +38,8 @@ client/fx.js         Canvas particle effects per suit (♠ steel, ♣ emerald, �
 client/cards.js      Deck "dark gold" (CardsDark) + facade window.Cards (parse, url, backUrl, theme switch).
 client/cards-sil.js  Deck "Силуэты" (default, prefs.cards='sil'). window.CardsSil.
 client/cards-light.js Deck "classic light". window.CardsLight.
-client/cards-royal.js Deck "Королевская" from images client/img/decks/royal/<6..10|J|Q|K|A>_<suit>.webp + back.webp (window.CardsRoyal, prefs.cards='royal').
+client/cards-royal.js Image decks via `ImageDeck(dir)`: "Королевская" (CardsRoyal, img/decks/royal, prefs.cards='royal'), "Звёздная" (CardsStar, img/decks/star, 'star').
+                     Files <6..10|J|Q|K|A>_<suit>.webp + back.webp. New image deck = folder + one line here + THEMES/pickDeck (cards.js) + DECKS/deckImpl (client.js).
                      Server auto-serves every .webp in client/img/decks/<deck>/. Rebuild images: scripts/deck-from-sheets.py (owner's sheets → cards).
 client/room-cozy.js  Room skin "Пижамная вечеринка": only SVG markup (tableBase, chair, deco). Classic table SVG is inside client.js.
 client/room-office.js Room skin "Переговорка" (same interface). New room = new room-*.js + entry in ROOMS/ROOM_SKINS (client.js) + roomPreview + CSS `body.room-<k>`.

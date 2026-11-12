@@ -70,7 +70,7 @@
     'Войдите, чтобы прохождение сохранилось. Без входа обучение предложим снова — его можно будет пропустить.': 'Sign in to save your progress. Without signing in we will offer the tutorial again — you can skip it.',
     'Обычная игра': 'Casual game',
     'Персонализация': 'Customize', 'Колоды': 'Decks', 'Комнаты': 'Rooms', 'Эффекты': 'Effects', 'Выбрана': 'Selected', 'Выбрать': 'Select',
-    'Королевская': 'Royal', 'Пижамная вечеринка': 'Pajama party', 'Переговорка': 'Meeting room', 'Колесо': 'Wheel', 'Фразы': 'Phrases', 'Пусто': 'Empty', 'Сбросить по умолчанию': 'Reset to default', 'Колесо эмоций сброшено': 'Emote wheel reset',
+    'Королевская': 'Royal', 'Звёздная': 'Starlight', 'Пижамная вечеринка': 'Pajama party', 'Переговорка': 'Meeting room', 'Колесо': 'Wheel', 'Фразы': 'Phrases', 'Пусто': 'Empty', 'Сбросить по умолчанию': 'Reset to default', 'Колесо эмоций сброшено': 'Emote wheel reset',
     'Выберите место на колесе, затем смайлик': 'Pick a wheel slot, then an emoji',
     'Скоро здесь появятся оформления столов и комнат.': 'Table and room styles are coming soon.',
     'Скоро здесь появятся эффекты розыгрыша карт.': 'Card play effects are coming soon.',
