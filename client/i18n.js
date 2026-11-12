@@ -98,7 +98,7 @@
     'Партия не в рейтинге: нужно минимум двое игроков, вошедших через Google.': 'Unrated game: at least two players must be signed in with Google.',
     'Рейтинг сейчас недоступен (нет связи с базой).': 'Rating is unavailable right now (no database connection).',
     'Не удалось сохранить рейтинг — партия не засчитана.': 'Could not save the rating — the game was not counted.',
-    'База данных недоступна, попробуйте позже': 'Database unavailable, try again later', 'Таблица лидеров сейчас недоступна': 'Leaderboard is unavailable right now',
+    'База данных недоступна, попробуйте позже': 'Database unavailable, try again later', 'Код входа устарел — войдите ещё раз': 'The sign-in code has expired — please sign in again', 'Вход через Google не удался: код от другого устройства': 'Google sign-in failed: the code belongs to another device', 'Таблица лидеров сейчас недоступна': 'Leaderboard is unavailable right now',
     'Вы уже за этим столом — закройте другую вкладку.': 'You are already at this table — close the other tab.',
     // меню режимов, подбор, столы
     'Рейтинг': 'Ranked', 'Обычная': 'Casual', 'Свой стол': 'Host', 'По коду': 'By code', 'Любой': 'Any', 'Быстрая игра': 'Quick match',

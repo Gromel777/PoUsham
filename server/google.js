@@ -50,6 +50,7 @@ async function verifyIdToken(token, clientId) {
     name: p.name || p.given_name || null,
     givenName: p.given_name || null,
     picture: p.picture || null,
+    nonce: p.nonce || null,
   };
 }
 

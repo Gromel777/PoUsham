@@ -151,6 +151,15 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
+// Форма от Google (вход «переходом»): application/x-www-form-urlencoded.
+function readForm(req) {
+  return new Promise((resolve, reject) => {
+    let d = '';
+    req.on('data', c => { d += c; if (d.length > 2e4) { reject(new Error('Слишком большой запрос')); req.destroy(); } });
+    req.on('end', () => resolve(Object.fromEntries(new URLSearchParams(d))));
+    req.on('error', reject);
+  });
+}
 function sendJson(res, status, obj) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(obj));
@@ -1068,8 +1077,20 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return sendJson(res, 200, { googleClientId: GOOGLE_CLIENT_ID, ratings: DB.ready() });
   }
+  // Вход через Google «переходом» (ux_mode: redirect) — для приложения на экране «Домой» в iPhone, где всплывающее окно не возвращает ответ.
+  // Google присылает сюда форму с credential; создаём сессию и возвращаем игрока на сайт игры с одноразовым кодом ?auth=.
+  if (url.pathname === '/api/auth/google/redirect' && req.method === 'POST') return authRedirect(req, res);
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Метод не поддерживается' });
   const body = await readBody(req);
+  if (url.pathname === '/api/auth/claim') {
+    const c = AUTH_CODES.get(String(body.code || ''));
+    if (!c || c.exp < Date.now()) { AUTH_CODES.delete(String(body.code || '')); fail('Код входа устарел — войдите ещё раз'); }
+    if (!body.nonce || c.nonce !== String(body.nonce)) fail('Вход через Google не удался: код от другого устройства');
+    AUTH_CODES.delete(String(body.code));
+    let me = c.me;
+    if (body.nick && c.fresh) { await DB.setNick(me.id, body.nick).catch(() => {}); me = (await DB.bySession(c.session).catch(() => null)) || me; }
+    return sendJson(res, 200, { session: c.session, me });
+  }
   if (url.pathname === '/api/auth/google') {
     let u;
     try { u = await Google.verifyIdToken(body.credential, GOOGLE_CLIENT_ID); }
@@ -1191,6 +1212,44 @@ function serveMedia(req, res, file) {
     if (req.method === 'HEAD') return res.end();
     fs.createReadStream(file, { start, end }).pipe(res);
   });
+}
+
+// ---------- вход через Google переходом ----------
+// Одноразовые коды: код → { session, me, nonce, exp }. Живут 3 минуты, только в памяти.
+const AUTH_CODES = new Map();
+const AUTH_CODE_TTL = 3 * 60 * 1000;
+// Куда можно вернуть игрока после входа (адрес сайта зашит клиентом в nonce: «<случайное>.<base64url(origin)>»).
+const AUTH_RETURN = (process.env.AUTH_RETURN_ORIGINS || 'https://pousham-1.onrender.com,https://pousham.onrender.com').split(',').map(x => x.trim()).filter(Boolean);
+function returnOrigin(nonce) {
+  try {
+    const o = Buffer.from(String(nonce || '').split('.')[1] || '', 'base64url').toString('utf8');
+    if (AUTH_RETURN.includes(o) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)) return o;
+  } catch {}
+  return null;
+}
+function redirectTo(res, to) { res.writeHead(303, { Location: to, 'Cache-Control': 'no-store' }); res.end(); }
+async function authRedirect(req, res) {
+  const form = await readForm(req).catch(() => ({}));
+  let u;
+  try { u = await Google.verifyIdToken(form.credential, GOOGLE_CLIENT_ID); }
+  catch (e) {
+    console.error('auth redirect:', e.message);
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Вход через Google не удался. Вернитесь в игру и попробуйте ещё раз.');
+  }
+  const origin = returnOrigin(u.nonce) || AUTH_RETURN[0];
+  try {
+    const before = Date.now();
+    const acc = await DB.upsertGoogle({ ...u });
+    const session = await DB.newSession(acc.id);
+    for (const [k, v] of AUTH_CODES) if (v.exp < before) AUTH_CODES.delete(k);
+    const code = crypto.randomBytes(18).toString('base64url');
+    AUTH_CODES.set(code, { session, me: acc, nonce: u.nonce, exp: Date.now() + AUTH_CODE_TTL, fresh: !acc.games && !acc.tutorial });
+    return redirectTo(res, origin + '/?auth=' + code);
+  } catch (e) {
+    console.error('auth redirect db:', e.message);
+    return redirectTo(res, origin + '/?authErr=' + encodeURIComponent('База данных недоступна, попробуйте позже'));
+  }
 }
 
 const server = http.createServer(async (req, res) => {

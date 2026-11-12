@@ -95,6 +95,24 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; };
   ok(!(await post('/api/auth/google', { credential: sign({ ...good, aud: 'x' }) })).ok, 'плохой токен отклонён');
   ok((await post('/api/me', { session: A.session })).j.me.nick === 'Аня', '/api/me');
 
+  // ---------- вход «переходом» (iPhone, приложение на экране «Домой») ----------
+  const b64 = s => Buffer.from(s).toString('base64url');
+  const form = cred => fetch(base + '/api/auth/google/redirect', { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ credential: cred, g_csrf_token: 'x' }) });
+  const nonce = 'abc123.' + b64('https://pousham-1.onrender.com');
+  let r = await form(sign({ ...good, sub: 'gi', name: 'Ира', nonce }));
+  const loc = r.headers.get('location') || '';
+  ok(r.status === 303 && loc.startsWith('https://pousham-1.onrender.com/?auth='), 'редирект обратно на сайт игры: ' + loc);
+  const code = new URL(loc).searchParams.get('auth');
+  ok(!(await post('/api/auth/claim', { code, nonce: 'чужой' })).ok, 'код с чужим nonce не принимается');
+  const cl = await post('/api/auth/claim', { code, nonce, nick: 'Ирина' });
+  ok(cl.ok && cl.j.session && cl.j.me.nick === 'Ирина', 'код меняется на сессию, имя из настроек: ' + JSON.stringify(cl.j));
+  ok((await post('/api/me', { session: cl.j.session })).j.me.nick === 'Ирина', 'сессия после входа переходом работает');
+  ok(!(await post('/api/auth/claim', { code, nonce })).ok, 'код одноразовый');
+  r = await form(sign({ ...good, sub: 'gj', nonce: 'x.' + b64('https://evil.example') }));
+  ok(r.status === 303 && (r.headers.get('location') || '').startsWith('https://pousham-1.onrender.com/'), 'на чужой сайт не возвращаем');
+  r = await form(sign({ ...good, aud: 'x', nonce }));
+  ok(r.status === 400, 'плохой токен при входе переходом отклонён');
+
   const room = (await post('/api/create', { name: 'Аня', players: 4, rounds: 2, turnTime: 0, session: A.session })).j;
   const jb = (await post('/api/join', { name: 'Боря', room: room.room, session: B.session })).j;
   const guest = (await post('/api/join', { name: 'Гость', room: room.room })).j;

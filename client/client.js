@@ -15,6 +15,9 @@
     tab: 'ranked', players: 4, rounds: 17, roundsTouched: false, turnTime: 30, bluff: false, skills: true, test: false, listed: true,
     rankedSize: 0, casualSize: 0, // 0 — «любой стол»
   };
+  // Обучение пройдено без входа — отметим в аккаунте, когда игрок войдёт (флаг переживает перезагрузку при входе переходом).
+  const TUT_PENDING_KEY = 'vtochku-tut-pending';
+  try { S.tutPending = localStorage.getItem(TUT_PENDING_KEY) === '1'; } catch {}
 
   // ---------- настройки и сессия ----------
   function load(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } }
@@ -135,12 +138,36 @@
   const AUTH_KEY = 'vtochku-auth';
   // Client ID входа через Google (тот же, что на сервере) — чтобы кнопка входа была видна, даже пока сервер просыпается.
   const GOOGLE_CLIENT_ID = '626516411258-ii9eiq7dni57082mmiil8mhbdma9p8qr.apps.googleusercontent.com';
+  // Приложение с экрана «Домой» на iPhone/iPad: там всплывающее окно Google не может вернуть ответ в игру
+  // (открывается в отдельном Safari) — входим «переходом»: Google → наш сервер → обратно в игру с кодом ?auth=.
+  // Для проверки на компьютере: ?gsi=redirect.
+  const GSI_REDIRECT = (() => {
+    try { if (new URLSearchParams(location.search).get('gsi') === 'redirect') return true; } catch {}
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches);
+    return ios && standalone;
+  })();
+  const NONCE_KEY = 'vtochku-gsi-nonce';
+  // Код входа после возврата с Google — забираем из адреса сразу, чтобы он не остался в истории.
+  const authReturn = (() => {
+    try {
+      const q = new URLSearchParams(location.search);
+      const code = q.get('auth'), err = q.get('authErr');
+      if (!code && !err) return null;
+      q.delete('auth'); q.delete('authErr');
+      history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+      // nonce того входа читаем сразу: кнопка Google при отрисовке сгенерирует новый и перезапишет его.
+      let nonce = ''; try { nonce = localStorage.getItem(NONCE_KEY) || ''; localStorage.removeItem(NONCE_KEY); } catch {}
+      return { code, err, nonce };
+    } catch { return null; }
+  })();
   const Auth = {
     session: load(AUTH_KEY).session || null,
     me: null, cfg: null, gisInit: false,
     async init() {
       await Server.ready;
       try { this.cfg = await fetch(API + '/api/config').then(r => r.json()); } catch {}
+      if (authReturn) await this.claim(authReturn);
       if (this.session) {
         try {
           const r = await fetch(API + '/api/me', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: this.session }) });
@@ -162,7 +189,15 @@
       if (!clientId) return;
       this.whenGis(() => {
         if (!this.gisInit) {
-          google.accounts.id.initialize({ client_id: clientId, callback: resp => this.onCredential(resp), auto_select: false, ux_mode: 'popup' });
+          if (GSI_REDIRECT) {
+            // nonce: случайная часть (сверяем при обмене кода) + адрес сайта игры, куда сервер вернёт игрока.
+            const rnd = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+            const nonce = rnd + '.' + btoa(location.origin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            try { localStorage.setItem(NONCE_KEY, nonce); } catch {}
+            google.accounts.id.initialize({ client_id: clientId, ux_mode: 'redirect', login_uri: (API || location.origin) + '/api/auth/google/redirect', nonce, auto_select: false });
+          } else {
+            google.accounts.id.initialize({ client_id: clientId, callback: resp => this.onCredential(resp), auto_select: false, ux_mode: 'popup' });
+          }
           this.gisInit = true;
         }
         if (!el.isConnected) return;
@@ -170,10 +205,22 @@
         google.accounts.id.renderButton(el, { type: 'standard', theme: 'filled_black', size: 'medium', shape: 'pill', text: 'signin_with', locale: I18N.lang });
       });
     },
+    // Возврат со страницы Google (вход переходом): меняем одноразовый код на сессию.
+    async claim({ code, err, nonce }) {
+      if (err) { toast(I18N.trServer(err)); return; }
+      let nick = '';
+      nick = load(STORE_KEY).name || '';
+      try { this.signedIn(await api('/api/auth/claim', { code, nonce, nick })); }
+      catch (e) { toast(e.message); }
+    },
     async onCredential(resp) {
       const nameEl = $('#pf-name');
-      try {
-        const j = await api('/api/auth/google', { credential: resp.credential, nick: nameEl ? nameEl.value.trim() : '' });
+      try { this.signedIn(await api('/api/auth/google', { credential: resp.credential, nick: nameEl ? nameEl.value.trim() : '' })); }
+      catch (e) { toast(e.message); }
+    },
+    signedIn(j) {
+      const nameEl = $('#pf-name');
+      {
         this.session = j.session; this.me = j.me;
         save(AUTH_KEY, { session: j.session, tutorial: !!j.me.tutorial });
         if (nameEl && !nameEl.value.trim()) nameEl.value = j.me.nick;
@@ -181,7 +228,7 @@
         renderAcct();
         if (tutorialDone() && $('#welcome.on') && !S.local) { closeWelcome(); toast(T('Обучение уже пройдено на этом аккаунте')); }
         toast(T('Вы вошли: {n} · рейтинг {r}', { n: j.me.nick, r: j.me.rating }));
-      } catch (e) { toast(e.message); }
+      }
     },
     logout() {
       const s = this.session;
@@ -4208,8 +4255,8 @@
     S.local.onSkip(() => { leave(); if (!tutorialDone() && Server.ok) maybeWelcome(); });
   }
   function markTutorialDone() {
-    if (!Auth.session) { S.tutPending = true; return; }
-    S.tutPending = false;
+    if (!Auth.session) { S.tutPending = true; try { localStorage.setItem(TUT_PENDING_KEY, '1'); } catch {} return; }
+    S.tutPending = false; try { localStorage.removeItem(TUT_PENDING_KEY); } catch {}
     if (Auth.me) Auth.me.tutorial = true;
     save(AUTH_KEY, { tutorial: true });
     api('/api/tutorial', { session: Auth.session }).catch(() => {});
