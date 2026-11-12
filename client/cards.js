@@ -185,7 +185,7 @@
   root.CardsDark = Dark;
   const THEMES = ['sil', 'dark', 'light', 'royal', 'star'];
   let theme = 'sil';
-  try { const t = (JSON.parse(localStorage.getItem('vtochku-prefs')) || {}).cards; if (THEMES.includes(t)) theme = t; } catch {}
+  try { const p = JSON.parse(localStorage.getItem('vtochku-prefs')); const t = p ? p.cards : 'royal'; if (THEMES.includes(t)) theme = t; } catch {} // новому игроку — «Королевская»
   const pickDeck = () => (theme === 'light' && root.CardsLight ? root.CardsLight : theme === 'sil' && root.CardsSil ? root.CardsSil : theme === 'royal' && root.CardsRoyal ? root.CardsRoyal : theme === 'star' && root.CardsStar ? root.CardsStar : Dark);
   const Facade = {
     RANKS,

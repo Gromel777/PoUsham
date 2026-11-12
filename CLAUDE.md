@@ -36,7 +36,7 @@ client/client.js     Whole UI (~3200 lines, one IIFE). See section index below.
 client/style.css     All styles (~1200 lines). Room skins via body class `room-cozy` / `room-office` / `room-picnic`.
 client/fx.js         Canvas particle effects per suit (♠ steel, ♣ emerald, ♦ ice, ♥ flame, 7♠ storm) + synthesized SFX. window.FX / SFX.
 client/cards.js      Deck "dark gold" (CardsDark) + facade window.Cards (parse, url, backUrl, theme switch).
-client/cards-sil.js  Deck "Силуэты" (default, prefs.cards='sil'). window.CardsSil.
+client/cards-sil.js  Deck "Силуэты" (prefs.cards='sil'; default for players who already had saved prefs). window.CardsSil.
 client/cards-light.js Deck "classic light". window.CardsLight.
 client/cards-royal.js Image decks via `ImageDeck(dir)`: "Королевская" (CardsRoyal, img/decks/royal, prefs.cards='royal'), "Звёздная" (CardsStar, img/decks/star, 'star').
                      Files <6..10|J|Q|K|A>_<suit>.webp + back.webp. New image deck = folder + one line here + THEMES/pickDeck (cards.js) + DECKS/deckImpl (client.js).
@@ -110,7 +110,7 @@ CORS `*` on `/health` and `/api/*` (client may be served from the static site); 
 
 ## Client (client/client.js) — section index
 Search by the `// ----------` headers (line numbers drift):
-`настройки и сессия` (state `S`, `prefs` in localStorage `vtochku-prefs`, session `vtochku-session`, rooms classic/cozy/office/picnic: `ROOMS`, `ROOM_SKINS`, `applyRoom`, `roomSkin()`) ·
+`настройки и сессия` (state `S`, `prefs` in localStorage `vtochku-prefs`, session `vtochku-session`, defaults for NEW players (empty prefs): cards 'royal' + room 'picnic' (`freshPrefs`), old players keep theirs; rooms classic/cozy/office/picnic: `ROOMS`, `ROOM_SKINS`, `applyRoom`, `roomSkin()`) ·
 `музыка` · `сеть` (`API` base: same origin on pousham.onrender.com/localhost, else `https://pousham.onrender.com`; override `?api=`; `Server.wake()` polls /health, `Server.ready` promise — `api()` and `Auth.init` wait for it) · `аккаунт Google и рейтинг` (sign-in: popup normally; **redirect mode** `GSI_REDIRECT` in iOS home-screen apps (popup can't return there) or `?gsi=redirect` — nonce `<rand>.<base64url(origin)>` in localStorage `vtochku-gsi-nonce`, server returns to that origin (allowlist `AUTH_RETURN_ORIGINS`), client claims `?auth=` code in `Auth.claim`; tutorial-done-before-sign-in flag kept in `vtochku-tut-pending`; avatar photo, `#00042` player tag = DB id, leaderboard) ·
 `connect/leave/act` + animation queue `enqueue/pump/apply` (state snapshots are animated sequentially) ·
 `экраны` (`showHome` — layout from owner's sketch: left logo + «Spot On» (always English) + card fan; right column: player plate `#h-player` (→ `showProfile`: guest name / Google), sections `.h-sec` ranked/casual/create/settings opened by `openSec()` (FLIP animation, one at a time, click on empty space closes), bottom row Настройки/Правила/Полный экран; `renderGo()` = big button or in-panel search status; `showRoomsList` modal; `myName()/needName()`; `showLobby`, `showGameScreen`) · `поиск игроков` ·

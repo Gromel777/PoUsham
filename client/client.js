@@ -22,7 +22,11 @@
   // ---------- настройки и сессия ----------
   function load(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } }
   function save(key, patch) { try { localStorage.setItem(key, JSON.stringify({ ...load(key), ...patch })); } catch {} }
-  const prefs = { sound: true, music: true, musicVol: 0.1, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang, ...load(PREF_KEY) };
+  // Новый игрок (ничего ещё не сохранено) получает основные оформления: колода «Королевская», комната «Пикник».
+  // У тех, кто уже играл, остаётся их выбор (у них нет room — значит, «Классика»).
+  const savedPrefs = load(PREF_KEY), freshPrefs = !Object.keys(savedPrefs).length;
+  const prefs = { sound: true, music: true, musicVol: 0.1, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang,
+    ...(freshPrefs ? { cards: 'royal', room: 'picnic', deckV: 2 } : {}), ...savedPrefs };
   // Оформление комнаты (стол, окружение): classic — премиальный стол (в client.js), остальные — модули room-*.js
   // с одинаковым набором tableBase/chair/deco. Выбирается в «Персонализация → Комнаты»; ?skin=… — для быстрого просмотра (?room= занят кодом стола).
   const ROOMS = [['classic', 'Классика'], ['cozy', 'Пижамная вечеринка'], ['office', 'Переговорка'], ['picnic', 'Пикник']];
