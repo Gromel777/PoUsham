@@ -37,6 +37,8 @@ function listen(h, last, k) {
   const g = r.game;
   const borisActed = g.bids[1] !== null || (g.trick && g.trick.plays.some(p => p.p === 1)) || g.took[1] > 0 || g.history.length;
   assert(borisActed || g.turn !== 1, 'за вылетевшего ходит бот');
+  // состояние приходит по SSE — дождёмся свежего снимка, а не первого попавшегося
+  for (let i = 0; i < 30 && !(last.a.seats[1].away > 0 && last.a.seats[1].keepLeft > 0); i++) await sleep(100);
   assert(last.a.seats[1].away > 0 && last.a.seats[1].keepLeft > 0, 'остальные видят, что он вылетел и сколько ждать');
   // вернулся до истечения — место его
   rb = listen(b.j, last, 'b');
