@@ -228,6 +228,7 @@
         renderAcct();
         if (tutorialDone() && $('#welcome.on') && !S.local) { closeWelcome(); toast(T('Обучение уже пройдено на этом аккаунте')); }
         toast(T('Вы вошли: {n} · рейтинг {r}', { n: j.me.nick, r: j.me.rating }));
+        if (S.invite) { closeModalIf('profile'); joinInvite(); }
       }
     },
     logout() {
@@ -364,6 +365,7 @@
     $('#dock').classList.remove('on');
     S.err = msg || '';
     if (Server.ok) showHome(); else showWaking();
+    if (S.invite && Server.ok) joinInvite(); // пришёл по приглашению, но сначала проходил обучение
   }
   async function act(body) {
     if (S.local) { try { S.local.action(body); } catch (e) { toast(e.message); } return; }
@@ -420,7 +422,7 @@
 
   function showConnecting() {
     setScreen('connecting', `<div class="connecting"><div style="text-align:center"><div class="loader"></div>${logoHtml('style="font-size:34px"')}
-      <div class="hint">${T('Подключаюсь к столу {c}… Если сервер спал, это может занять до минуты.', { c: esc(S.room || '') })}</div></div></div>`);
+      <div class="hint">${T('Подключаюсь к столу {c}… Если сервер спал, это может занять до минуты.', { c: esc(S.room || S.invite || '') })}</div></div></div>`);
   }
 
   function miniCard(id, i, n) {
@@ -3733,6 +3735,7 @@
       const inp = $('#pf-name'), n = inp ? inp.value.trim() : '';
       if (!n) { if (inp) { inp.focus(); nope(inp); } return; }
       save(STORE_KEY, { name: n }); closeModal(); renderPlayerPlate();
+      if (S.invite) joinInvite();
     },
     roomsList: () => showRoomsList(),
     rejoin: () => {
@@ -4287,6 +4290,25 @@
     Auth.renderButton($('#gbtn-fin'));
   }
 
+  // Ссылка-приглашение ?room=КОД: сразу садимся за этот стол (имя — из аккаунта или сохранённое; нет — спросим и сядем после ввода).
+  async function joinInvite() {
+    const room = S.invite;
+    if (!room || S.local || S.room || S.inviteBusy) return;
+    await Auth.ready;
+    if (S.local || S.room) return;
+    const name = myName();
+    if (!name) { if (S.screen !== 'home') showHome(); showProfile(T('Введите имя, чтобы сесть за стол {c}', { c: room })); return; }
+    S.invite = ''; S.inviteBusy = true;
+    showConnecting();
+    try {
+      save(STORE_KEY, { name });
+      const j = await api('/api/join', { name, room, session: Auth.session });
+      connect(j.room, j.token);
+    } catch (e) {
+      S.prefillCode = room; showHome();
+      setTimeout(() => toast(e.message), 600); // после подсказки «Код стола подставлен»
+    } finally { S.inviteBusy = false; }
+  }
   function init() {
     Cards.setTheme(prefs.cards);
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -4297,16 +4319,18 @@
     const sess = load(STORE_KEY);
     const roomParam = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
     const resume = sess.room && sess.token && (!roomParam || roomParam === sess.room);
+    if (!resume && /^[A-Z0-9]{4}$/.test(roomParam)) S.invite = roomParam;
     Server.wake();
-    Auth.init();
+    Auth.ready = Auth.init().catch(() => {});
     // Сервер ответил быстро — сразу меню. Нет — свой экран загрузки (вместо страницы Render), на нём можно начать обучение.
-    const slow = setTimeout(() => { if (Server.ok) return; bootDone(); showWaking(); if (!resume) maybeWelcome(); }, 1200);
+    const slow = setTimeout(() => { if (Server.ok) return; bootDone(); showWaking(); if (!resume && !S.invite) maybeWelcome(); }, 1200);
     Server.ready.then(() => {
       clearTimeout(slow); clearTimeout(wakeSlowT);
       bootDone();
       if ($('#overlay').dataset.kind === 'netcheck') { closeModal(); toast(T('Сервер на связи')); }
       if (S.local) { toast(T('Сервер готов — после обучения можно играть онлайн')); return; }
       if (resume) { connect(sess.room, sess.token); return; }
+      if (S.invite) { joinInvite(); return; }
       if (S.screen !== 'home') showHome();
       maybeWelcome();
     });
