@@ -103,20 +103,25 @@
     return API_HOST;
   })();
   // Сервер на бесплатном Render засыпает: пока он просыпается, показываем свой экран загрузки (и можно пройти обучение).
-  const Server = { ok: false, listeners: [] };
+  // t0/tries/last — для диагностики на экране загрузки: когда начали ждать, сколько было попыток и чем кончилась последняя.
+  const Server = { ok: false, listeners: [], t0: Date.now(), tries: 0, last: '' };
   Server.ready = new Promise(res => { Server.resolve = res; });
   Server.wake = async function () {
+    Server.t0 = Date.now();
     for (;;) {
+      Server.tries++;
+      let t = 0;
       try {
-        const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
+        const ctl = new AbortController(); t = setTimeout(() => ctl.abort(), 8000);
         const r = await fetch(API + '/health?t=' + Date.now(), { cache: 'no-store', signal: ctl.signal });
-        clearTimeout(t);
         const j = r.ok ? await r.json().catch(() => null) : null;
+        clearTimeout(t);
         if (j && j.ok) break;
-      } catch {}
+        Server.last = r.ok ? 'not-json' : 'http ' + r.status;
+      } catch (e) { clearTimeout(t); Server.last = e && e.name === 'AbortError' ? 'timeout' : 'network'; }
       await wait(1500);
     }
-    Server.ok = true; Server.resolve();
+    Server.ok = true; Server.last = 'ok'; Server.resolve();
   };
   async function api(path, body) {
     await Server.ready; // сервер просыпается — запрос подождёт
@@ -3850,6 +3855,9 @@
     scores: () => showScores(),
     menu: () => showMenu(),
     tutorial: () => { if (searchLock()) return; startTutorial(); },
+    netcheck: () => NetCheck.open(),
+    netcheckRun: () => NetCheck.run(),
+    netcheckCopy: () => NetCheck.copy(),
     welcomeSkip: () => closeWelcome(),
     tutDone: () => finishTutorial(),
     tutGo: b => { closeModal(); if (b.dataset.tab && S.screen === 'home' && cur('#h-right').dataset.open !== b.dataset.tab) openSec(b.dataset.tab); },
@@ -3994,12 +4002,156 @@
 
   // ---------- экран загрузки: сервер просыпается ----------
   function bootDone() { const b = document.getElementById('boot'); if (b && !b.classList.contains('out')) { b.classList.add('out'); setTimeout(() => b.remove(), 600); } }
+  const NETCHECK_AFTER = 60000; // через сколько ожидания предлагаем проверить подключение
+  let wakeSlowT = 0;
   function showWaking() {
     setScreen('waking', `<div class="connecting waking"><div style="text-align:center">${logoHtml('style="font-size:38px"')}
       <div class="wake-bar"><i></i></div>
-      <div class="hint">${T('Сервер просыпается — обычно это до минуты.')}</div>
-      <div class="wake-actions"><button class="btn-gold" data-act="tutorial">${T('Пройти обучение, пока ждём')}</button><button class="btn-ghost" data-act="rules">${T('Правила')}</button></div></div></div>`);
+      <div class="hint" id="wake-hint">${T('Сервер просыпается — обычно это до минуты.')}</div>
+      <div class="wake-actions"><button class="btn-gold" data-act="tutorial">${T('Пройти обучение, пока ждём')}</button><button class="btn-ghost" data-act="rules">${T('Правила')}</button></div>
+      <div id="wake-slow"></div></div></div>`);
+    clearTimeout(wakeSlowT);
+    const showSlow = () => {
+      const box = $('#wake-slow');
+      if (!box || Server.ok) return;
+      const h = $('#wake-hint'); if (h) h.textContent = T('Сервер отвечает дольше обычного.');
+      box.innerHTML = `<button class="nc-open" data-act="netcheck"><span class="nc-suits">♠♥</span>${T('Проблемы с подключением?')}<span class="nc-suits">♦♣</span></button>`;
+    };
+    wakeSlowT = setTimeout(showSlow, Math.max(0, NETCHECK_AFTER - (Date.now() - Server.t0)));
   }
+
+  // ---------- диагностика подключения ----------
+  // Набор проверок, чтобы понять, почему сервер «не просыпается»: нет интернета, сеть/антивирус режет адрес сервера,
+  // браузер блокирует запросы или сервер правда долго встаёт. Итог — причина простыми словами + отчёт для разработчика.
+  const NetCheck = (() => {
+    const host = (API || location.origin).replace(/^https?:\/\//, '');
+    const timed = (p, ms) => Promise.race([p, wait(ms).then(() => { throw Object.assign(new Error('timeout'), { name: 'Timeout' }); })]);
+    const errName = e => (e && (e.name === 'Timeout' || e.name === 'AbortError')) ? 'timeout' : 'network';
+    const ms = t0 => T('{n} мс', { n: Math.round(performance.now() - t0) });
+    // Каждая проверка: id, подпись, масть-иконка, run() → { st: 'ok'|'bad'|'warn'|'info', note, raw }
+    const CHECKS = [
+      { id: 'online', suit: '♠', title: 'Интернет на устройстве', run: async () =>
+        navigator.onLine === false ? { st: 'bad', note: T('Устройство не в сети'), raw: 'navigator.onLine=false' } : { st: 'ok', note: T('Подключено'), raw: 'navigator.onLine=true' } },
+      { id: 'page', suit: '♣', title: 'Сайт игры', run: async () => {
+        const t0 = performance.now();
+        try { const r = await timed(fetch('/manifest.webmanifest?nc=' + Date.now(), { cache: 'no-store' }), 8000); return r.ok ? { st: 'ok', note: ms(t0), raw: location.host + ' → ' + r.status } : { st: 'warn', note: 'HTTP ' + r.status, raw: location.host + ' → ' + r.status }; }
+        catch (e) { return { st: 'bad', note: T('Не открывается'), raw: location.host + ' → ' + errName(e) }; }
+      } },
+      { id: 'web', suit: '♦', title: 'Другие сайты (Google)', run: async () => {
+        const t0 = performance.now();
+        try { await timed(fetch('https://www.gstatic.com/generate_204?nc=' + Date.now(), { mode: 'no-cors', cache: 'no-store' }), 8000); return { st: 'ok', note: ms(t0), raw: 'gstatic → ok' }; }
+        catch (e) { return { st: 'warn', note: T('Недоступны'), raw: 'gstatic → ' + errName(e) }; }
+      } },
+      { id: 'reach', suit: '♥', title: 'Связь с сервером игры', run: async () => {
+        const t0 = performance.now();
+        try { await timed(fetch(API + '/health?nc=' + Date.now(), { mode: 'no-cors', cache: 'no-store' }), 10000); return { st: 'ok', note: ms(t0), raw: host + ' no-cors → ok' }; }
+        catch (e) { const n = errName(e); return { st: n === 'timeout' ? 'warn' : 'bad', note: T(n === 'timeout' ? 'Нет ответа' : 'Соединение обрывается'), raw: host + ' no-cors → ' + n }; }
+      } },
+      { id: 'health', suit: '7♠', title: 'Ответ сервера игры', run: async () => {
+        const t0 = performance.now();
+        try {
+          const r = await timed(fetch(API + '/health?nc=' + Date.now(), { cache: 'no-store' }), 10000);
+          const ct = r.headers.get('content-type') || '';
+          const j = r.ok && ct.includes('json') ? await r.json().catch(() => null) : null;
+          if (j && j.ok) return { st: 'ok', note: ms(t0), raw: '/health → ' + r.status + ' ok' };
+          if (!r.ok) return { st: 'bad', note: 'HTTP ' + r.status, raw: '/health → ' + r.status + ' ' + ct };
+          return { st: 'warn', note: T('Пришла заставка вместо ответа'), raw: '/health → ' + r.status + ' ' + ct };
+        } catch (e) { const n = errName(e); return { st: n === 'timeout' ? 'warn' : 'bad', note: T(n === 'timeout' ? 'Нет ответа' : 'Запрос заблокирован'), raw: '/health cors → ' + n }; }
+      } },
+    ];
+    // Итог по результатам: заголовок, пояснение и советы.
+    function verdict(R, waited) {
+      const ok = id => R[id] && R[id].st === 'ok';
+      if (ok('health')) return { k: 'good', title: T('Сервер на связи'), text: T('Сейчас всё работает — игра откроется через пару секунд.'), tips: [] };
+      if (!ok('online') || (R.page && R.page.st === 'bad' && !ok('web'))) return { k: 'bad', title: T('Нет интернета'), text: T('Устройство сейчас не выходит в интернет.'),
+        tips: [T('Проверьте Wi-Fi или мобильный интернет'), T('Выключите режим «В самолёте»')] };
+      const blockTips = [T('Попробуйте мобильный интернет вместо Wi-Fi (или наоборот)'), T('Добавьте {h} в исключения антивируса и блокировщика рекламы', { h: host }), T('Отключите VPN или, наоборот, попробуйте через VPN'), T('Откройте игру в другом браузере')];
+      if (R.reach && R.reach.st === 'bad') return ok('web')
+        ? { k: 'bad', title: T('Сервер игры заблокирован в вашей сети'), text: T('Интернет работает, но соединение именно с сервером игры обрывается. Чаще всего так делает антивирус (веб-защита), блокировщик рекламы, фильтр провайдера или рабочей/школьной сети.'), tips: blockTips }
+        : { k: 'bad', title: T('Сеть сильно ограничена'), text: T('Открывается только сайт игры, а сервер и другие сайты — нет. Похоже на строгий фильтр сети, файрвол или неработающий VPN.'), tips: blockTips };
+      if (ok('reach') && R.health && R.health.st === 'bad' && /network/.test(R.health.raw)) return waited > 180000
+        ? { k: 'bad', title: T('Браузер блокирует запросы игры'), text: T('Сервер доступен, но браузер или его расширение не пропускает запросы игры к нему (защита от слежки, блокировщик, строгий режим приватности).'),
+          tips: [T('Отключите блокировщик/защиту от слежения для этого сайта'), T('Откройте игру в другом браузере'), T('Добавьте {h} в исключения антивируса и блокировщика рекламы', { h: host })] }
+        : { k: 'wait', title: T('Сервер ещё просыпается'), text: T('Сервер отвечает, но пока не готов. Подождите ещё минуту-две.'), tips: [T('Если ждёте дольше 3 минут — нажмите «Проверить снова»')] };
+      if (R.health && /HTTP 5/.test(R.health.note)) return { k: 'wait', title: T('Сервер перезапускается'), text: T('Сервер отвечает ошибкой — обычно это обновление или перезапуск. Подождите пару минут.'), tips: [T('Если не проходит дольше 5 минут — отправьте отчёт разработчику')] };
+      return { k: 'wait', title: T('Сервер ещё просыпается'), text: T('Сервер медленно отвечает — бесплатный хостинг иногда встаёт дольше обычного.'), tips: [T('Если ждёте дольше 3 минут — нажмите «Проверить снова»'), T('Если не помогает — отправьте отчёт разработчику')] };
+    }
+    function env() {
+      const c = navigator.connection || {};
+      let tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch {}
+      return [
+        ['Время', new Date().toISOString()], ['Сайт', location.host], ['Сервер', host],
+        ['Ждём сервер', Math.round((Date.now() - Server.t0) / 1000) + ' с, попыток ' + Server.tries + ', последняя: ' + (Server.last || '—')],
+        ['Браузер', navigator.userAgent], ['Язык / пояс', (navigator.language || '') + ' / ' + tz],
+        ['Сеть', [c.effectiveType, c.type, c.rtt != null ? 'rtt ' + c.rtt : '', c.saveData ? 'saveData' : ''].filter(Boolean).join(', ') || '—'],
+        ['Service worker', navigator.serviceWorker && navigator.serviceWorker.controller ? 'да' : 'нет'],
+      ];
+    }
+    let last = null, running = false;
+    const ICON = { ok: '✓', bad: '✕', warn: '!', info: 'i' };
+    function rowHtml(c) {
+      return `<li class="nc-row run" data-id="${c.id}"><span class="nc-suit">${c.suit}</span><span class="nc-name">${T(c.title)}</span>
+        <span class="nc-note">${T('проверяем…')}</span><span class="nc-st"><i class="nc-spin"></i></span></li>`;
+    }
+    const envHtml = () => env().map(([k, x]) => `<tr><td>${esc(T(k))}</td><td>${esc(x)}</td></tr>`).join('');
+    // Каркас окна строится один раз за проверку, дальше обновляются только изменившиеся части — анимации не перезапускаются.
+    function skeleton() {
+      const body = $('#overlay .nc-body'); if (!body) return;
+      body.innerHTML = `<div class="nc-verdict run"><div class="nc-vt">${T('Проверяем подключение…')}</div><div class="nc-deal">${['♠', '♥', '♦', '♣'].map((x, i) => `<i style="--i:${i}">${x}</i>`).join('')}</div></div>
+        <details class="nc-more" open><summary>${T('Подробности проверки')}</summary>
+          <ul class="nc-list">${CHECKS.map(rowHtml).join('')}</ul><table class="nc-env">${envHtml()}</table></details>`;
+      $('#overlay .actions').querySelectorAll('[data-act="netcheckRun"],[data-act="netcheckCopy"]').forEach(x => { x.disabled = true; });
+    }
+    function setRow(c, r) {
+      const li = $(`#overlay .nc-row[data-id="${c.id}"]`); if (!li) return;
+      li.className = 'nc-row ' + r.st + ' flip';
+      li.querySelector('.nc-note').textContent = r.note;
+      li.querySelector('.nc-st').textContent = ICON[r.st];
+    }
+    function finish() {
+      const ov = $('#overlay'); if (ov.dataset.kind !== 'netcheck') return;
+      const v = verdict(last.R, last.waited);
+      const box = ov.querySelector('.nc-verdict');
+      box.className = 'nc-verdict ' + v.k;
+      box.innerHTML = `<div class="nc-vt">${esc(v.title)}</div><div class="nc-vx">${esc(v.text)}</div>
+        ${v.tips.length ? `<ul class="nc-tips">${v.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}`;
+      ov.querySelector('.nc-env').innerHTML = envHtml();
+      ov.querySelector('.nc-more').open = false; // по умолчанию — только причина, подробности по нажатию
+      ov.querySelectorAll('.actions [disabled]').forEach(x => { x.disabled = false; });
+    }
+    async function run() {
+      if (running) return; running = true;
+      last = { R: {}, done: false, waited: Date.now() - Server.t0 };
+      skeleton();
+      // По очереди — как раздача карт: строки «переворачиваются» одна за другой.
+      for (const c of CHECKS) {
+        let r; try { r = await c.run(); } catch (e) { r = { st: 'bad', note: String(e && e.message || e), raw: 'error' }; }
+        last.R[c.id] = r; await wait(250); setRow(c, r);
+      }
+      last.done = true; running = false; finish();
+    }
+    function report() {
+      if (!last) return '';
+      const v = verdict(last.R, last.waited);
+      return ['«В Точку» — отчёт о подключении', 'Итог: ' + v.title, '',
+        ...CHECKS.map(c => { const r = last.R[c.id] || {}; return `${ICON[r.st] || '?'} ${c.title}: ${r.note || '—'} [${r.raw || ''}]`; }), '',
+        ...env().map(([k, x]) => k + ': ' + x)].join('\n');
+    }
+    async function copy() {
+      const txt = report();
+      try { await navigator.clipboard.writeText(txt); toast(T('Отчёт скопирован — отправьте его разработчику')); return; } catch {}
+      const ta = document.createElement('textarea'); ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); toast(T('Отчёт скопирован — отправьте его разработчику')); } catch { toast(T('Не удалось скопировать')); }
+      ta.remove();
+    }
+    function open() {
+      showModal(`<h2 class="gold-text nc-h">${T('Проверка подключения')}</h2><div class="nc-body"></div>
+        <div class="actions"><button class="btn-ghost" data-act="netcheckCopy">${T('Скопировать отчёт')}</button><button class="btn-ghost" data-act="netcheckRun">${T('Проверить снова')}</button><button class="btn-gold" data-act="close">${T('Закрыть')}</button></div>`, 'nc-modal');
+      $('#overlay').dataset.kind = 'netcheck';
+      run();
+    }
+    return { open, run, copy, report };
+  })();
 
   // ---------- обучение ----------
   // Флаг «обучение пройдено» хранится в аккаунте Google. Без входа флага нет — окно приветствия появится снова (обучение можно пропустить).
@@ -4091,8 +4243,9 @@
     // Сервер ответил быстро — сразу меню. Нет — свой экран загрузки (вместо страницы Render), на нём можно начать обучение.
     const slow = setTimeout(() => { if (Server.ok) return; bootDone(); showWaking(); if (!resume) maybeWelcome(); }, 1200);
     Server.ready.then(() => {
-      clearTimeout(slow);
+      clearTimeout(slow); clearTimeout(wakeSlowT);
       bootDone();
+      if ($('#overlay').dataset.kind === 'netcheck') { closeModal(); toast(T('Сервер на связи')); }
       if (S.local) { toast(T('Сервер готов — после обучения можно играть онлайн')); return; }
       if (resume) { connect(sess.room, sess.token); return; }
       if (S.screen !== 'home') showHome();
