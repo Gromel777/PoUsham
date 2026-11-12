@@ -431,9 +431,9 @@
           </div>
           <div class="err" id="err">${esc(S.err)}</div>
           <div class="h-foot">
-            <button class="btn-ghost" data-act="sec" data-sec="settings" data-from-foot="1">⚙ ${T('Настройки')}</button>
-            <button class="btn-ghost" data-act="rules">${T('Правила')}</button>
-            <button class="btn-ghost" data-act="fullscreen" id="fs-btn"></button>
+            <button class="h-btn h-fbtn" data-act="sec" data-sec="settings" data-from-foot="1"><i>⚙</i><span>${T('Настройки')}</span></button>
+            <button class="h-btn h-fbtn" data-act="rules"><i>📖</i><span>${T('Правила')}</span></button>
+            <button class="h-btn h-fbtn" data-act="fullscreen" id="fs-btn"></button>
           </div>
         </div>
       </div>`);
@@ -588,7 +588,7 @@
   }
   function syncFsBtn() {
     const b = cur('#fs-btn');
-    if (b) b.innerHTML = document.fullscreenElement ? `⤡ ${T('Окно')}` : `⛶ ${T('Полный экран')}`;
+    if (b) b.innerHTML = document.fullscreenElement ? `<i>⤡</i><span>${T('Окно')}</span>` : `<i>⛶</i><span>${T('Полный экран')}</span>`;
   }
   document.addEventListener('fullscreenchange', () => syncFsBtn());
 

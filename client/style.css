@@ -1390,7 +1390,11 @@ body.tutorial .next-timer, body.tutorial .next-ready { display: none !important;
 #sec-settings > .btn-ghost { text-align: left; }
 
 .h-foot { display: flex; gap: 8px; flex: none; }
-.h-foot .btn-ghost { flex: 1; padding: 9px 6px; font-size: 13px; white-space: nowrap; }
+/* нижний ряд — в том же стиле и той же высоты, что кнопки поиска игры */
+.h-foot .h-fbtn { flex: 1 1 0; min-width: 0; flex-direction: column; justify-content: center; gap: 1px; padding: 0 4px; font-size: calc(var(--VH) * 2.7); letter-spacing: 0; line-height: 1.1; white-space: nowrap; }
+.h-foot #fs-btn { flex-grow: 1.35; } /* «Полный экран» — самая длинная подпись */
+.h-foot .h-fbtn i { font-style: normal; font-size: 1.45em; line-height: 1; }
+.h-foot .h-fbtn span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .h-right .err { flex: none; margin: -4px 0; }
 .h-right .err:empty { display: none; }
 
@@ -1591,10 +1595,12 @@ body.gfx-low .screen.leave { animation-name: screenOutLite; }
 @keyframes screenOutLite { to { opacity: 0; transform: scale(.97) } }
 =======
 /* 7♠ в руке: широкое фиолетовое свечение по контуру, чтобы карту было видно сразу */
-.card.inhand.seven .face.front { box-shadow: 0 0 0 3px #c9a4ff, 0 0 16px 5px rgba(170, 110, 255, .85), 0 0 34px 12px rgba(140, 80, 255, .45), 0 6px 14px rgba(0, 0, 0, .5); animation: sevenGlow 1.6s ease-in-out infinite; }
+.card.inhand.seven .face.front { box-shadow: 0 0 0 3px #c9a4ff, 0 0 16px 5px rgba(170, 110, 255, .85), 0 0 34px 12px rgba(140, 80, 255, .45), 0 6px 14px rgba(0, 0, 0, .5); }
 .card.inhand.legal.seven .face.front { box-shadow: 0 0 0 2px var(--gold), 0 0 0 5px #c9a4ff, 0 0 18px 6px rgba(170, 110, 255, .9), 0 0 38px 14px rgba(140, 80, 255, .5), 0 6px 14px rgba(0, 0, 0, .5); }
-@keyframes sevenGlow { 50% { filter: brightness(1.12) drop-shadow(0 0 10px rgba(190, 140, 255, .9)); } }
-body.gfx-low .card.inhand.seven .face.front { animation: none; } /* без пульсации на слабых телефонах, свечение остаётся */
+/* пульсация — прозрачностью слоя с готовой тенью (не анимируем box-shadow/filter: дорого на телефонах) */
+.card.inhand.seven::before { content: ''; position: absolute; inset: 0; border-radius: 8%; pointer-events: none; box-shadow: 0 0 26px 12px rgba(190, 140, 255, .75); opacity: 0; animation: sevenGlow 1.6s ease-in-out infinite; }
+@keyframes sevenGlow { 50% { opacity: 1; } }
+body.gfx-low .card.inhand.seven::before { animation: none; } /* без пульсации на слабых телефонах, свечение остаётся */
 
 /* ================= комната «Пикник» (фон — картинка поляны) ================= */
 body.room-picnic .bg {
