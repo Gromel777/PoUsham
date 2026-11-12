@@ -2,7 +2,7 @@
 process.env.PORT = 3997;
 const http = require('http');
 const { server, rooms, AWAY } = require('./server/server.js');
-AWAY.GRACE = 300; AWAY.VOTE = 1200; AWAY.KEEP = 3000;
+AWAY.GRACE = 300; AWAY.VOTE = 1200; AWAY.KEEP = 8000; // KEEP с запасом: заявки ботов идут раз в 2,3 с
 const base = 'http://localhost:3997';
 const post = (p, b) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then(async r => ({ ok: r.ok, j: await r.json() }));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
