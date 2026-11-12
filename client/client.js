@@ -462,7 +462,7 @@
                 <div class="code-row"><input id="code" maxlength="4" value="${esc(roomParam)}" placeholder="${T('Код')}" autocapitalize="characters" title="${T('Код комнаты')}"><button class="btn-ghost" data-act="join">${T('Войти')}</button></div></div>
               <div class="h-desc">${T('Без рейтинга. Подберём живых игроков на стол выбранного размера; если за 45 с не набрались — свободные места займут боты. Правила стола — классические.')}</div>
               <div class="h-go" data-go="casual"></div>
-              <button class="btn-ghost h-bots" data-act="botsNow">🤖 ${T('Играть с ботами')}</button>
+              <button class="btn-ghost h-big h-bots" data-act="botsNow">🤖 ${T('Играть с ботами')}</button>
             </div></section>
             <section class="h-sec" data-sec="create">${head('create', 'Создание лобби')}<div class="h-body glass">
               <div class="row"><span class="opt-label">${T('Игроков')}</span><div class="seg" id="seg-players">${[2, 3, 4, 5, 6].map(n => `<button data-act="players" data-n="${n}">${n}</button>`).join('')}</div></div>
@@ -478,8 +478,8 @@
           </div>
           <div class="err" id="err">${esc(S.err)}</div>
           <div class="h-foot">
-            <button class="h-btn h-fbtn" data-act="sec" data-sec="settings" data-from-foot="1"><i>⚙</i><span>${T('Настройки')}</span></button>
-            <button class="h-btn h-fbtn" data-act="rules"><i>📖</i><span>${T('Правила')}</span></button>
+            <button class="h-btn h-fbtn" data-act="sec" data-sec="settings" data-from-foot="1"><i>${iconSvg('gear')}</i><span>${T('Настройки')}</span></button>
+            <button class="h-btn h-fbtn" data-act="rules"><i>${iconSvg('book')}</i><span>${T('Правила')}</span></button>
             <button class="h-btn h-fbtn" data-act="fullscreen" id="fs-btn"></button>
           </div>
         </div>
@@ -635,7 +635,7 @@
   }
   function syncFsBtn() {
     const b = cur('#fs-btn');
-    if (b) b.innerHTML = document.fullscreenElement ? `<i>⤡</i><span>${T('Окно')}</span>` : `<i>⛶</i><span>${T('Полный экран')}</span>`;
+    if (b) b.innerHTML = document.fullscreenElement ? `<i>${iconSvg('win')}</i><span>${T('Окно')}</span>` : `<i>${iconSvg('full')}</i><span>${T('Полный экран')}</span>`;
   }
   document.addEventListener('fullscreenchange', () => syncFsBtn());
 
@@ -1053,6 +1053,9 @@
       pause: '<path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>',
       play: '<path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/>',
       full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+      win: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+      gear: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.8l1.6 2.3 2.7-.7.6 2.7 2.6 1-.9 2.6 1.9 2-1.9 2 .9 2.6-2.6 1-.6 2.7-2.7-.7L12 21.2l-1.6-2.3-2.7.7-.6-2.7-2.6-1 .9-2.6-1.9-2 1.9-2-.9-2.6 2.6-1 .6-2.7 2.7.7z"/><circle cx="12" cy="12" r="3.2"/></g>',
+      book: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5V5C17 4.5 14 5 12 6.5z"/><path d="M12 6.5v13"/></g>',
     }[name];
     return `<svg viewBox="0 0 24 24">${p}</svg>`;
   }
