@@ -425,6 +425,9 @@
   // ---------- звук (синтез Web Audio, без файлов) ----------
   // У каждой масти свой тембр; чем старше карта, тем больше слоёв, громче удар и длиннее хвост реверберации.
   const SFX = (() => {
+    // iPhone/iPad (Safari 17+): звук игры не глушится переключателем «Без звука» — как в играх из App Store.
+    // Выключить звук можно в настройках самой игры.
+    try { if (root.navigator && navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
     let ac = null, master = null, verb = null, muted = false, noiseBuf = null;
     function ensure() {
       if (muted) return null;
@@ -446,9 +449,15 @@
         const vg = ac.createGain(); vg.gain.value = 0.5;
         verb.connect(vg); vg.connect(master);
       }
-      if (ac.state === 'suspended') ac.resume();
+      // На iPhone после звонка/уведомления/сворачивания состояние бывает не только 'suspended', но и 'interrupted'.
+      if (ac.state !== 'running') ac.resume().catch(() => {});
       return ac;
     }
+    // Safari разрешает включить звук только в момент касания: «оживляем» звук на любом касании/клике/клавише,
+    // а не только на кнопках игры. После возврата в игру — тоже.
+    const wake = () => { if (!muted) ensure(); };
+    ['touchend', 'click', 'keydown'].forEach(ev => root.document && document.addEventListener(ev, wake, { capture: true, passive: true }));
+    if (root.document) document.addEventListener('visibilitychange', () => { if (!document.hidden && ac && !muted && ac.state !== 'running') ac.resume().catch(() => {}); });
     const now = () => ac.currentTime + 0.01;
     function out(wet) {
       const g = ac.createGain(); g.connect(master);
@@ -541,7 +550,7 @@
 
     return {
       unlock() { ensure(); },
-      setMuted(m) { muted = m; if (m && ac) ac.suspend(); else if (!m && ac) ac.resume(); },
+      setMuted(m) { muted = m; if (m && ac) ac.suspend().catch(() => {}); else if (!m && ac) ac.resume().catch(() => {}); },
       isMuted: () => muted,
       flick() { if (!ensure()) return; noise(now(), 0.07, 'bandpass', 2600, 1.4, 0.32); },
       deal() { if (!ensure()) return; noise(now(), 0.05, 'highpass', 3000, 0.8, 0.16); },

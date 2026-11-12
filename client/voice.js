@@ -11,7 +11,7 @@
 
   function ensureCtx() {
     if (!ac) { const AC = root.AudioContext || root.webkitAudioContext; if (AC) ac = new AC(); }
-    if (ac && ac.state === 'suspended') ac.resume();
+    if (ac && ac.state !== 'running') ac.resume().catch(() => {});
     return ac;
   }
   function analyserFor(stream) {

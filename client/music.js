@@ -73,12 +73,20 @@
     if (c.el.paused && !(c.el.ended && !TRACKS[target].loop)) c.el.play().catch(() => {});
     fade(c, 1, FADE_IN);
   }
+  // Safari на iPhone засчитывает разрешение на звук не на каждом событии (pointerdown — нет, touchend/click — да),
+  // поэтому пробуем на каждом касании, пока трек реально не заиграет.
   function unlock() {
-    if (!unlocked) { unlocked = true; ensureCtx(); apply(); }
+    if (!unlocked) { unlocked = true; ensureCtx(); }
     if (ac && ac.state !== 'running') ac.resume().catch(() => {});
+    const c = want && ch[want];
+    if (!c || c.el.paused) apply();
   }
-  ['pointerdown', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, unlock, { capture: true, passive: true }));
-  document.addEventListener('visibilitychange', () => { hidden = document.hidden; apply(); });
+  ['pointerdown', 'touchend', 'click', 'keydown'].forEach(ev => document.addEventListener(ev, unlock, { capture: true, passive: true }));
+  document.addEventListener('visibilitychange', () => {
+    hidden = document.hidden;
+    if (!hidden && ac && ac.state !== 'running') ac.resume().catch(() => {});
+    apply();
+  });
 
   const Music = {
     // Какой трек должен играть: 'menu' | 'ranked' | 'victory' | null. restart — начать заново (победа в новой партии).
