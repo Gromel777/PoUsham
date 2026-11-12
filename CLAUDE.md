@@ -27,13 +27,13 @@ server/server.js     Everything server-side except DB: static files, rooms, seat
 server/db.js         Store: memoryStore() and pgStore(); SCHEMA (auto-created on start); players, sessions, matches, leaderboard.
 server/rating.js     Pairwise multiplayer Elo: START 1000, K 32, MIN_RATED 2, BOARD_MIN_GAMES 5; left/kicked = last place.
 server/google.js     Google ID-token (JWT RS256) verification with built-in crypto, no libs.
-client/index.html    Shell + script load order (order matters: viewport, brand, i18n, cards-* (cards.js first, then light/sil/royal), fx, qrcode, voice, music, GSI, room-cozy, room-office, engine, tutorial, client).
+client/index.html    Shell + script load order (order matters: viewport, brand, i18n, cards-* (cards.js first, then light/sil/royal), fx, qrcode, voice, music, GSI, room-cozy, room-office, room-picnic, engine, tutorial, client).
                      Inline `#boot` splash (shown before any JS; removed by `bootDone()` in client.js).
 client/tutorial.js   Tutorial: local table in the browser (same engine.js, no server), SCRIPT (rigged deals + bot moves for rounds 1–5),
                      STEPS (coach hints: `when(g)`, `tap` or `expect` + `target`), coach overlay (#coach: dim strips + gold ring, bubble, hard click guard).
                      UMD: require() in Node exports SCRIPT/STEPS for test-tutorial.js; window.Tutorial.create() in browser.
 client/client.js     Whole UI (~3200 lines, one IIFE). See section index below.
-client/style.css     All styles (~1200 lines). Room skins via body class `room-cozy` / `room-office`.
+client/style.css     All styles (~1200 lines). Room skins via body class `room-cozy` / `room-office` / `room-picnic`.
 client/fx.js         Canvas particle effects per suit (♠ steel, ♣ emerald, ♦ ice, ♥ flame, 7♠ storm) + synthesized SFX. window.FX / SFX.
 client/cards.js      Deck "dark gold" (CardsDark) + facade window.Cards (parse, url, backUrl, theme switch).
 client/cards-sil.js  Deck "Силуэты" (default, prefs.cards='sil'). window.CardsSil.
@@ -43,7 +43,9 @@ client/cards-royal.js Image decks via `ImageDeck(dir)`: "Королевская"
                      Server auto-serves every .webp in client/img/decks/<deck>/. Rebuild images: scripts/deck-from-sheets.py (owner's sheets → cards).
 client/room-cozy.js  Room skin "Пижамная вечеринка": only SVG markup (tableBase, chair, deco). Classic table SVG is inside client.js.
 client/room-office.js Room skin "Переговорка" (same interface). New room = new room-*.js + entry in ROOMS/ROOM_SKINS (client.js) + roomPreview + CSS `body.room-<k>`.
-                     Preview without settings: `?skin=cozy|office` (`?room=` is the table code for invite links!).
+client/room-picnic.js Room skin "Пикник": background is a picture client/img/rooms/picnic.webp (CSS `body.room-picnic .bg`), table = two blankets,
+                     turn neon (rx 492) runs between them. Server auto-serves every .webp in client/img/rooms/.
+                     Preview without settings: `?skin=cozy|office|picnic` (`?room=` is the table code for invite links!).
 client/i18n.js       ru/en. Key = the Russian string itself. trServer() translates server errors, trLog() translates log lines.
 client/viewport.js   Virtual screen height 488 (min width 950) scaled with CSS zoom. window.VIEW.
 client/voice.js      Push-to-talk voice, WebRTC P2P (STUN only), signaling via action type 'rtc'.
@@ -107,7 +109,7 @@ CORS `*` on `/health` and `/api/*` (client may be served from the static site); 
 
 ## Client (client/client.js) — section index
 Search by the `// ----------` headers (line numbers drift):
-`настройки и сессия` (state `S`, `prefs` in localStorage `vtochku-prefs`, session `vtochku-session`, rooms classic/cozy/office: `ROOMS`, `ROOM_SKINS`, `applyRoom`, `roomSkin()`) ·
+`настройки и сессия` (state `S`, `prefs` in localStorage `vtochku-prefs`, session `vtochku-session`, rooms classic/cozy/office/picnic: `ROOMS`, `ROOM_SKINS`, `applyRoom`, `roomSkin()`) ·
 `музыка` · `сеть` (`API` base: same origin on pousham.onrender.com/localhost, else `https://pousham.onrender.com`; override `?api=`; `Server.wake()` polls /health, `Server.ready` promise — `api()` and `Auth.init` wait for it) · `аккаунт Google и рейтинг` (sign-in, avatar photo, `#00042` player tag = DB id, leaderboard) ·
 `connect/leave/act` + animation queue `enqueue/pump/apply` (state snapshots are animated sequentially) ·
 `экраны` (`showHome` — layout from owner's sketch: left logo + «Spot On» (always English) + card fan; right column: player plate `#h-player` (→ `showProfile`: guest name / Google), sections `.h-sec` ranked/casual/create/settings opened by `openSec()` (FLIP animation, one at a time, click on empty space closes), bottom row Настройки/Правила/Полный экран; `renderGo()` = big button or in-panel search status; `showRoomsList` modal; `myName()/needName()`; `showLobby`, `showGameScreen`) · `поиск игроков` ·

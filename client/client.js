@@ -22,8 +22,8 @@
   const prefs = { sound: true, music: true, musicVol: 0.1, fx: 'high', log: true, cards: 'sil', mutes: {}, lang: I18N.lang, ...load(PREF_KEY) };
   // Оформление комнаты (стол, окружение): classic — премиальный стол (в client.js), остальные — модули room-*.js
   // с одинаковым набором tableBase/chair/deco. Выбирается в «Персонализация → Комнаты»; ?skin=… — для быстрого просмотра (?room= занят кодом стола).
-  const ROOMS = [['classic', 'Классика'], ['cozy', 'Пижамная вечеринка'], ['office', 'Переговорка']];
-  const ROOM_SKINS = { cozy: () => window.RoomCozy, office: () => window.RoomOffice };
+  const ROOMS = [['classic', 'Классика'], ['cozy', 'Пижамная вечеринка'], ['office', 'Переговорка'], ['picnic', 'Пикник']];
+  const ROOM_SKINS = { cozy: () => window.RoomCozy, office: () => window.RoomOffice, picnic: () => window.RoomPicnic };
   let ROOM = 'classic';
   const roomSkin = () => (ROOM_SKINS[ROOM] ? ROOM_SKINS[ROOM]() : null);
   function applyRoom(k) {
@@ -1126,6 +1126,14 @@
   // Мини-превью комнаты: стол сверху и места игроков.
   function roomPreview(k) {
     const seats = [[50, 88], [8, 50], [30, 14], [70, 14], [92, 50]];
+    if (k === 'picnic') {
+      return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        <image href="/img/rooms/picnic.webp" x="-40" y="0" width="180" height="100" preserveAspectRatio="xMidYMid slice"/>
+        <ellipse cx="50" cy="56" rx="41" ry="29" fill="#b8322c"/><ellipse cx="50" cy="56" rx="38" ry="26" fill="#f1ead8"/>
+        <ellipse cx="50" cy="56" rx="38" ry="26" fill="none" stroke="#5c86b8" stroke-width="5" stroke-dasharray="4 4" opacity=".35"/>
+        ${seats.map(([x, y], i) => `<rect x="${x - 6}" y="${y - 6}" width="12" height="12" rx="3" fill="${['#c98a5a', '#d9534f', '#4f86c6', '#e6a93a', '#9067c6'][i]}"/>`).join('')}
+      </svg>`;
+    }
     if (k === 'office') {
       return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
         <rect width="100" height="100" fill="#3b4250"/>${[0, 20, 40, 60, 80].map(x => [0, 20, 40, 60, 80].map(y => `<rect x="${x}" y="${y}" width="20" height="20" fill="${(x + y) % 40 ? '#363c49' : '#3f4656'}"/>`).join('')).join('')}

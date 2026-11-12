@@ -1172,7 +1172,7 @@ body.room-cozy .chair { width: calc(var(--ava) * 2.9); height: calc(var(--ava) *
 body.room-cozy .seat .plate { background: linear-gradient(160deg, rgba(74, 44, 28, .94), rgba(44, 24, 14, .95)); border-color: rgba(255, 214, 160, .28); }
 
 /* превью комнат в персонализации */
-.room-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.room-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .room-prev { width: 100%; height: min(calc(var(--VH) * 26), 150px); border-radius: 10px; overflow: hidden; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
 .room-prev svg { width: 100%; height: 100%; display: block; }
 /* ================= очки на аватарах — с монеткой ================= */
@@ -1595,3 +1595,22 @@ body.gfx-low .screen.leave { animation-name: screenOutLite; }
 .card.inhand.legal.seven .face.front { box-shadow: 0 0 0 2px var(--gold), 0 0 0 5px #c9a4ff, 0 0 18px 6px rgba(170, 110, 255, .9), 0 0 38px 14px rgba(140, 80, 255, .5), 0 6px 14px rgba(0, 0, 0, .5); }
 @keyframes sevenGlow { 50% { filter: brightness(1.12) drop-shadow(0 0 10px rgba(190, 140, 255, .9)); } }
 body.gfx-low .card.inhand.seven .face.front { animation: none; } /* без пульсации на слабых телефонах, свечение остаётся */
+
+/* ================= комната «Пикник» (фон — картинка поляны) ================= */
+body.room-picnic .bg {
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 55%, transparent 55%, rgba(20, 30, 10, .45) 100%),
+    url('/img/rooms/picnic.webp') center 32% / cover no-repeat, #3f6a2a;
+}
+body.room-picnic .bg::before { display: none; }
+body.room-picnic .bg::after { background: linear-gradient(180deg, rgba(10, 16, 6, .25), transparent 22%, transparent 80%, rgba(10, 16, 6, .3)); }
+body.room-picnic .mote { width: 4px; height: 4px; background: #fff6c8; box-shadow: 0 0 8px 3px rgba(255, 240, 170, .35); }
+body.room-picnic .table-wrap { --tbl-shadow: rgba(20, 30, 8, .55); }
+body.room-picnic .table-light { background: radial-gradient(ellipse 42% 36% at 50% 40%, rgba(255, 240, 200, .12), transparent 70%); }
+body.room-picnic .table-wrap .neon-glow { stroke: #ffd36b; opacity: .55; }
+body.room-picnic .table-wrap .neon-line { stroke: #fff1c2; opacity: .55; }
+body.room-picnic .table-wrap .neon-arc { stroke: #ffe08a; }
+body.room-picnic .table-wrap .neon-arc-core { stroke: #fffbe8; }
+body.room-picnic .table-wrap.neon-bluff .neon-glow, body.room-picnic .table-wrap.neon-bluff .neon-line { stroke: #ff6a5a; }
+body.room-picnic .chair { width: calc(var(--ava) * 2.6); height: calc(var(--ava) * 2.6); transform: translate(-50%, -50%) rotate(var(--chair-rot, 0deg)) translateY(-6%); filter: drop-shadow(0 6px 8px rgba(20, 30, 8, .5)); }
+body.room-picnic .seat .plate { background: linear-gradient(160deg, rgba(52, 40, 26, .94), rgba(30, 22, 14, .95)); border-color: rgba(255, 230, 170, .3); }

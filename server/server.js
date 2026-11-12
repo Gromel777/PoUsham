@@ -69,6 +69,7 @@ const STATIC = {
   '/cards-sil.js': 'client/cards-sil.js',
   '/room-cozy.js': 'client/room-cozy.js',
   '/room-office.js': 'client/room-office.js',
+  '/room-picnic.js': 'client/room-picnic.js',
   '/cards-royal.js': 'client/cards-royal.js',
   '/i18n.js': 'client/i18n.js',
   '/brand.js': 'client/brand.js',
@@ -94,6 +95,10 @@ try {
   for (const d of fs.readdirSync(path.join(__dirname, '..', 'client', 'img', 'decks'))) {
     for (const f of fs.readdirSync(path.join(__dirname, '..', 'client', 'img', 'decks', d))) if (f.endsWith('.webp')) STATIC[`/img/decks/${d}/${f}`] = `client/img/decks/${d}/${f}`;
   }
+} catch {}
+// Фоны комнат: все .webp из client/img/rooms/ → /img/rooms/<файл>.
+try {
+  for (const f of fs.readdirSync(path.join(__dirname, '..', 'client', 'img', 'rooms'))) if (f.endsWith('.webp')) STATIC[`/img/rooms/${f}`] = `client/img/rooms/${f}`;
 } catch {}
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.webmanifest': 'application/manifest+json; charset=utf-8', '.mp3': 'audio/mpeg' };
 const EMOTES = ['😂', '😱', '🖕', '😎', '😡', '🤔', '👏', '💀'];
